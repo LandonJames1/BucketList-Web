@@ -1,0 +1,2421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BUCKET LIST</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500&family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600&family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <style>
+    /*  ============================================================
+        RESET
+        ============================================================ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #efece6;
+      --bg2: #e4e0d8;
+      --white: #ffffff;
+      --black: #111;
+      --text: #1a1a18;
+      --text2: #3a3a36;
+      --text3: #5e5c55;
+      --text4: #8a877e;
+      --border: #ccc8be;
+      --border2: #b0ab9f;
+      --olive: #4a5340;
+      --olive-light: #dce3d4;
+      --terra: #a0603a;
+      --terra-light: #f0e0d2;
+      --sand: #b5a688;
+      --danger: #b84e4e;
+      --serif: 'Cormorant Garamond', Georgia, serif;
+      --sans: 'Inter', -apple-system, sans-serif;
+      --mono: 'IBM Plex Mono', monospace;
+      --ease: cubic-bezier(.22,1,.36,1);
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+      font-size: 15px;
+    }
+    ::selection  { background: var(--black); color: var(--bg); }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+    img { display: block; max-width: 100%; }
+    a { color: inherit; text-decoration: none; }
+    button { font-family: inherit; cursor: pointer; }
+
+    /*  ============================================================
+        TOP NAV — fixed, full-width, transparent → white on scroll
+        ============================================================ */
+    .topnav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 52px; height: 64px;
+      background: rgba(245,243,239,.85);
+      backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+      border-bottom: 1px solid transparent;
+      transition: border-color .4s, background .4s;
+    }
+    .topnav.scrolled { border-color: var(--border); background: rgba(245,243,239,.97); }
+    .topnav-logo {
+      font-family: var(--mono); font-size: .78rem; font-weight: 600;
+      letter-spacing: 4px; text-transform: uppercase; color: var(--text);
+    }
+    .topnav-links { display: flex; gap: 6px; }
+    .topnav-link {
+      padding: 8px 20px; font-size: .72rem; font-weight: 600;
+      letter-spacing: 2px; text-transform: uppercase; font-family: var(--mono);
+      background: none; border: 1px solid transparent; color: var(--text);
+      transition: all .3s var(--ease);
+    }
+    .topnav-link:hover { color: var(--text); }
+    .topnav-link.active { color: var(--text); border-color: var(--text); }
+    .topnav-right { display: flex; align-items: center; gap: 16px; }
+    .topnav-cta {
+      padding: 10px 26px; font-size: .72rem; font-weight: 600;
+      letter-spacing: 2px; text-transform: uppercase; font-family: var(--mono);
+      background: var(--black); color: var(--white); border: 1px solid var(--black);
+      transition: all .3s var(--ease);
+    }
+    .topnav-cta:hover { background: transparent; color: var(--black); }
+
+    /* Mobile hamburger */
+    .hamburger { display: none; background: none; border: none; flex-direction: column; gap: 5px; padding: 8px; }
+    .hamburger span { display: block; width: 22px; height: 1.5px; background: var(--text); transition: .3s; }
+
+    /*  ============================================================
+        PAGE SYSTEM — each .page is full viewport, shown/hidden
+        ============================================================ */
+    .page { display: none; min-height: 100vh; padding-top: 64px; }
+    .page.active { display: block; animation: pageFade .5s var(--ease); }
+    @keyframes pageFade { from { opacity: 0; } to { opacity: 1; } }
+
+    /*  ============================================================
+        HOME PAGE
+        ============================================================ */
+    /* Hero with background image + overlay */
+    .hero {
+      position: relative; width: 100%; height: calc(100vh - 64px);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1;
+    }
+    .hero-bg {
+      position: fixed; inset: 0;
+      background: url('https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1920&q=80') center/cover;
+      filter: brightness(.75); z-index: -1;
+    }
+    .hero-overlay { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,.15) 0%, rgba(0,0,0,.45) 100%); }
+    .hero-content {
+      position: relative; z-index: 2; text-align: center; color: #fff;
+      max-width: 800px; padding: 0 32px;
+    }
+    .hero-eyebrow {
+      font-family: var(--mono); font-size: .72rem; letter-spacing: 4px;
+      text-transform: uppercase; opacity: .85; margin-bottom: 28px;
+      font-weight: 500;
+    }
+    .hero-title {
+      font-family: var(--serif); font-size: clamp(3rem, 7vw, 6rem);
+      font-weight: 300; line-height: 1.05; letter-spacing: -2px;
+    }
+    .hero-title em { font-style: italic; font-weight: 400; }
+    .hero-subtitle {
+      font-size: 1rem; font-weight: 400; opacity: .85;
+      margin-top: 24px; line-height: 1.7; max-width: 480px; margin-inline: auto;
+    }
+    .hero-btn {
+      display: inline-block; margin-top: 44px; padding: 16px 52px;
+      font-family: var(--mono); font-size: .74rem; letter-spacing: 3px;
+      text-transform: uppercase; background: #fff; color: #111;
+      border: none; transition: all .4s var(--ease); font-weight: 600;
+    }
+    .hero-btn:hover { background: var(--black); color: #fff; }
+
+    /* Featured collections strip */
+    .home-section { padding: 100px 64px; position: relative; z-index: 2; background: var(--bg); }
+    .home-section-header {
+      display: flex; align-items: flex-end; justify-content: space-between;
+      margin-bottom: 56px;
+    }
+    .section-eyebrow {
+      font-family: var(--mono); font-size: .72rem; letter-spacing: 3px;
+      text-transform: uppercase; color: var(--text2); margin-bottom: 14px;
+      font-weight: 600;
+    }
+    .section-title {
+      font-family: var(--serif); font-size: 2.8rem; font-weight: 400;
+      letter-spacing: -1px; line-height: 1.1;
+    }
+    .section-link {
+      font-family: var(--mono); font-size: .72rem; letter-spacing: 2px;
+      text-transform: uppercase; color: var(--text); border-bottom: 1.5px solid var(--text);
+      padding-bottom: 2px; transition: color .3s; white-space: nowrap;
+      font-weight: 600;
+    }
+    .section-link:hover { color: var(--text); border-color: var(--text); }
+    .featured-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px;
+    }
+    .featured-card {
+      position: relative; overflow: hidden; cursor: pointer;
+      aspect-ratio: 3/4; background: var(--bg2);
+    }
+    .featured-card img {
+      width: 100%; height: 100%; object-fit: cover;
+      transition: transform .8s var(--ease); filter: brightness(.78);
+    }
+    .featured-card:hover img { transform: scale(1.05); filter: brightness(.85); }
+    .featured-card-overlay {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      justify-content: flex-end; padding: 32px;
+      background: linear-gradient(0deg, rgba(0,0,0,.8) 0%, rgba(0,0,0,.3) 40%, transparent 65%);
+    }
+    .featured-card-title {
+      font-family: var(--serif); font-size: 1.5rem; color: #fff;
+      font-weight: 500; letter-spacing: -0.3px;
+      text-shadow: 0 2px 10px rgba(0,0,0,.5);
+    }
+    .featured-card-count {
+      font-family: var(--mono); font-size: .58rem; color: rgba(255,255,255,.8);
+      letter-spacing: 2px; text-transform: uppercase; margin-top: 6px;
+      text-shadow: 0 1px 4px rgba(0,0,0,.4);
+    }
+
+    /* Banner */
+    .banner {
+      position: relative; height: 500px; overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
+      z-index: 2;
+    }
+    .banner-bg {
+      position: absolute; inset: 0;
+      background: url('https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=1920&q=80') center/cover;
+      filter: brightness(.6);
+    }
+    .banner-content {
+      position: relative; z-index: 2; text-align: center; color: #fff;
+    }
+    .banner-title {
+      font-family: var(--serif); font-size: 3rem; font-weight: 300;
+      letter-spacing: -1px;
+    }
+    .banner-title em { font-style: italic; }
+    .banner-sub {
+      font-size: .95rem; font-weight: 400; opacity: .8; margin-top: 16px;
+      max-width: 400px; margin-inline: auto; line-height: 1.7;
+    }
+
+    /* Stats row */
+    .stats-strip {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+      position: relative; z-index: 2; background: var(--bg);
+    }
+    .stats-strip-item {
+      padding: 48px 40px; text-align: center;
+      border-right: 1px solid var(--border);
+    }
+    .stats-strip-item:last-child { border: none; }
+    .stats-strip-number {
+      font-family: var(--serif); font-size: 3rem; font-weight: 400;
+      letter-spacing: -1px; color: var(--text);
+    }
+    .stats-strip-label {
+      font-family: var(--mono); font-size: .68rem; letter-spacing: 2px;
+      text-transform: uppercase; color: var(--text2); margin-top: 8px;
+      font-weight: 500;
+    }
+
+    /* Footer */
+    .site-footer {
+      padding: 64px; border-top: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: flex-end;
+      position: relative; z-index: 2; background: var(--bg);
+    }
+    .footer-brand {
+      font-family: var(--mono); font-size: .72rem; letter-spacing: 3px;
+      text-transform: uppercase; color: var(--text2); font-weight: 500;
+    }
+    .footer-links { display: flex; gap: 24px; }
+    .footer-link {
+      font-family: var(--mono); font-size: .68rem; letter-spacing: 2px;
+      text-transform: uppercase; color: var(--text2); transition: color .3s; font-weight: 500;
+    }
+    .footer-link:hover { color: var(--text); }
+
+    /*  ============================================================
+        COLLECTIONS PAGE
+        ============================================================ */
+    .page-header {
+      padding: 80px 64px 60px; border-bottom: 1px solid var(--border);
+    }
+    .page-header-eyebrow {
+      font-family: var(--mono); font-size: .72rem; letter-spacing: 3px;
+      text-transform: uppercase; color: var(--text2); margin-bottom: 16px;
+      font-weight: 600;
+    }
+    .page-header-title {
+      font-family: var(--serif); font-size: 3.5rem; font-weight: 500;
+      letter-spacing: -1.5px; line-height: 1.1; color: var(--text);
+    }
+    .page-header-sub {
+      font-size: .95rem; font-weight: 400; color: var(--text2);
+      margin-top: 12px; max-width: 500px; line-height: 1.7;
+    }
+    .page-header-actions { margin-top: 32px; }
+
+    .collections-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 32px; padding: 56px 64px 100px;
+    }
+    .collection-card {
+      position: relative; aspect-ratio: 4/5; overflow: hidden;
+      background: var(--bg2); cursor: pointer;
+      border: 1px solid var(--border);
+      box-shadow: 0 4px 24px rgba(0,0,0,.08);
+      transition: box-shadow .4s var(--ease);
+    }
+    .collection-card:hover {
+      box-shadow: 0 8px 40px rgba(0,0,0,.15);
+    }
+    .collection-card-img {
+      width: 100%; height: 100%; object-fit: cover;
+      transition: transform .8s var(--ease); filter: brightness(.78) grayscale(.05);
+    }
+    .collection-card:hover .collection-card-img { transform: scale(1.05); filter: brightness(.85) grayscale(0); }
+    .collection-card-overlay {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      justify-content: flex-end; padding: 36px;
+      background: linear-gradient(0deg, rgba(0,0,0,.82) 0%, rgba(0,0,0,.35) 40%, transparent 65%);
+    }
+
+    .collection-card-title {
+      font-family: var(--serif); font-size: 1.7rem; color: #fff;
+      font-weight: 500; letter-spacing: -0.3px;
+      text-shadow: 0 2px 12px rgba(0,0,0,.5);
+    }
+    .collection-card-desc {
+      font-size: .8rem; color: rgba(255,255,255,.85); font-weight: 300;
+      margin-top: 8px; line-height: 1.5;
+      text-shadow: 0 1px 6px rgba(0,0,0,.4);
+    }
+    .collection-card-meta {
+      font-family: var(--mono); font-size: .58rem; color: rgba(255,255,255,.75);
+      letter-spacing: 2px; text-transform: uppercase; margin-top: 14px;
+      text-shadow: 0 1px 4px rgba(0,0,0,.4);
+    }
+    /* New collection card */
+    .collection-card-new {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 16px;
+      border: 2px dashed var(--border2); background: var(--white);
+      cursor: pointer; transition: all .3s var(--ease);
+    }
+    .collection-card-new:hover { border-color: var(--text); border-style: solid; }
+    .collection-card-new .plus { font-size: 2.4rem; font-weight: 300; color: var(--text2); }
+    .collection-card-new span {
+      font-family: var(--mono); font-size: .72rem; letter-spacing: 2px;
+      text-transform: uppercase; color: var(--text2); font-weight: 600;
+    }
+
+    /*  ============================================================
+        DETAIL PAGE — Shows a single collection's activities
+        ============================================================ */
+    .detail-hero {
+      position: relative; height: 400px; overflow: hidden;
+    }
+    .detail-hero-bg {
+      position: absolute; inset: 0; background-size: cover;
+      background-position: center; filter: brightness(.6);
+      pointer-events: none;
+    }
+    .detail-hero-content {
+      position: relative; z-index: 2; height: 100%; display: flex;
+      flex-direction: column; justify-content: flex-end;
+      padding: 48px 64px; color: #fff;
+    }
+
+    .detail-hero-title {
+      font-family: var(--serif); font-size: 3.5rem; font-weight: 300;
+      letter-spacing: -1.5px;
+    }
+    .detail-hero-desc {
+      font-size: 1rem; font-weight: 400; opacity: .85;
+      margin-top: 8px; max-width: 500px; line-height: 1.7;
+    }
+    .detail-hero-actions {
+      display: flex; gap: 12px; margin-top: 28px;
+    }
+    .detail-hero-btn {
+      padding: 12px 34px; font-family: var(--mono); font-size: .72rem;
+      letter-spacing: 2px; text-transform: uppercase; border: 1.5px solid #fff;
+      background: transparent; color: #fff; transition: all .3s var(--ease);
+      font-weight: 600; cursor: pointer;
+    }
+    .detail-hero-btn:hover { background: #fff; color: #111; }
+    .detail-hero-btn.filled { background: #fff; color: #111; }
+    .detail-hero-btn.filled:hover { background: transparent; color: #fff; }
+
+    /* Progress + filter bar */
+    .detail-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 64px; border-bottom: 1px solid var(--border);
+      background: var(--white); flex-wrap: wrap; gap: 16px;
+      position: sticky; top: 64px; z-index: 50;
+      box-shadow: 0 2px 12px rgba(0,0,0,.04);
+    }
+    .detail-bar-left { display: flex; align-items: center; gap: 24px; }
+    .detail-progress {
+      display: flex; align-items: center; gap: 14px;
+    }
+    .progress-bar-track {
+      width: 200px; height: 6px; background: var(--bg2); border-radius: 3px;
+      position: relative; border: 1px solid var(--border);
+    }
+    .progress-bar-fill {
+      position: absolute; left: 0; top: 0; height: 100%; border-radius: 3px;
+      background: var(--olive); transition: width .8s var(--ease);
+    }
+    .progress-label {
+      font-family: var(--mono); font-size: .72rem; letter-spacing: .5px;
+      color: var(--text); font-weight: 500;
+    }
+    .detail-bar-right { display: flex; align-items: center; gap: 10px; }
+    .detail-search {
+      padding: 10px 16px; border: 1px solid var(--border2);
+      background: var(--bg); font-size: .85rem; font-family: var(--sans);
+      color: var(--text); outline: none; width: 220px;
+    }
+    .detail-search::placeholder { color: var(--text3); }
+    .detail-search:focus { border-color: var(--text); background: var(--white); }
+    .filter-btn {
+      padding: 10px 22px; font-family: var(--mono); font-size: .68rem;
+      letter-spacing: 1px; text-transform: uppercase; font-weight: 500;
+      border: 1px solid var(--border2); background: var(--bg);
+      color: var(--text2); transition: all .3s var(--ease);
+    }
+    .filter-btn:hover { color: var(--text); border-color: var(--text); background: var(--white); }
+    .filter-btn.active { background: var(--black); color: var(--white); border-color: var(--black); }
+
+    /* Activity list */
+    .activities-wrap { padding: 48px 64px 100px; background: var(--bg); position: relative; overflow: hidden; }
+    .activities-list { display: flex; flex-direction: column; gap: 0; }
+    .activities-list.grid-view {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px;
+    }
+
+    /* Activity number badge */
+    .activity-num {
+      font-family: var(--mono); font-size: .68rem; font-weight: 700;
+      color: var(--text3); letter-spacing: .5px; min-width: 28px;
+      text-align: center;
+    }
+
+    .activity-row {
+      display: grid; grid-template-columns: 32px 80px 1fr 140px 110px 90px;
+      align-items: center; gap: 20px; padding: 24px 20px;
+      border: 1px solid var(--border); background: var(--white);
+      margin-bottom: 12px; cursor: pointer;
+      transition: all .3s var(--ease);
+    }
+    .activity-row:hover { box-shadow: 0 4px 20px rgba(0,0,0,.07); border-color: var(--border2); }
+
+    .activity-row-photo {
+      width: 80px; height: 80px; overflow: hidden; background: var(--bg2);
+      flex-shrink: 0;
+    }
+    .activity-row-photo img {
+      width: 100%; height: 100%; object-fit: cover;
+      filter: grayscale(.15); transition: filter .3s;
+    }
+    .activity-row:hover .activity-row-photo img { filter: grayscale(0); }
+    .activity-row-photo-empty {
+      width: 100%; height: 100%; display: flex; align-items: center;
+      justify-content: center; font-family: var(--mono); font-size: .52rem;
+      font-weight: 600; letter-spacing: 1px; text-transform: uppercase;
+      color: var(--text4); text-align: center; padding: 8px;
+      line-height: 1.4;
+    }
+
+    .activity-row-info { min-width: 0; }
+    .activity-row-name {
+      font-family: var(--serif); font-size: 1.35rem; font-weight: 600;
+      letter-spacing: -.3px; margin-bottom: 5px; color: var(--text);
+    }
+    .activity-row-desc {
+      font-size: .84rem; color: var(--text2); font-weight: 400;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      line-height: 1.5;
+    }
+    .activity-row-tag {
+      font-family: var(--mono); font-size: .62rem; letter-spacing: 1.5px;
+      color: var(--text2); text-transform: uppercase; margin-top: 6px;
+      font-weight: 500;
+    }
+    .activity-row-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+    .activity-row-tags .tag-pill {
+      font-family: var(--mono); font-size: .58rem; letter-spacing: 1px;
+      text-transform: uppercase; font-weight: 600; padding: 3px 10px;
+      background: var(--bg2); color: var(--text3); border: 1px solid var(--border);
+    }
+
+    /* Tag chip input */
+    .tag-input-wrap {
+      display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+      border: 1.5px solid var(--border2); padding: 8px 12px; min-height: 44px;
+      background: var(--white); cursor: text; transition: border-color .3s;
+    }
+    .tag-input-wrap:focus-within { border-color: var(--text); }
+    .tag-chip {
+      display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
+      background: var(--olive-light); border: 1px solid var(--olive);
+      font-family: var(--mono); font-size: .68rem; letter-spacing: 1px;
+      text-transform: uppercase; font-weight: 600; color: var(--olive);
+      white-space: nowrap;
+    }
+    .tag-chip button {
+      background: none; border: none; color: var(--olive); font-size: .7rem;
+      padding: 0; cursor: pointer; line-height: 1; opacity: .7;
+    }
+    .tag-chip button:hover { opacity: 1; }
+    .tag-input-field {
+      border: none; outline: none; background: transparent;
+      font-family: var(--sans); font-size: .85rem; color: var(--text);
+      flex: 1; min-width: 80px; padding: 2px 0;
+    }
+    .tag-input-field::placeholder { color: var(--text4); }
+
+    /* Delete collection btn in hero */
+    .detail-hero-btn.danger { border-color: rgba(255,255,255,.4); }
+    .detail-hero-btn.danger:hover { background: var(--danger); border-color: var(--danger); color: #fff; }
+
+    .activity-row-date {
+      font-family: var(--mono); font-size: .72rem; letter-spacing: .5px;
+      color: var(--text2); font-weight: 500;
+    }
+    .activity-row-date.overdue { color: var(--danger); font-weight: 600; }
+    .activity-row-date.soon { color: var(--terra); font-weight: 600; }
+
+    .activity-row-status {
+      font-family: var(--mono); font-size: .62rem; letter-spacing: 1.5px;
+      text-transform: uppercase; padding: 7px 16px; border: 1.5px solid;
+      text-align: center; white-space: nowrap; font-weight: 500;
+    }
+    .activity-row-status.pending { border-color: var(--terra); color: var(--terra); background: var(--terra-light); }
+    .activity-row-status.done { border-color: var(--olive); color: var(--olive); background: var(--olive-light); font-weight: 600; }
+
+    .activity-row-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .row-action {
+      width: 34px; height: 34px; display: flex; align-items: center;
+      justify-content: center; border: 1px solid var(--border2);
+      background: var(--bg); color: var(--text2); font-size: .78rem;
+      transition: all .3s var(--ease); opacity: 0; cursor: pointer;
+    }
+    .activity-row:hover .row-action { opacity: 1; }
+    .row-action:hover { background: var(--text); color: var(--white); border-color: var(--text); }
+    .row-action.complete-act:hover { background: var(--olive); border-color: var(--olive); color: #fff; }
+    .row-action.del:hover { background: var(--danger); border-color: var(--danger); color: #fff; }
+
+    /* Grid view card */
+    .activity-card {
+      background: var(--white); border: 1px solid var(--border); cursor: pointer;
+      transition: all .3s var(--ease); overflow: hidden; position: relative;
+    }
+    .activity-card:hover { box-shadow: 0 8px 28px rgba(0,0,0,.1); border-color: var(--border2); }
+    .activity-card-num {
+      position: absolute; top: 12px; left: 12px; z-index: 2;
+      background: rgba(0,0,0,.55); color: #fff; font-family: var(--mono);
+      font-size: .65rem; font-weight: 700; letter-spacing: .5px;
+      padding: 4px 10px; backdrop-filter: blur(4px);
+    }
+    .activity-card-photo {
+      width: 100%; aspect-ratio: 1; background: var(--bg2); overflow: hidden;
+    }
+    .activity-card-photo img {
+      width: 100%; height: 100%; object-fit: cover;
+      filter: grayscale(.1); transition: all .4s var(--ease);
+    }
+    .activity-card:hover .activity-card-photo img { filter: grayscale(0); transform: scale(1.04); }
+    .activity-card-photo-empty {
+      width: 100%; height: 100%; display: flex; align-items: center;
+      justify-content: center; font-family: var(--mono); font-size: .62rem;
+      font-weight: 600; letter-spacing: 1px; text-transform: uppercase;
+      color: var(--text4); text-align: center; padding: 16px;
+      line-height: 1.4;
+    }
+    .activity-card-body { padding: 16px; }
+    .activity-card-name {
+      font-family: var(--serif); font-size: 1.15rem; font-weight: 600;
+      letter-spacing: -.3px; color: var(--text); margin-bottom: 6px;
+      line-height: 1.3;
+    }
+    .activity-card-status {
+      font-family: var(--mono); font-size: .58rem; letter-spacing: 1.5px;
+      text-transform: uppercase; font-weight: 600; padding: 4px 12px;
+      display: inline-block; margin-top: 8px;
+    }
+    .activity-card-status.done { background: var(--olive-light); color: var(--olive); border: 1px solid var(--olive); }
+    .activity-card-status.pending { background: var(--terra-light); color: var(--terra); border: 1px solid var(--terra); }
+
+    /* View toggle buttons */
+    .view-toggle { display: flex; gap: 4px; margin-left: 8px; }
+    .view-btn {
+      width: 36px; height: 36px; display: flex; align-items: center;
+      justify-content: center; border: 1px solid var(--border2);
+      background: var(--bg); color: var(--text3); font-size: .85rem;
+      cursor: pointer; transition: all .3s var(--ease);
+    }
+    .view-btn:hover { color: var(--text); border-color: var(--text); }
+    .view-btn.active { background: var(--black); color: var(--white); border-color: var(--black); }
+
+    /* Add activity row */
+    .add-activity-row {
+      display: flex; align-items: center; justify-content: center;
+      gap: 12px; padding: 36px 0; border: 2px dashed var(--border);
+      margin-top: 24px;
+      cursor: pointer; color: var(--text2); transition: all .3s;
+    }
+    .add-activity-row:hover { color: var(--text); border-color: var(--text2); }
+    .add-activity-row span {
+      font-family: var(--mono); font-size: .7rem; letter-spacing: 2px;
+      text-transform: uppercase; font-weight: 500;
+    }
+
+    /*  ============================================================
+        MODALS
+        ============================================================ */
+    .modal-overlay {
+      position: fixed; inset: 0; z-index: 200;
+      background: rgba(30,30,28,.55); backdrop-filter: blur(6px);
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none; transition: opacity .3s;
+    }
+    .modal-overlay.open { opacity: 1; pointer-events: all; }
+    .modal {
+      background: var(--white); border: 1px solid var(--border2);
+      width: 560px; max-width: 95vw; max-height: 92vh; overflow-y: auto;
+      box-shadow: 0 24px 80px rgba(0,0,0,.25);
+      transform: translateY(16px); transition: transform .4s var(--ease);
+    }
+    .modal-overlay.open .modal { transform: none; }
+    .modal-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 32px 36px 0;
+    }
+    .modal-title {
+      font-family: var(--serif); font-size: 1.8rem; font-weight: 600;
+      letter-spacing: -.3px; color: var(--text);
+    }
+    .modal-close {
+      width: 36px; height: 36px; display: flex; align-items: center;
+      justify-content: center; background: var(--bg); border: 1px solid var(--border2);
+      color: var(--text2); font-size: .9rem; transition: all .3s;
+    }
+    .modal-close:hover { border-color: var(--text); color: var(--text); background: var(--bg2); }
+    .modal-body { padding: 28px 36px 40px; }
+
+    /* Form */
+    .fg { margin-bottom: 22px; }
+    .fg label {
+      display: block; font-family: var(--mono); font-size: .72rem;
+      font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase;
+      color: var(--text); margin-bottom: 10px;
+    }
+    .fg input, .fg textarea, .fg select {
+      width: 100%; padding: 14px 16px; border: 1.5px solid var(--border2);
+      background: var(--white); color: var(--text); font-size: .95rem;
+      font-family: var(--sans); outline: none; transition: border-color .3s;
+    }
+    .fg input:focus, .fg textarea:focus, .fg select:focus { border-color: var(--black); box-shadow: 0 0 0 2px rgba(17,17,17,.08); }
+    .fg textarea { resize: vertical; min-height: 90px; line-height: 1.7; }
+    .fg select {
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%233a3a36'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 14px center;
+    }
+    .fg input::placeholder, .fg textarea::placeholder { color: var(--text3); font-weight: 400; }
+    .fg-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .form-actions {
+      display: flex; gap: 12px; justify-content: flex-end;
+      margin-top: 28px; padding-top: 20px; border-top: 1.5px solid var(--border);
+    }
+    .btn {
+      padding: 13px 30px; font-family: var(--mono); font-size: .72rem;
+      font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase;
+      border: 1.5px solid transparent; transition: all .3s var(--ease);
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .btn-p { background: var(--black); color: var(--white); border-color: var(--black); }
+    .btn-p:hover { background: transparent; color: var(--black); }
+    .btn-s { background: var(--bg); color: var(--text); border-color: var(--border2); }
+    .btn-s:hover { border-color: var(--text); color: var(--text); background: var(--bg2); }
+    .btn-g { background: var(--olive); color: var(--white); border-color: var(--olive); }
+    .btn-g:hover { background: #4d5a43; }
+    .btn-d { background: transparent; color: var(--danger); border-color: var(--danger); }
+    .btn-d:hover { background: var(--danger); color: #fff; }
+    .btn-undo { background: transparent; color: #6878a0; border-color: #6878a0; }
+    .btn-undo:hover { background: #6878a0; color: #fff; }
+    .btn-ghost { background: none; border: none; color: var(--text2); padding: 13px 18px; font-weight: 500; }
+    .btn-ghost:hover { color: var(--text); }
+
+
+
+    /* Complete modal */
+    .complete-modal .modal { width: 600px; overflow-y: auto; }
+    .complete-hero {
+      background: var(--olive); padding: 22px 36px 18px;
+      text-align: center;
+    }
+    .complete-hero-icon {
+      font-size: 1.3rem; margin-bottom: 6px; display: inline-block;
+      animation: cBounce .6s var(--ease) .2s both;
+    }
+    @keyframes cBounce { 0%{transform:scale(0);opacity:0} 50%{transform:scale(1.15)} 100%{transform:scale(1);opacity:1} }
+    .complete-hero h2 {
+      font-family: var(--serif); font-size: 1.65rem; font-weight: 500;
+      letter-spacing: -.3px; color: #fff;
+    }
+    .complete-hero-name {
+      font-family: var(--serif); font-style: italic; font-size: 1.05rem;
+      color: rgba(255,255,255,.85); display: block; margin-top: 4px;
+    }
+    .complete-hero p { display: none; }
+    .complete-body { padding: 32px 36px 40px; }
+    .complete-body .fg label { color: var(--text); }
+    .photo-zone {
+      border: 2px dashed var(--border2); padding: 36px; text-align: center;
+      cursor: pointer; background: var(--bg); transition: all .3s;
+      margin-bottom: 10px;
+    }
+    .photo-zone:hover { border-color: var(--text); border-style: solid; }
+    .photo-zone .uz-icon { font-size: 1.6rem; margin-bottom: 8px; opacity: .6; }
+    .photo-zone p { font-family: var(--mono); font-size: .7rem; letter-spacing: 2px; text-transform: uppercase; color: var(--text2); font-weight: 500; }
+    .photo-previews { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+    .photo-th {
+      width: 72px; height: 72px; overflow: hidden; position: relative;
+      border: 1px solid var(--border);
+    }
+    .photo-th img { width: 100%; height: 100%; object-fit: cover; }
+    .photo-th .rm-photo {
+      position: absolute; top: 3px; right: 3px; width: 18px; height: 18px;
+      background: rgba(0,0,0,.7); color: #fff; border: none; font-size: .5rem;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; opacity: 0; transition: opacity .3s;
+    }
+    .photo-th:hover .rm-photo { opacity: 1; }
+    .complete-actions {
+      display: flex; gap: 12px; justify-content: flex-end;
+      margin-top: 28px; padding-top: 20px; border-top: 1.5px solid var(--border);
+    }
+
+    /* Detail modal (activity detail view) */
+    .detail-modal .modal { width: 580px; padding: 0; overflow-y: auto; }
+    .detail-modal .modal-body { padding: 0; }
+    .dm-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 32px; padding-top: 20px; border-top: 1.5px solid var(--border); }
+
+    /* Banner top section */
+    .dm-banner {
+      background: #3a4355; color: #fff; padding: 32px 36px 28px;
+      position: relative;
+    }
+    .dm-banner-close {
+      position: absolute; top: 16px; right: 16px; width: 32px; height: 32px;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(255,255,255,.12); border: none; color: #fff;
+      font-size: .85rem; cursor: pointer; transition: background .3s;
+    }
+    .dm-banner-close:hover { background: rgba(255,255,255,.25); }
+    .dm-banner-title {
+      font-family: var(--serif); font-size: 1.8rem; font-weight: 600;
+      letter-spacing: -.5px; line-height: 1.2; margin-bottom: 16px;
+      padding-right: 40px;
+    }
+    .dm-badges {
+      display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+    }
+    .dm-badge {
+      display: inline-flex; padding: 6px 16px; align-items: center; gap: 6px;
+      font-family: var(--mono); font-size: .68rem; letter-spacing: 1px;
+      text-transform: uppercase; font-weight: 600;
+    }
+    .dm-badge.done { background: var(--olive); color: #fff; }
+    .dm-badge.pending { background: #c2883d; color: #fff; }
+    .dm-priority {
+      font-family: var(--mono); font-size: .62rem; letter-spacing: 1px;
+      text-transform: uppercase; font-weight: 600; padding: 6px 14px;
+    }
+    .dm-priority-high { background: var(--danger); color: #fff; }
+    .dm-priority-medium { background: #6878a0; color: #fff; }
+    .dm-priority-low { background: #5f8a7a; color: #fff; }
+
+    /* Content section */
+    .dm-content { padding: 28px 36px 36px; }
+
+    .dm-photo {
+      width: 100%; max-height: 240px; object-fit: cover; cursor: pointer;
+      margin-bottom: 24px; filter: grayscale(.05); transition: filter .3s;
+    }
+    .dm-photo:hover { filter: grayscale(0); }
+
+    /* Info grid row */
+    .dm-info-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 0; margin-bottom: 24px;
+      border: 1.5px solid var(--border); background: var(--bg);
+    }
+    .dm-info-item {
+      padding: 16px 20px;
+      border-right: 1.5px solid var(--border);
+    }
+    .dm-info-item:last-child { border-right: none; }
+    .dm-info-label {
+      font-family: var(--mono); font-size: .62rem; font-weight: 600;
+      letter-spacing: 1.5px; text-transform: uppercase; color: var(--text3);
+      margin-bottom: 4px;
+    }
+    .dm-info-value {
+      font-size: .95rem; font-weight: 600; color: var(--text);
+    }
+    .dm-tag-line {
+      font-family: var(--mono); font-size: .68rem; letter-spacing: 1.5px;
+      text-transform: uppercase; color: var(--text2); font-weight: 500;
+      margin-bottom: 20px;
+    }
+
+    .dm-notes {
+      background: var(--bg); border: 1.5px solid var(--border2);
+      padding: 24px; margin-bottom: 20px; font-size: .95rem;
+      line-height: 1.9; color: var(--text); font-weight: 400;
+      white-space: pre-wrap;
+    }
+    .dm-notes strong {
+      display: block; margin-bottom: 10px; font-family: var(--mono);
+      font-size: .68rem; font-weight: 600; letter-spacing: 1.5px;
+      text-transform: uppercase; color: var(--text2);
+    }
+    .dm-photos {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 8px; margin-top: 16px;
+    }
+    .dm-photo-item {
+      overflow: hidden; aspect-ratio: 1; cursor: pointer;
+      border: 1px solid var(--border);
+    }
+    .dm-photo-item img {
+      width: 100%; height: 100%; object-fit: cover;
+      transition: transform .4s; filter: grayscale(.1);
+    }
+    .dm-photo-item:hover img { transform: scale(1.06); filter: grayscale(0); }
+
+    /* Lightbox / Gallery */
+    .lightbox {
+      position: fixed; inset: 0; z-index: 300;
+      background: rgba(20,20,18,.92); display: flex;
+      align-items: center; justify-content: center;
+      flex-direction: column;
+      opacity: 0; pointer-events: none; transition: opacity .3s;
+    }
+    .lightbox.open { opacity: 1; pointer-events: all; }
+    .lb-close {
+      position: absolute; top: 20px; right: 24px; width: 40px; height: 40px;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(255,255,255,.1); border: none; color: #fff;
+      font-size: 1.2rem; cursor: pointer; transition: background .3s; z-index: 2;
+    }
+    .lb-close:hover { background: rgba(255,255,255,.2); }
+    .lb-img-wrap {
+      position: relative; display: flex; align-items: center; justify-content: center;
+      max-width: 90vw; max-height: 80vh;
+    }
+    .lb-img-wrap img { max-width: 100%; max-height: 80vh; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+    .lb-nav {
+      position: absolute; top: 50%; transform: translateY(-50%);
+      width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;
+      background: rgba(255,255,255,.12); border: none; color: #fff;
+      font-size: 1.2rem; cursor: pointer; transition: background .3s;
+    }
+    .lb-nav:hover { background: rgba(255,255,255,.25); }
+    .lb-prev { left: -56px; }
+    .lb-next { right: -56px; }
+    .lb-counter {
+      margin-top: 16px; font-family: var(--mono); font-size: .75rem;
+      letter-spacing: 1.5px; color: rgba(255,255,255,.6); font-weight: 500;
+    }
+
+    /* Tag filter bar */
+    .tag-filter-bar {
+      display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 20px;
+    }
+    .tag-filter-bar:empty { display: none; }
+    .tag-filter-btn {
+      font-family: var(--mono); font-size: .68rem; font-weight: 500;
+      letter-spacing: .8px; text-transform: uppercase; padding: 4px 14px;
+      border: 1px solid var(--border); background: transparent;
+      color: var(--text3); cursor: pointer; transition: all .2s var(--ease);
+    }
+    .tag-filter-btn:hover { border-color: var(--olive); color: var(--olive); }
+    .tag-filter-btn.active {
+      background: var(--olive); color: #fff; border-color: var(--olive);
+    }
+
+    /* Link chip */
+    .link-chip {
+      font-family: var(--mono); font-size: .7rem; font-weight: 400;
+      padding: 4px 12px; background: var(--olive-light); color: var(--olive);
+      border: 1px solid rgba(74,83,64,.2); text-decoration: none;
+      transition: all .2s var(--ease); word-break: break-all;
+    }
+    .link-chip:hover { background: var(--olive); color: #fff; }
+
+    /* Location autocomplete */
+    .loc-wrap { position: relative; }
+    .loc-wrap input { width: 100%; }
+    .loc-results {
+      position: absolute; top: 100%; left: 0; right: 0; z-index: 1000;
+      background: var(--white); border: 1px solid var(--border); border-top: none;
+      max-height: 220px; overflow-y: auto; display: none;
+      box-shadow: 0 8px 24px rgba(0,0,0,.12);
+    }
+    .loc-results.open { display: block; }
+    .loc-item {
+      padding: 10px 14px; cursor: pointer; font-size: .85rem;
+      border-bottom: 1px solid var(--bg2); transition: background .15s;
+    }
+    .loc-item:hover, .loc-item.active { background: var(--olive-light); }
+    .loc-item-main { font-weight: 500; color: var(--text); }
+    .loc-item-sub { font-size: .75rem; color: var(--text3); margin-top: 2px; }
+
+    /* Map view */
+    .map-box {
+      width: 100%; height: 600px; background: var(--bg2);
+      border: 1px solid var(--border); display: none;
+      position: relative; z-index: 1;
+    }
+    .map-box.active { display: block; }
+    .map-home-btn {
+      position: absolute; top: 80px; left: 10px; z-index: 1000;
+      width: 34px; height: 34px; background: #fff; border: 2px solid rgba(0,0,0,.2);
+      border-radius: 4px; cursor: pointer; display: flex; align-items: center;
+      justify-content: center; font-size: 16px; color: var(--text2);
+      box-shadow: 0 1px 5px rgba(0,0,0,.15); transition: background .2s;
+    }
+    .map-home-btn:hover { background: var(--bg2); }
+    .map-popup { text-align: center; min-width: 180px; }
+    .map-popup img { width: 100%; height: 100px; object-fit: cover; margin-bottom: 6px; }
+    .map-popup-name { font-family: var(--serif); font-size: 1.1rem; font-weight: 600; margin-bottom: 2px; }
+    .map-popup-loc { font-family: var(--mono); font-size: .68rem; color: var(--text3); letter-spacing: .5px; }
+    .map-popup-status { font-family: var(--mono); font-size: .65rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; margin-top: 4px; }
+    .map-popup-status.done { color: var(--olive); }
+    .map-popup-status.pending { color: var(--terra); }
+    .map-popup-btn { display:inline-block; margin-top:6px; padding:4px 12px; font-size:.7rem; font-family:var(--mono); letter-spacing:.8px; background:var(--black); color:#fff; border:none; cursor:pointer; text-transform:uppercase; }
+
+    /* Cluster styling */
+    .marker-cluster {
+      background: transparent !important;
+    }
+    .marker-cluster div {
+      width: 52px !important; height: 52px !important;
+      margin-left: -6px !important; margin-top: -6px !important;
+      border-radius: 50% !important;
+      background: var(--black) !important;
+      color: #fff !important;
+      font-family: var(--mono) !important;
+      font-size: .82rem !important;
+      font-weight: 600 !important;
+      letter-spacing: 1px !important;
+      display: flex !important; align-items: center !important; justify-content: center !important;
+      border: 3px solid var(--bg) !important;
+      box-shadow: 0 3px 14px rgba(0,0,0,.35) !important;
+      transition: transform .2s var(--ease) !important;
+    }
+    .marker-cluster:hover div {
+      transform: scale(1.12);
+    }
+    .marker-cluster-small div { background: var(--olive) !important; }
+    .marker-cluster-medium div { background: var(--terra) !important; }
+    .marker-cluster-large div { background: var(--black) !important; }
+
+    /* Confetti */
+    .confetti-c { position: fixed; inset: 0; pointer-events: none; z-index: 400; }
+    @keyframes confettiFall {
+      0%   { transform: translateY(0) rotate(0) scale(1); opacity: 1; }
+      100% { transform: translateY(100vh) rotate(720deg) scale(.4); opacity: 0; }
+    }
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      25% { transform: translateX(-5px); }
+      75% { transform: translateX(5px); }
+    }
+
+
+
+    /*  ============================================================
+        RESPONSIVE
+        ============================================================ */
+    @media (max-width: 900px) {
+      .topnav { padding: 0 24px; }
+      .topnav-links { display: none; }
+      .hamburger { display: flex; }
+      .home-section { padding: 64px 28px; }
+      .featured-grid { grid-template-columns: 1fr 1fr; }
+      .page-header, .collections-grid, .activities-wrap, .detail-bar { padding-left: 28px; padding-right: 28px; }
+      .detail-hero-content { padding: 32px 28px; }
+      .detail-hero-title { font-size: 2.4rem; }
+      .stats-strip { grid-template-columns: 1fr 1fr; }
+      .site-footer { padding: 48px 28px; flex-direction: column; gap: 24px; align-items: flex-start; }
+      .hero-title { font-size: 3rem; }
+    }
+    @media (max-width: 600px) {
+      .featured-grid, .collections-grid { grid-template-columns: 1fr; }
+      .activity-row { grid-template-columns: 28px 60px 1fr auto; gap: 14px; }
+      .activity-row-date, .activity-row-actions { display: none; }
+      .activities-list.grid-view { grid-template-columns: repeat(2, 1fr); }
+      .detail-bar-left { flex-wrap: wrap; }
+      .progress-bar-track { width: 120px; }
+      .fg-row { grid-template-columns: 1fr; }
+      .banner { height: 300px; }
+    }
+
+    /* Mobile menu */
+    .mobile-menu {
+      position: fixed; inset: 0; z-index: 150; background: var(--bg);
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 24px;
+      opacity: 0; pointer-events: none; transition: opacity .3s;
+    }
+    .mobile-menu.open { opacity: 1; pointer-events: all; }
+    .mobile-menu-close {
+      position: absolute; top: 20px; right: 24px;
+      background: none; border: none; font-size: 1.2rem; color: var(--text);
+    }
+    .mobile-menu a {
+      font-family: var(--serif); font-size: 2rem; font-weight: 400;
+      letter-spacing: -1px; color: var(--text); transition: opacity .3s;
+    }
+    .mobile-menu a:hover { opacity: .5; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<!-- ===== AUTH PAGE ===== -->
+<div id="authPage" style="display:none;align-items:center;justify-content:center;min-height:100vh;background:var(--bg);padding:20px;">
+  <div style="width:100%;max-width:420px;">
+    <div style="text-align:center;margin-bottom:40px;">
+      <div style="font-family:var(--mono);font-size:.78rem;font-weight:600;letter-spacing:4px;text-transform:uppercase;color:var(--text);margin-bottom:16px;">BUCKET LIST</div>
+      <h1 id="authTitle" style="font-family:var(--serif);font-size:2.4rem;font-weight:300;letter-spacing:-1px;color:var(--text);">Sign In</h1>
+    </div>
+    <div style="background:var(--white);border:1px solid var(--border);padding:36px;">
+      <div id="authExtraFields" style="display:none;">
+        <div class="fg"><label>Display Name</label><input id="authDisplayName" placeholder="John Doe" /></div>
+        <div class="fg"><label>Username</label><input id="authUsername" placeholder="johndoe" /></div>
+      </div>
+      <div class="fg"><label>Email</label><input id="authEmail" type="email" placeholder="you@example.com" /></div>
+      <div class="fg"><label>Password</label><input id="authPass" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')handleAuth()" /></div>
+      <div id="authError" style="color:var(--danger);font-size:.82rem;margin-bottom:12px;min-height:20px;"></div>
+      <button class="btn btn-p" id="authBtn" onclick="handleAuth()" style="width:100%;padding:14px;font-size:.78rem;">Sign In</button>
+      <div id="authToggle" style="text-align:center;margin-top:20px;font-size:.82rem;color:var(--text3);">Don&#39;t have an account? <a href="#" onclick="event.preventDefault();toggleAuthMode()" style="color:var(--olive);font-weight:600;">Create one</a></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MAIN APP ===== -->
+<div id="appWrap" style="display:none">
+
+<!-- ===== TOP NAV ===== -->
+<nav class="topnav" id="topnav">
+  <div class="topnav-logo">BUCKET LIST</div>
+  <div class="topnav-links" id="navLinks">
+    <button class="topnav-link active" data-page="home" onclick="nav('home')">Home</button>
+    <button class="topnav-link" data-page="collections" onclick="nav('collections')">Collections</button>
+    <button class="topnav-link" data-page="globalmap" onclick="nav('globalmap')">Map</button>
+  </div>
+  <div class="topnav-right">
+    <button class="topnav-link" onclick="handleSignOut()" style="margin-left:8px">Sign Out</button>
+    <button class="hamburger" onclick="toggleMobileMenu()">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+<!-- Mobile menu -->
+<div class="mobile-menu" id="mobileMenu">
+  <button class="mobile-menu-close" onclick="toggleMobileMenu()">&#x2715;</button>
+  <a href="#" onclick="nav('home');toggleMobileMenu()">Home</a>
+  <a href="#" onclick="nav('collections');toggleMobileMenu()">Collections</a>
+  <a href="#" onclick="nav('globalmap');toggleMobileMenu()">Map</a>
+  <a href="#" onclick="handleSignOut()">Sign Out</a>
+</div>
+
+<!-- ===== HOME PAGE ===== -->
+<div class="page active" id="page-home">
+  <div class="hero">
+    <div class="hero-bg"></div>
+    <div class="hero-overlay"></div>
+    <div class="hero-content">
+      <div class="hero-eyebrow">From Essential to Extraordinary</div>
+      <h1 class="hero-title">From dreams<br>to <em>reality</em></h1>
+      <p class="hero-subtitle">Curate and track the experiences that define your life. Every adventure begins with a single step.</p>
+      <button class="hero-btn" onclick="nav('collections')">Explore Collections</button>
+    </div>
+  </div>
+
+  <div id="homeStats" class="stats-strip"></div>
+
+  <div class="home-section">
+    <div class="home-section-header">
+      <div>
+        <div class="section-eyebrow">Your Collections</div>
+        <div class="section-title">Featured</div>
+      </div>
+      <a class="section-link" href="#" onclick="event.preventDefault();nav('collections')">View All &rarr;</a>
+    </div>
+    <div class="featured-grid" id="featuredGrid"></div>
+  </div>
+
+  <div class="banner">
+    <div class="banner-bg"></div>
+    <div class="banner-content">
+      <div class="banner-title">Make it <em>happen</em></div>
+      <p class="banner-sub">The world is full of extraordinary experiences waiting for you.</p>
+    </div>
+  </div>
+
+  <div class="site-footer">
+    <div class="footer-brand">Bucket List &copy; 2026</div>
+    <div class="footer-links">
+      <a class="footer-link" href="#" onclick="event.preventDefault();nav('home')">Home</a>
+      <a class="footer-link" href="#" onclick="event.preventDefault();nav('collections')">Collections</a>
+      <a class="footer-link" href="#" onclick="event.preventDefault();nav('globalmap')">Map</a>
+    </div>
+  </div>
+</div>
+
+<!-- ===== COLLECTIONS PAGE ===== -->
+<div class="page" id="page-collections">
+  <div class="page-header">
+    <div class="page-header-eyebrow">All Collections</div>
+    <h1 class="page-header-title">Your Bucket Lists</h1>
+    <p class="page-header-sub">Each collection is a curated set of dreams, adventures, and milestones.</p>
+    <div class="page-header-actions">
+      <button class="btn btn-p" onclick="openNewList()">+ New Collection</button>
+    </div>
+  </div>
+  <div class="tag-filter-bar" id="collTagFilter"></div>
+  <div class="collections-grid" id="collectionsGrid"></div>
+</div>
+
+<!-- ===== GLOBAL MAP PAGE ===== -->
+<div class="page" id="page-globalmap">
+  <div class="page-header">
+    <div class="page-header-eyebrow">All Locations</div>
+    <h1 class="page-header-title">World Map</h1>
+    <p class="page-header-sub">Every activity with a location, across all your collections.</p>
+  </div>
+  <div class="detail-bar" id="globalMapBar"></div>
+  <div class="activities-wrap" style="padding-top:24px">
+    <div class="map-box active" id="globalMapContainer" style="height:calc(100vh - 280px);min-height:500px"></div>
+  </div>
+</div>
+
+<!-- ===== DETAIL PAGE (single collection) ===== -->
+<div class="page" id="page-detail">
+  <div class="detail-hero" id="detailHero">
+    <div class="detail-hero-bg" id="detailHeroBg"></div>
+    <div class="detail-hero-content">
+      <h1 class="detail-hero-title" id="detailTitle"></h1>
+      <p class="detail-hero-desc" id="detailDesc"></p>
+      <div class="detail-hero-actions">
+        <button class="detail-hero-btn filled" onclick="openNewActivity()">+ Add Activity</button>
+        <button class="detail-hero-btn" onclick="openEditList()">Edit Collection</button>
+        <button class="detail-hero-btn danger" data-delete="collection">Delete</button>
+        <button class="detail-hero-btn" onclick="goBack()">&#8592; Back</button>
+      </div>
+    </div>
+  </div>
+  <div class="detail-bar" id="detailBar"></div>
+  <div class="tag-filter-bar" id="detTagFilter"></div>
+  <div class="activities-wrap">
+    <div class="activities-list" id="activitiesList"></div>
+    <div class="map-box" id="mapContainer"></div>
+  </div>
+</div>
+
+<!-- ===== MODALS ===== -->
+
+<!-- List modal -->
+<div class="modal-overlay" id="listModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="listModalTitle">New Collection</div>
+      <button class="modal-close" onclick="closeModal('listModal')">&#x2715;</button>
+    </div>
+    <div class="modal-body">
+      <div class="fg"><label>Name</label><input id="lName" placeholder="e.g. Travel Adventures" maxlength="60" /></div>
+      <div class="fg"><label>Description</label><input id="lDesc" placeholder="A brief description..." maxlength="120" /></div>
+      <div class="fg"><label>Tags</label>
+        <div class="tag-input-wrap" id="lTagsWrap" onclick="$('lTagInput').focus()">
+          <input class="tag-input-field" id="lTagInput" placeholder="Type a tag and press Enter..." onkeydown="handleTagKey(event,'lTags')" />
+        </div>
+      </div>
+      <div class="fg"><label>Cover Image</label>
+        <div class="photo-zone" id="coverZone" onclick="$('coverInput').click()">
+          <div class="uz-icon">&#x1F5BC;</div><p>Upload a cover image</p>
+        </div>
+        <input type="file" id="coverInput" accept="image/*" style="display:none" onchange="handleCoverUpload(event)" />
+        <div id="coverPreview"></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-s" onclick="closeModal('listModal')">Cancel</button>
+        <button class="btn btn-p" id="listSaveBtn" onclick="saveList()">Create</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Activity modal -->
+<div class="modal-overlay" id="actModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="actModalTitle">New Activity</div>
+      <button class="modal-close" onclick="closeModal('actModal')">&#x2715;</button>
+    </div>
+    <div class="modal-body">
+      <div class="fg"><label>Activity</label><input id="aName" placeholder="e.g. Skydiving in Dubai" maxlength="100" /></div>
+      <div class="fg"><label>Description</label><textarea id="aDesc" placeholder="Why is this on your list?"></textarea></div>
+      <div class="fg"><label>Location</label>
+        <div class="loc-wrap" id="aLocWrap">
+          <input id="aLoc" placeholder="Search for a place..." maxlength="200" autocomplete="off" oninput="locSearch(this,'aLocResults')" onfocus="locSearch(this,'aLocResults')" />
+          <input type="hidden" id="aLocLat" /><input type="hidden" id="aLocLng" />
+          <div class="loc-results" id="aLocResults"></div>
+        </div>
+      </div>
+      <div class="fg-row">
+        <div class="fg"><label>Target Date</label><input type="date" id="aDate" /></div>
+        <div class="fg"><label>Priority</label>
+          <select id="aPri"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select>
+        </div>
+      </div>
+      <div class="fg"><label>Tags</label>
+        <div class="tag-input-wrap" id="aTagsWrap" onclick="$('aTagInput').focus()">
+          <input class="tag-input-field" id="aTagInput" placeholder="Type a tag and press Enter..." onkeydown="handleTagKey(event,'aTags')" />
+        </div>
+      </div>
+      <div class="fg"><label>Links</label>
+        <div class="tag-input-wrap" id="aLinksWrap" onclick="$('aLinkInput').focus()">
+          <input class="tag-input-field" id="aLinkInput" placeholder="Paste a URL and press Enter..." onkeydown="handleTagKey(event,'aLinks')" />
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-s" onclick="closeModal('actModal')">Cancel</button>
+        <button class="btn btn-p" id="actSaveBtn" onclick="saveActivity()">Add</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Complete modal -->
+<div class="modal-overlay complete-modal" id="compModal">
+  <div class="modal">
+    <div class="complete-hero">
+      <div class="complete-hero-icon">&#10003;</div>
+      <h2 id="compModalTitle">Accomplished</h2>
+      <span class="complete-hero-name" id="compName"></span>
+    </div>
+    <div class="complete-body">
+      <div class="fg"><label>Location</label>
+        <div class="loc-wrap" id="compLocWrap">
+          <input id="compLoc" placeholder="Search for a place..." maxlength="200" autocomplete="off" oninput="locSearch(this,'compLocResults')" onfocus="locSearch(this,'compLocResults')" />
+          <input type="hidden" id="compLocLat" /><input type="hidden" id="compLocLng" />
+          <div class="loc-results" id="compLocResults"></div>
+        </div>
+      </div>
+      <div class="fg"><label>Date Completed</label><input type="date" id="compDate" /></div>
+      <div class="fg"><label>Your Experience</label><textarea id="compNotes" placeholder="Tell the story..." style="min-height:100px"></textarea></div>
+      <div class="fg"><label>Photos</label>
+        <div class="photo-zone" onclick="$('photoInput').click()"><div class="uz-icon">&#x1F4F7;</div><p>Upload photos</p></div>
+        <input type="file" id="photoInput" multiple accept="image/*" style="display:none" onchange="handlePhotos(event)" />
+        <div class="photo-previews" id="photoPrev"></div>
+      </div>
+      <div class="complete-actions">
+        <button class="btn btn-s" onclick="closeModal('compModal')">Cancel</button>
+        <button class="btn btn-g" id="compSaveBtn" onclick="confirmComplete()">Mark Complete</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Activity detail modal -->
+<div class="modal-overlay detail-modal" id="detModal">
+  <div class="modal">
+    <div class="modal-body" id="detModalBody"></div>
+  </div>
+</div>
+
+<!-- Delete confirmation modal -->
+<div class="modal-overlay" id="deleteConfirmModal">
+  <div class="modal" style="width:420px">
+    <div class="modal-header">
+      <div class="modal-title" id="delConfirmTitle">Confirm Delete</div>
+      <button class="modal-close" id="delConfirmClose">&#x2715;</button>
+    </div>
+    <div class="modal-body">
+      <p id="delConfirmMsg" style="font-size:1rem;color:var(--text2);line-height:1.6;margin-bottom:0">Are you sure?</p>
+      <div class="form-actions" style="margin-top:24px">
+        <button class="btn btn-d" id="delConfirmYes">Delete</button>
+        <button class="btn btn-s" id="delConfirmNo">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Lightbox / Gallery -->
+<div class="lightbox" id="lightbox">
+  <button class="lb-close" onclick="closeLightbox()">&#x2715;</button>
+  <div class="lb-img-wrap">
+    <button class="lb-nav lb-prev" id="lbPrev" onclick="lbStep(-1)">&#8592;</button>
+    <img id="lbImg" src="" />
+    <button class="lb-nav lb-next" id="lbNext" onclick="lbStep(1)">&#8594;</button>
+  </div>
+  <div class="lb-counter" id="lbCounter"></div>
+</div>
+<!-- Confetti -->
+<div class="confetti-c" id="confC"></div>
+
+</div><!-- /appWrap -->
+
+<script>
+/* ==============================================================
+   SUPABASE SETUP
+   ============================================================== */
+const SUPABASE_URL='https://xxdmendegyxlkikejvps.supabase.co';
+const SUPABASE_KEY='sb_publishable_45ETmiEMgvWn3QAd58ck5Q_opy0TWnX';
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+
+const $=id=>document.getElementById(id);
+let currentUser=null;
+
+/* Default cover images */
+const COVERS=[
+  'https://images.unsplash.com/photo-1501785888041-af3ef285b470?w=1600&q=90',
+  'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=1600&q=90',
+  'https://images.unsplash.com/photo-1612278675615-7b093b07772d?w=1600&q=90',
+  'https://images.unsplash.com/photo-1505832018823-50331d70d237?w=1600&q=90',
+  'https://images.unsplash.com/photo-1498307833015-e7b400441eb8?w=1600&q=90',
+  'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=1600&q=90',
+  'https://images.unsplash.com/photo-1519451241324-20b4ea2c4220?w=1600&q=90',
+  'https://images.unsplash.com/photo-1461237439866-5a557710c921?w=1600&q=90',
+  'https://images.unsplash.com/photo-1483729558449-99ef09a8c325?w=1600&q=90',
+  'https://images.unsplash.com/photo-1528164344705-47542687000d?w=1600&q=90',
+];
+let usedCovers=[];
+function randCover(existingCovers){
+  /* Pick a cover not already used by the user's other collections.
+     existingCovers = array of cover URLs already in use.
+     Falls back to cycling through COVERS once all 9 are used. */
+  const inUse=existingCovers||usedCovers;
+  const available=COVERS.filter(c=>!inUse.includes(c));
+  if(available.length) return available[Math.floor(Math.random()*available.length)];
+  return COVERS[Math.floor(Math.random()*COVERS.length)];
+}
+
+/* ==============================================================
+   STATE
+   ============================================================== */
+let curPage='home',curListId=null,editingListId=null,editingActId=null;
+let completingId=null,curFilter='all',curView='list',curCollTagFilter=null,curDetTagFilter=null,upPhotos=[],coverPhoto='';
+let globalMapFilter='all',globalMapObj=null,globalMapHomeBounds=null,globalMapClusters=null,globalMapAllMarkers=[];
+let detMapHomeBounds=null;
+
+/* ==============================================================
+   AUTH
+   ============================================================== */
+function showAuth(){
+  $('authPage').style.display='flex';
+  $('appWrap').style.display='none';
+}
+function showApp(){
+  $('authPage').style.display='none';
+  $('appWrap').style.display='block';
+  renderHome();
+}
+function toggleAuthMode(){
+  const isLogin=$('authTitle').textContent==='Sign In';
+  $('authTitle').textContent=isLogin?'Create Account':'Sign In';
+  $('authBtn').textContent=isLogin?'Sign Up':'Sign In';
+  $('authToggle').innerHTML=isLogin
+    ?'Already have an account? <a href="#" onclick="event.preventDefault();toggleAuthMode()" style="color:var(--olive);font-weight:600">Sign in</a>'
+    :'Don\'t have an account? <a href="#" onclick="event.preventDefault();toggleAuthMode()" style="color:var(--olive);font-weight:600">Create one</a>';
+  $('authExtraFields').style.display=isLogin?'block':'none';
+  $('authError').textContent='';
+}
+async function handleAuth(){
+  const email=$('authEmail').value.trim();
+  const password=$('authPass').value.trim();
+  if(!email||!password){$('authError').textContent='Email and password required';return;}
+  $('authError').textContent='';
+  const isSignUp=$('authTitle').textContent==='Create Account';
+  $('authBtn').disabled=true;
+  $('authBtn').textContent='...';
+  try{
+    if(isSignUp){
+      const displayName=$('authDisplayName').value.trim();
+      const username=$('authUsername').value.trim();
+      if(!displayName||!username){$('authError').textContent='All fields required';throw{handled:true};}
+      const{data,error}=await sb.auth.signUp({email,password});
+      if(error)throw error;
+      if(data.user&&data.session){
+        await sb.from('Users').insert({id:data.user.id,display_name:displayName,username});
+        currentUser=data.user;showApp();return;
+      } else if(data.user&&!data.session){
+        $('authError').textContent='Check your email to confirm your account.';
+        $('authError').style.color='var(--olive)';
+      }
+    } else {
+      const{data,error}=await sb.auth.signInWithPassword({email,password});
+      if(error)throw error;
+      currentUser=data.user;showApp();return;
+    }
+  }catch(err){
+    if(!err.handled) $('authError').textContent=err.message||'Authentication failed';
+  }
+  $('authBtn').disabled=false;
+  $('authBtn').textContent=isSignUp?'Sign Up':'Sign In';
+}
+async function handleSignOut(){
+  await sb.auth.signOut();
+  currentUser=null;showAuth();
+}
+
+/* ==============================================================
+   SUPABASE DATA HELPERS
+   ============================================================== */
+function mapCollection(row){
+  try{
+    let tags=[];
+    if(row.category_tag){tags=Array.isArray(row.category_tag)?row.category_tag:typeof row.category_tag==='string'?JSON.parse(row.category_tag):[];}
+    return{id:row.id,name:row.name,description:row.description||'',cover:row.cover_image||'',tags,createdAt:row.created_at};
+  }catch(e){console.error('mapCollection error:',e,row);return{id:row.id,name:row.name||'',description:'',cover:'',tags:[],createdAt:row.created_at};}
+}
+function mapActivity(row){
+  try{
+    let photos=[];
+    if(row.photos){photos=Array.isArray(row.photos)?row.photos:typeof row.photos==='string'?JSON.parse(row.photos):[];}
+    let tags=[];
+    if(row.category_tag){tags=Array.isArray(row.category_tag)?row.category_tag:typeof row.category_tag==='string'?JSON.parse(row.category_tag):[];}
+    let links=[];
+    if(row.links){links=Array.isArray(row.links)?row.links:typeof row.links==='string'?JSON.parse(row.links):[];}
+    return{id:row.id,listId:row.collection_id,name:row.name,description:row.description||'',
+      targetDate:row.target_date||null,priority:row.priority||'medium',tags,links,
+      completed:!!row.date_completed,completedDate:row.date_completed||null,
+      completionNotes:row.experience_notes||'',photos,location:row.location||'',
+      locationLat:row.location_lat||null,locationLng:row.location_lng||null,createdAt:row.created_at};
+  }catch(e){console.error('mapActivity error:',e,row);return{id:row.id,listId:row.collection_id,name:row.name||'',description:'',targetDate:null,priority:'medium',tags:[],links:[],completed:!!row.date_completed,completedDate:row.date_completed||null,completionNotes:'',photos:[],location:'',locationLat:null,locationLng:null,createdAt:row.created_at};}
+}
+
+async function fetchCollections(){
+  if(!currentUser)return[];
+  const{data,error}=await sb.from('Collections').select('*').eq('user_id',currentUser.id).order('created_at',{ascending:false});
+  if(error){console.error('fetchCollections:',error);return[];}
+  return data.map(mapCollection);
+}
+async function fetchActivitiesFor(collectionId){
+  const{data,error}=await sb.from('Activities').select('*').eq('collection_id',collectionId).order('created_at',{ascending:true});
+  if(error){console.error('fetchActivities:',error);return[];}
+  return data.map(mapActivity);
+}
+async function fetchAllActivities(collections){
+  if(!collections) collections=await fetchCollections();
+  if(!collections.length)return[];
+  const ids=collections.map(c=>c.id);
+  const{data,error}=await sb.from('Activities').select('*').in('collection_id',ids);
+  if(error){console.error('fetchAllActivities:',error);return[];}
+  return data.map(mapActivity);
+}
+async function fetchActivity(id){
+  const{data,error}=await sb.from('Activities').select('*').eq('id',id).single();
+  if(error){console.error('fetchActivity:',error);return null;}
+  return mapActivity(data);
+}
+async function fetchCollection(id){
+  const{data,error}=await sb.from('Collections').select('*').eq('id',id).single();
+  if(error){console.error('fetchCollection:',error);return null;}
+  return mapCollection(data);
+}
+async function updateCollectionStats(collectionId){
+  const acts=await fetchActivitiesFor(collectionId);
+  await sb.from('Collections').update({
+    number_activities:acts.length,
+    activites_completed:acts.filter(a=>a.completed).length
+  }).eq('id',collectionId);
+}
+
+/* ==============================================================
+   NAVIGATION
+   ============================================================== */
+function nav(page,listId){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  $('page-'+page).classList.add('active');
+  curPage=page;
+  document.querySelectorAll('.topnav-link').forEach(l=>{
+    l.classList.toggle('active',l.dataset.page===page||(page==='detail'&&l.dataset.page==='collections'));
+  });
+  window.scrollTo(0,0);
+  /* Cleanup maps when leaving pages */
+  if(page!=='globalmap'&&globalMapObj){globalMapObj.remove();globalMapObj=null;globalMapClusters=null;globalMapAllMarkers=[];globalMapHomeBounds=null;}
+  if(page!=='detail'&&actMap){actMap.remove();actMap=null;detMapHomeBounds=null;}
+  if(page==='home') renderHome();
+  if(page==='collections') renderCollections();
+  if(page==='detail'&&listId){curListId=listId;curDetTagFilter=null;renderDetail();}
+  if(page==='globalmap') renderGlobalMap();
+}
+function goBack(){nav('collections');}
+
+/* ==============================================================
+   TOPNAV SCROLL
+   ============================================================== */
+window.addEventListener('scroll',()=>{
+  $('topnav').classList.toggle('scrolled',window.scrollY>20);
+});
+function toggleMobileMenu(){$('mobileMenu').classList.toggle('open');}
+
+/* ==============================================================
+   HOME PAGE
+   ============================================================== */
+async function renderHome(){
+  const lists=await fetchCollections();
+  const allActs=await fetchAllActivities(lists);
+  const totalAct=allActs.length;
+  const doneAct=allActs.filter(a=>a.completed).length;
+  const pct=totalAct?Math.round(doneAct/totalAct*100):0;
+
+  $('homeStats').innerHTML=`
+    <div class="stats-strip-item"><div class="stats-strip-number">${lists.length}</div><div class="stats-strip-label">Collections</div></div>
+    <div class="stats-strip-item"><div class="stats-strip-number">${totalAct}</div><div class="stats-strip-label">Activities</div></div>
+    <div class="stats-strip-item"><div class="stats-strip-number">${doneAct}</div><div class="stats-strip-label">Accomplished</div></div>
+    <div class="stats-strip-item"><div class="stats-strip-number">${pct}%</div><div class="stats-strip-label">Complete</div></div>`;
+
+  const featured=lists.slice(0,3);
+  if(!featured.length){
+    $('featuredGrid').innerHTML=`
+      <div class="collection-card-new" onclick="openNewList()" style="aspect-ratio:3/4">
+        <div class="plus">+</div><span>Create your first collection</span>
+      </div>`;
+    return;
+  }
+  $('featuredGrid').innerHTML=featured.map(l=>{
+    const acts=allActs.filter(a=>a.listId===l.id);
+    const cnt=acts.length;
+    const done=acts.filter(a=>a.completed).length;
+    const cover=l.cover||randCover();
+    return `<div class="featured-card" onclick="nav('detail','${l.id}')">
+      <img src="${cover}" alt="" loading="lazy"/>
+      <div class="featured-card-overlay">
+        <div class="featured-card-title">${esc(l.name)}</div>
+        <div class="featured-card-count">${cnt} items &middot; ${done} completed</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ==============================================================
+   COLLECTIONS PAGE
+   ============================================================== */
+async function renderCollections(){
+  const newCard=`<div class="collection-card-new" onclick="openNewList()">
+    <div class="plus">+</div><span>New Collection</span></div>`;
+  try{
+  const lists=await fetchCollections();
+  console.log('renderCollections: lists=',lists.length,lists);
+  const allActs=await fetchAllActivities(lists);
+  console.log('renderCollections: allActs=',allActs.length);
+  if(!lists.length){
+    $('collectionsGrid').innerHTML=newCard;
+    return;
+  }
+  /* --- tag filter bar for collections --- */
+  const allCollTags=[...new Set(lists.flatMap(l=>l.tags||[]))].sort();
+  const tfEl=$('collTagFilter');
+  if(allCollTags.length>1){
+    tfEl.innerHTML=`<button class="tag-filter-btn ${!curCollTagFilter?'active':''}" onclick="setCollTagFilter(null)">All</button>`+allCollTags.map(t=>`<button class="tag-filter-btn ${curCollTagFilter===t?'active':''}" onclick="setCollTagFilter('${esc(t)}')">` + esc(t) + `</button>`).join('');
+  } else if(tfEl){ tfEl.innerHTML=''; }
+
+  let filtered=lists;
+  if(curCollTagFilter) filtered=lists.filter(l=>(l.tags||[]).includes(curCollTagFilter));
+
+  $('collectionsGrid').innerHTML=filtered.map(l=>{
+    const acts=allActs.filter(a=>a.listId===l.id);
+    const cnt=acts.length;
+    const done=acts.filter(a=>a.completed).length;
+    const cover=l.cover||randCover();
+    return `<div class="collection-card" onclick="nav('detail','${l.id}')">
+      <img class="collection-card-img" src="${cover}" alt="" loading="lazy"/>
+      <div class="collection-card-overlay">
+        <div class="collection-card-title">${esc(l.name)}</div>
+        ${l.description?`<div class="collection-card-desc">${esc(l.description)}</div>`:''}
+        ${l.tags&&l.tags.length?`<div class="activity-row-tags" style="margin-top:10px;justify-content:center">${l.tags.map(t=>`<span class="tag-pill" style="background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.25)">${esc(t)}</span>`).join('')}</div>`:''}
+        <div class="collection-card-meta">${cnt} items &middot; ${done} accomplished</div>
+      </div>
+    </div>`;
+  }).join('')+newCard;
+  }catch(e){
+    console.error('renderCollections error:',e);
+    $('collectionsGrid').innerHTML=`<div style="padding:20px;color:var(--danger);font-family:var(--mono);font-size:.8rem">Error: ${e.message}</div>`+newCard;
+  }
+}
+function setCollTagFilter(tag){curCollTagFilter=tag;renderCollections();}
+
+/* ==============================================================
+   DETAIL PAGE
+   ============================================================== */
+async function renderDetail(){
+  const list=await fetchCollection(curListId);
+  if(!list){nav('collections');return;}
+
+  const cover=list.cover||randCover();
+  $('detailHeroBg').style.backgroundImage=`url(${cover})`;
+  $('detailTitle').textContent=list.name;
+  $('detailDesc').textContent=list.description||'';
+
+  const acts=await fetchActivitiesFor(curListId);
+  const total=acts.length,done=acts.filter(a=>a.completed).length;
+  const pct=total?Math.round(done/total*100):0;
+
+  $('detailBar').innerHTML=`
+    <div class="detail-bar-left">
+      <div class="detail-progress">
+        <div class="progress-bar-track"><div class="progress-bar-fill" style="width:${pct}%"></div></div>
+        <span class="progress-label">${pct}% complete &middot; ${done}/${total}</span>
+      </div>
+    </div>
+    <div class="detail-bar-right">
+      <input class="detail-search" placeholder="Search..." oninput="renderActivitiesList()" id="detSearch"/>
+      <button class="filter-btn ${curFilter==='all'?'active':''}" onclick="setFilter('all')">All</button>
+      <button class="filter-btn ${curFilter==='pending'?'active':''}" onclick="setFilter('pending')">Pending</button>
+      <button class="filter-btn ${curFilter==='completed'?'active':''}" onclick="setFilter('completed')">Completed</button>
+      <div class="view-toggle">
+        <button class="view-btn ${curView==='list'?'active':''}" onclick="setView('list')" title="List view">&#9776;</button>
+        <button class="view-btn ${curView==='grid'?'active':''}" onclick="setView('grid')" title="Grid view">&#9638;</button>
+        <button class="view-btn ${curView==='map'?'active':''}" onclick="setView('map')" title="Map view">&#x1F5FA;</button>
+      </div>
+    </div>`;
+
+  /* --- tag filter bar within collection --- */
+  const allActTags=[...new Set(acts.flatMap(a=>a.tags||[]))].sort();
+  const dtfEl=$('detTagFilter');
+  if(dtfEl&&allActTags.length>1){
+    dtfEl.innerHTML=`<button class="tag-filter-btn ${!curDetTagFilter?'active':''}" onclick="setDetTagFilter(null)">All Tags</button>`+allActTags.map(t=>`<button class="tag-filter-btn ${curDetTagFilter===t?'active':''}" onclick="setDetTagFilter('${esc(t)}')">` + esc(t) + `</button>`).join('');
+  } else if(dtfEl){ dtfEl.innerHTML=''; }
+
+  renderActivitiesList();
+}
+
+async function renderActivitiesList(){
+  const searchEl=$('detSearch');
+  const search=searchEl?searchEl.value.toLowerCase():'';
+  let acts=await fetchActivitiesFor(curListId);
+  if(curFilter==='pending') acts=acts.filter(a=>!a.completed);
+  if(curFilter==='completed') acts=acts.filter(a=>a.completed);
+  if(curDetTagFilter) acts=acts.filter(a=>(a.tags||[]).includes(curDetTagFilter));
+  if(search) acts=acts.filter(a=>a.name.toLowerCase().includes(search)||(a.description||'').toLowerCase().includes(search)||(a.tags||[]).some(t=>t.toLowerCase().includes(search)));
+  acts.sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+
+  const addRow=`<div class="add-activity-row" onclick="openNewActivity()"><span>+ Add Activity</span></div>`;
+
+  if(!acts.length&&!search&&curFilter==='all'){
+    $('activitiesList').style.display='';
+    $('mapContainer').classList.remove('active');
+    $('activitiesList').innerHTML=addRow;
+    return;
+  }
+
+  /* Handle map view */
+  const mapEl=$('mapContainer');
+  if(curView==='map'){
+    $('activitiesList').style.display='none';
+    mapEl.classList.add('active');
+    renderMap(acts);
+    return;
+  } else {
+    $('activitiesList').style.display='';
+    mapEl.classList.remove('active');
+  }
+
+  $('activitiesList').classList.toggle('grid-view', curView==='grid');
+
+  if(curView==='grid'){
+    $('activitiesList').innerHTML=acts.map((a,i)=>{
+      const photoCell=a.photos&&a.photos.length
+        ? `<div class="activity-card-photo"><img src="${a.photos[0]}" alt="" loading="lazy"/></div>`
+        : `<div class="activity-card-photo"><div class="activity-card-photo-empty">Not Yet<br>Completed</div></div>`;
+      return `<div class="activity-card" onclick="openDetModal('${a.id}')">
+        <div class="activity-card-num">#${i+1}</div>
+        ${photoCell}
+        <div class="activity-card-body">
+          <div class="activity-card-name">${esc(a.name)}</div>
+          ${a.tags&&a.tags.length?`<div class="activity-row-tags">${a.tags.map(t=>`<span class="tag-pill">${esc(t)}</span>`).join('')}</div>`:''}
+          <div class="activity-card-status ${a.completed?'done':'pending'}">${a.completed?'Completed':'Pending'}</div>
+        </div>
+      </div>`;
+    }).join('')+`<div class="activity-card" style="border:2px dashed var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;min-height:200px" onclick="openNewActivity()"><span style="color:var(--text2);font-family:var(--mono);font-size:.8rem;letter-spacing:1px">+ ADD</span></div>`;
+    return;
+  }
+
+  $('activitiesList').innerHTML=acts.map((a,i)=>{
+    const di=dateInfo(a);
+    const photoCell=a.photos&&a.photos.length
+      ? `<div class="activity-row-photo"><img src="${a.photos[0]}" alt="" loading="lazy"/></div>`
+      : `<div class="activity-row-photo"><div class="activity-row-photo-empty">Not Yet<br>Completed</div></div>`;
+    const compBtn=!a.completed?`<button class="row-action complete-act" onclick="event.stopPropagation();openComp('${a.id}')" title="Complete">&#x2713;</button>`:'';
+    return `<div class="activity-row" onclick="openDetModal('${a.id}')">
+      <div class="activity-num">${i+1}</div>
+      ${photoCell}
+      <div class="activity-row-info">
+        <div class="activity-row-name">${esc(a.name)}</div>
+        ${a.description?`<div class="activity-row-desc">${esc(a.description)}</div>`:''}
+        ${a.tags&&a.tags.length?`<div class="activity-row-tags">${a.tags.map(t=>`<span class="tag-pill">${esc(t)}</span>`).join('')}</div>`:''}
+      </div>
+      <div class="activity-row-date ${di.cls}">${di.label||'—'}</div>
+      <div class="activity-row-status ${a.completed?'done':'pending'}">${a.completed?'Completed':'Pending'}</div>
+      <div class="activity-row-actions">
+        ${compBtn}
+        <button class="row-action" onclick="event.stopPropagation();openEditAct('${a.id}')" title="Edit">&#x270E;</button>
+        <button class="row-action del" onclick="event.stopPropagation();showDeleteConfirm('activity','${a.id}')" title="Delete">&#x2715;</button>
+      </div>
+    </div>`;
+  }).join('')+addRow;
+}
+
+function setFilter(f){
+  curFilter=f;
+  /* If map is active, just update markers without re-zooming */
+  if(curView==='map'&&actMap){
+    updateMapMarkers();
+    return;
+  }
+  renderDetail();
+}
+function setView(v){curView=v;if(v!=='map'&&actMap){actMap.remove();actMap=null;detMapHomeBounds=null;}renderDetail();}
+function setDetTagFilter(tag){curDetTagFilter=tag;renderActivitiesList();}
+
+/* ==============================================================
+   LIST CRUD
+   ============================================================== */
+let lTags=[],aTags=[],aLinks=[];
+function openNewList(){
+  editingListId=null;coverPhoto='';lTags=[];
+  $('lName').value='';$('lDesc').value='';
+  $('coverPreview').innerHTML='';$('coverZone').style.display='';
+  renderTagChips('lTags');
+  $('listModalTitle').textContent='New Collection';
+  $('listSaveBtn').textContent='Create';
+  openModal('listModal');
+  setTimeout(()=>$('lName').focus(),300);
+}
+async function openEditList(){
+  const l=await fetchCollection(curListId);
+  if(!l)return;
+  editingListId=l.id;coverPhoto=l.cover||'';lTags=[...(l.tags||[])];
+  $('lName').value=l.name;$('lDesc').value=l.description||'';
+  renderTagChips('lTags');
+  if(coverPhoto){$('coverPreview').innerHTML=`<div class="photo-th" style="width:160px;height:100px"><img src="${coverPhoto}"/><button class="rm-photo" style="opacity:1" onclick="coverPhoto='';$('coverPreview').innerHTML='';$('coverZone').style.display=''">&#x2715;</button></div>`;$('coverZone').style.display='none';}
+  else{$('coverPreview').innerHTML='';$('coverZone').style.display='';}
+  $('listModalTitle').textContent='Edit Collection';
+  $('listSaveBtn').textContent='Save';
+  openModal('listModal');
+}
+function handleCoverUpload(e){
+  const f=e.target.files[0];if(!f||!f.type.startsWith('image/'))return;
+  const r=new FileReader();
+  r.onload=ev=>{compress(ev.target.result,1200,.85,c=>{coverPhoto=c;$('coverPreview').innerHTML=`<div class="photo-th" style="width:160px;height:100px"><img src="${c}"/><button class="rm-photo" style="opacity:1" onclick="coverPhoto='';$('coverPreview').innerHTML='';$('coverZone').style.display=''">&#x2715;</button></div>`;$('coverZone').style.display='none';});};
+  r.readAsDataURL(f);e.target.value='';
+}
+async function saveList(){
+  const name=$('lName').value.trim();
+  if(!name){shakeEl($('lName'));return;}
+  if(editingListId){
+    const updates={name,description:$('lDesc').value.trim(),category_tag:lTags};
+    if(coverPhoto) updates.cover_image=coverPhoto;
+    const{error}=await sb.from('Collections').update(updates).eq('id',editingListId);
+    if(error){console.error('saveList update:',error);return;}
+  } else {
+    /* Gather existing covers so we don't repeat */
+    const existingLists=await fetchCollections();
+    const existingCovers=existingLists.map(l=>l.cover).filter(Boolean);
+    const{data,error}=await sb.from('Collections').insert({
+      name,description:$('lDesc').value.trim(),
+      cover_image:coverPhoto||randCover(existingCovers),
+      category_tag:lTags,
+      user_id:currentUser.id
+    }).select().single();
+    if(error){console.error('saveList insert:',error);return;}
+    curListId=data.id;
+  }
+  closeModal('listModal');
+  if(curPage==='detail') renderDetail();
+  else if(curPage==='collections') renderCollections();
+  else renderHome();
+}
+async function delList(id){
+  const{error:e1}=await sb.from('Activities').delete().eq('collection_id',id);
+  if(e1){console.error('delList activities:',e1);alert('Failed to delete activities: '+e1.message);return;}
+  const{error:e2}=await sb.from('Collections').delete().eq('id',id);
+  if(e2){console.error('delList collection:',e2);alert('Failed to delete collection: '+e2.message);return;}
+  nav('collections');
+}
+
+/* ==============================================================
+   ACTIVITY CRUD
+   ============================================================== */
+function openNewActivity(){
+  editingActId=null;aTags=[];aLinks=[];
+  $('aName').value='';$('aDesc').value='';$('aLoc').value='';$('aLocLat').value='';$('aLocLng').value='';$('aDate').value='';$('aPri').value='medium';
+  renderTagChips('aTags');renderTagChips('aLinks');
+  $('actModalTitle').textContent='New Activity';
+  $('actSaveBtn').textContent='Add';
+  openModal('actModal');setTimeout(()=>$('aName').focus(),300);
+}
+async function openEditAct(id){
+  const a=await fetchActivity(id);if(!a)return;
+  editingActId=id;
+  $('aName').value=a.name;$('aDesc').value=a.description||'';$('aLoc').value=a.location||'';$('aLocLat').value=a.locationLat||'';$('aLocLng').value=a.locationLng||'';$('aDate').value=a.targetDate||'';
+  $('aPri').value=a.priority||'medium';aTags=[...(a.tags||[])];aLinks=[...(a.links||[])];
+  renderTagChips('aTags');renderTagChips('aLinks');
+  $('actModalTitle').textContent='Edit Activity';$('actSaveBtn').textContent='Save';
+  openModal('actModal');
+}
+async function saveActivity(){
+  const name=$('aName').value.trim();
+  if(!name){shakeEl($('aName'));return;}
+  const fields={
+    name,description:$('aDesc').value.trim(),
+    location:$('aLoc').value.trim()||null,
+    location_lat:parseFloat($('aLocLat').value)||null,
+    location_lng:parseFloat($('aLocLng').value)||null,
+    target_date:$('aDate').value||null,
+    priority:$('aPri').value,
+    category_tag:aTags,
+    links:aLinks
+  };
+  if(editingActId){
+    const{error}=await sb.from('Activities').update(fields).eq('id',editingActId);
+    if(error){console.error('saveActivity update:',error);return;}
+  } else {
+    fields.collection_id=curListId;
+    const{error}=await sb.from('Activities').insert(fields);
+    if(error){console.error('saveActivity insert:',error);return;}
+  }
+  await updateCollectionStats(curListId);
+  closeModal('actModal');renderDetail();
+}
+async function delActivity(id){
+  const{error}=await sb.from('Activities').delete().eq('id',id);
+  if(error){console.error('delActivity:',error);alert('Failed to delete: '+error.message);return;}
+  await updateCollectionStats(curListId);
+  renderDetail();
+}
+
+/* ==============================================================
+   COMPLETION
+   ============================================================== */
+async function openComp(id,editMode){
+  const a=await fetchActivity(id);if(!a)return;
+  completingId=id;
+  if(editMode&&a.completed){
+    upPhotos=[...(a.photos||[])];
+    $('compName').textContent=a.name;
+    $('compLoc').value=a.location||'';$('compLocLat').value=a.locationLat||'';$('compLocLng').value=a.locationLng||'';
+    $('compDate').value=a.completedDate||new Date().toISOString().split('T')[0];
+    $('compNotes').value=a.completionNotes||'';
+    renderThumbs();
+    $('compModalTitle').textContent='Edit Completion';
+    $('compSaveBtn').textContent='Save';
+  } else {
+    upPhotos=[];
+    $('compName').textContent=a.name;
+    $('compLoc').value=a.location||'';$('compLocLat').value=a.locationLat||'';$('compLocLng').value=a.locationLng||'';
+    $('compDate').value=new Date().toISOString().split('T')[0];
+    $('compNotes').value='';$('photoPrev').innerHTML='';
+    $('compModalTitle').textContent='Accomplished';
+    $('compSaveBtn').textContent='Mark Complete';
+  }
+  openModal('compModal');
+}
+async function confirmComplete(){
+  if(!completingId)return;
+  const{error}=await sb.from('Activities').update({
+    location:$('compLoc').value.trim()||null,
+    location_lat:parseFloat($('compLocLat').value)||null,
+    location_lng:parseFloat($('compLocLng').value)||null,
+    date_completed:$('compDate').value||new Date().toISOString().split('T')[0],
+    experience_notes:$('compNotes').value.trim(),
+    photos:upPhotos
+  }).eq('id',completingId);
+  if(error){console.error('confirmComplete:',error);return;}
+  if(curListId) await updateCollectionStats(curListId);
+  closeModal('compModal');renderDetail();confetti();
+  completingId=null;
+}
+async function undoComp(id){
+  const a=await fetchActivity(id);if(!a)return;
+  pendingDelete={type:'undo',id};
+  $('delConfirmTitle').textContent='Undo Completion';
+  $('delConfirmMsg').textContent=`Revert "${a.name}" back to pending? Completion date, notes, and photos will be removed.`;
+  $('delConfirmYes').textContent='Undo';
+  openModal('deleteConfirmModal');
+}
+
+/* ==============================================================
+   ACTIVITY DETAIL MODAL
+   ============================================================== */
+async function openDetModal(id){
+  const a=await fetchActivity(id);if(!a)return;
+  let h='';
+  h+=`<div class="dm-banner">`;
+  h+=`<button class="dm-banner-close" onclick="closeModal('detModal')">&#x2715;</button>`;
+  h+=`<div class="dm-banner-title">${esc(a.name)}</div>`;
+  h+=`<div class="dm-badges">`;
+  h+=a.completed
+    ?`<span class="dm-badge done">&#x2713; Completed</span>`
+    :`<span class="dm-badge pending">&#x25CB; Pending</span>`;
+  if(a.completed&&a.completedDate) h+=`<span class="dm-badge" style="background:rgba(255,255,255,.18);color:#fff">${fmtDate(a.completedDate)}</span>`;
+  if(a.priority) h+=`<span class="dm-priority dm-priority-${a.priority}">${cap(a.priority)}</span>`;
+  if(a.tags&&a.tags.length) a.tags.forEach(t=>{h+=`<span class="dm-badge" style="background:rgba(255,255,255,.12);color:#fff">${esc(t)}</span>`;});
+  if(a.location) h+=`<span class="dm-badge" style="background:rgba(255,255,255,.15);color:#fff">&#x1F4CD; ${esc(a.location)}</span>`;
+  h+=`</div></div>`;
+  h+=`<div class="dm-content">`;
+
+  if(a.completed){
+    /* --- Completed view: only show completion info --- */
+    if(a.photos&&a.photos.length>=1){
+      const photosArr=`[${a.photos.map(p=>"'"+p.replace(/'/g,"\\'")+"'").join(',')}]`;
+      if(a.photos.length===1) h+=`<img class="dm-photo" src="${a.photos[0]}" onclick="event.stopPropagation();openLB(${photosArr},0)" />`;
+      else {
+        h+=`<div style="margin-bottom:8px;font-family:var(--mono);font-size:.72rem;letter-spacing:1.5px;text-transform:uppercase;color:var(--text2);font-weight:600">Photos</div>`;
+        h+=`<div class="dm-photos" style="margin-bottom:24px">${a.photos.map((p,i)=>`<div class="dm-photo-item" onclick="event.stopPropagation();openLB(${photosArr},${i})"><img src="${p}" loading="lazy"/></div>`).join('')}</div>`;
+      }
+    }
+    if(a.location) h+=`<div class="dm-notes"><strong style="color:var(--olive)">Location</strong>${esc(a.location)}</div>`;
+    if(a.completionNotes) h+=`<div class="dm-notes"><strong style="color:var(--olive)">Experience</strong>${esc(a.completionNotes)}</div>`;
+    if(a.links&&a.links.length){
+      h+=`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">${a.links.map(l=>`<a href="${esc(l)}" target="_blank" rel="noopener" class="link-chip">${esc(l.replace(/^https?:\/\//,'').slice(0,40))}${l.replace(/^https?:\/\//,'').length>40?'...':''}</a>`).join('')}</div>`;
+    }
+    h+=`<div class="dm-actions">`;
+    h+=`<button class="btn btn-g" onclick="closeModal('detModal');openComp('${a.id}',true)">Edit Completion</button>`;
+    h+=`<button class="btn btn-undo" onclick="undoComp('${a.id}')">Undo</button>`;
+    h+=`<button class="btn btn-d" data-delete="activity" data-delete-id="${a.id}">Delete</button>`;
+    h+=`</div>`;
+  } else {
+    /* --- Pending view: show all info --- */
+    const infoItems=[];
+    if(a.targetDate) infoItems.push(['Target Date',fmtDate(a.targetDate)]);
+    if(a.targetDate){const di=dateInfo(a);if(di.label) infoItems.push(['Status',`<span class="${di.cls}">${di.label}</span>`]);}
+    if(infoItems.length) h+=`<div class="dm-info-grid">${infoItems.map(([k,v])=>`<div class="dm-info-item"><div class="dm-info-label">${k}</div><div class="dm-info-value">${v}</div></div>`).join('')}</div>`;
+    if(a.location) h+=`<div class="dm-notes"><strong>Location</strong>${esc(a.location)}</div>`;
+    if(a.description) h+=`<div class="dm-notes"><strong>Description</strong>${esc(a.description)}</div>`;
+    if(a.links&&a.links.length){
+      h+=`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">${a.links.map(l=>`<a href="${esc(l)}" target="_blank" rel="noopener" class="link-chip">${esc(l.replace(/^https?:\/\//,'').slice(0,40))}${l.replace(/^https?:\/\//,'').length>40?'...':''}</a>`).join('')}</div>`;
+    }
+    h+=`<div class="dm-actions">`;
+    h+=`<button class="btn btn-g" onclick="closeModal('detModal');openComp('${a.id}')">Mark Complete</button>`;
+    h+=`<button class="btn btn-s" onclick="closeModal('detModal');openEditAct('${a.id}')">Edit</button>`;
+    h+=`<button class="btn btn-d" data-delete="activity" data-delete-id="${a.id}">Delete</button>`;
+    h+=`</div>`;
+  }
+
+  h+=`</div>`;
+  $('detModalBody').innerHTML=h;
+  openModal('detModal');
+}
+
+/* ==============================================================
+   PHOTOS
+   ============================================================== */
+function handlePhotos(e){
+  Array.from(e.target.files).forEach(f=>{
+    if(!f.type.startsWith('image/'))return;
+    const r=new FileReader();
+    r.onload=ev=>{compress(ev.target.result,800,.8,c=>{upPhotos.push(c);renderThumbs();});};
+    r.readAsDataURL(f);
+  });e.target.value='';
+}
+function compress(url,maxD,q,cb){
+  const img=new Image();
+  img.onload=()=>{
+    let{width:w,height:h}=img;
+    if(w>maxD||h>maxD){const r=Math.min(maxD/w,maxD/h);w*=r;h*=r;}
+    const c=document.createElement('canvas');c.width=w;c.height=h;
+    c.getContext('2d').drawImage(img,0,0,w,h);
+    cb(c.toDataURL('image/jpeg',q));
+  };img.src=url;
+}
+function rmPhoto(i){upPhotos.splice(i,1);renderThumbs();}
+function renderThumbs(){
+  $('photoPrev').innerHTML=upPhotos.map((p,i)=>`<div class="photo-th"><img src="${p}"/><button class="rm-photo" onclick="rmPhoto(${i})">&#x2715;</button></div>`).join('');
+}
+
+/* ==============================================================
+   MODAL HELPERS
+   ============================================================== */
+function openModal(id){$(id).classList.add('open');document.body.style.overflow='hidden';}
+function closeModal(id){$(id).classList.remove('open');if(!document.querySelector('.modal-overlay.open'))document.body.style.overflow='';}
+document.querySelectorAll('.modal-overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o){o.classList.remove('open');if(!document.querySelector('.modal-overlay.open'))document.body.style.overflow='';}}));
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){document.querySelectorAll('.modal-overlay.open').forEach(m=>m.classList.remove('open'));closeLightbox();document.body.style.overflow='';}if(e.key==='ArrowLeft'&&$('lightbox').classList.contains('open'))lbStep(-1);if(e.key==='ArrowRight'&&$('lightbox').classList.contains('open'))lbStep(1);});
+
+/* ==============================================================
+   DELETE CONFIRMATION (event delegation)
+   ============================================================== */
+let pendingDelete=null;
+function showDeleteConfirm(type,id){
+  pendingDelete={type,id};
+  if(type==='collection'){
+    $('delConfirmTitle').textContent='Delete Collection';
+    $('delConfirmMsg').textContent='This will permanently delete this collection and all its activities. Are you sure?';
+  } else {
+    $('delConfirmTitle').textContent='Delete Activity';
+    $('delConfirmMsg').textContent='This will permanently delete this activity. Are you sure?';
+  }
+  openModal('deleteConfirmModal');
+}
+$('delConfirmYes').addEventListener('click',async()=>{
+  if(!pendingDelete)return;
+  const{type,id}=pendingDelete;
+  closeModal('deleteConfirmModal');
+  $('delConfirmYes').textContent='Delete';
+  if(type==='collection'){
+    await delList(id);
+  } else if(type==='undo'){
+    await sb.from('Activities').update({
+      date_completed:null,experience_notes:null,photos:null
+    }).eq('id',id);
+    if(curListId) await updateCollectionStats(curListId);
+    closeModal('detModal');renderDetail();
+  } else {
+    closeModal('detModal');
+    await delActivity(id);
+  }
+  pendingDelete=null;
+});
+$('delConfirmNo').addEventListener('click',()=>{closeModal('deleteConfirmModal');pendingDelete=null;});
+$('delConfirmClose').addEventListener('click',()=>{closeModal('deleteConfirmModal');pendingDelete=null;});
+
+/* Catch all delete button clicks via event delegation */
+document.addEventListener('click',e=>{
+  const btn=e.target.closest('[data-delete]');
+  if(!btn)return;
+  e.stopPropagation();
+  const type=btn.dataset.delete;
+  const id=btn.dataset.deleteId||curListId;
+  showDeleteConfirm(type,id);
+});
+
+/* ==============================================================
+   LIGHTBOX / GALLERY
+   ============================================================== */
+let lbPhotos=[],lbIdx=0;
+function openLB(photos,startIdx){
+  if(typeof photos==='string') photos=[photos];
+  lbPhotos=photos;lbIdx=startIdx||0;
+  lbShow();
+  $('lightbox').classList.add('open');
+}
+function lbShow(){
+  $('lbImg').src=lbPhotos[lbIdx];
+  $('lbCounter').textContent=lbPhotos.length>1?`${lbIdx+1} of ${lbPhotos.length}`:'';
+  $('lbPrev').style.display=lbPhotos.length>1?'flex':'none';
+  $('lbNext').style.display=lbPhotos.length>1?'flex':'none';
+}
+function lbStep(dir){
+  lbIdx=(lbIdx+dir+lbPhotos.length)%lbPhotos.length;
+  lbShow();
+}
+function closeLightbox(){$('lightbox').classList.remove('open');lbPhotos=[];lbIdx=0;}
+
+/* ==============================================================
+   CONFETTI
+   ============================================================== */
+function confetti(){
+  const c=$('confC');
+  const cols=['#626b52','#b8714e','#c4b69c','#1a1a18','#ddd9d0','#8a877e'];
+  for(let i=0;i<80;i++){
+    const p=document.createElement('div');
+    const sz=Math.random()*8+4;
+    p.style.cssText=`position:absolute;width:${sz}px;height:${sz*(Math.random()+.5)}px;background:${cols[~~(Math.random()*cols.length)]};left:${Math.random()*100}%;top:-20px;border-radius:${['50%','1px','0'][~~(Math.random()*3)]};animation:confettiFall ${Math.random()*2.5+1.5}s var(--ease) forwards;animation-delay:${Math.random()*.3}s`;
+    c.appendChild(p);
+  }
+  setTimeout(()=>{c.innerHTML='';},5000);
+}
+
+/* ==============================================================
+   UTILS
+   ============================================================== */
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+function cap(s){return s.charAt(0).toUpperCase()+s.slice(1);}
+function fmtDate(s){return new Date(s+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}
+function dateInfo(a){
+  if(a.completed&&a.completedDate) return{label:fmtDate(a.completedDate),cls:''};
+  if(!a.targetDate) return{label:'',cls:''};
+  const t=new Date(a.targetDate+'T00:00:00'),n=new Date();n.setHours(0,0,0,0);
+  const diff=Math.ceil((t-n)/864e5);
+  if(a.completed) return{label:fmtDate(a.targetDate),cls:''};
+  if(diff<0) return{label:'Overdue',cls:'overdue'};
+  if(diff<=30) return{label:diff+'d left',cls:'soon'};
+  return{label:fmtDate(a.targetDate),cls:''};
+}
+function shakeEl(el){el.style.borderColor='var(--danger)';el.style.animation='shake .4s ease';setTimeout(()=>{el.style.borderColor='';el.style.animation='';},600);}
+
+/* Tag chip helpers */
+function getChipArr(which){return which==='lTags'?lTags:which==='aTags'?aTags:aLinks;}
+function handleTagKey(e,which){
+  if(e.key==='Enter'||e.key==='Tab'){
+    e.preventDefault();
+    const v=e.target.value.trim();
+    if(!v)return;
+    const arr=getChipArr(which);
+    if(!arr.includes(v)){arr.push(v);}
+    e.target.value='';
+    renderTagChips(which);
+  }
+  if(e.key==='Backspace'&&!e.target.value){
+    const arr=getChipArr(which);
+    if(arr.length){arr.pop();renderTagChips(which);}
+  }
+}
+function removeTag(which,idx){
+  const arr=getChipArr(which);
+  arr.splice(idx,1);renderTagChips(which);
+}
+function renderTagChips(which){
+  const arr=getChipArr(which);
+  const wrapId=which==='lTags'?'lTagsWrap':which==='aTags'?'aTagsWrap':'aLinksWrap';
+  const inputId=which==='lTags'?'lTagInput':which==='aTags'?'aTagInput':'aLinkInput';
+  const placeholder=which==='aLinks'?'Paste a URL and press Enter...':'Type a tag and press Enter...';
+  const wrap=$(wrapId);if(!wrap)return;
+  wrap.innerHTML=arr.map((t,i)=>`<span class="tag-chip">${esc(t)}<button onclick="removeTag('${which}',${i})">&times;</button></span>`).join('');
+  const field=document.createElement('input');
+  field.className='tag-input-field';field.id=inputId;
+  field.placeholder=arr.length?'':placeholder;
+  field.setAttribute('onkeydown',`handleTagKey(event,'${which}')`);
+  wrap.appendChild(field);
+}
+
+/* ==============================================================
+   LOCATION AUTOCOMPLETE (Nominatim)
+   ============================================================== */
+let locTimer=null;
+function locSearch(input,resultsId){
+  const q=input.value.trim();
+  const box=$(resultsId);
+  if(q.length<2){box.classList.remove('open');box.innerHTML='';return;}
+  clearTimeout(locTimer);
+  locTimer=setTimeout(async()=>{
+    try{
+      const res=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&addressdetails=1&limit=6`,{headers:{'Accept-Language':'en'}});
+      const data=await res.json();
+      if(!data.length){box.innerHTML='<div class="loc-item"><div class="loc-item-main" style="color:var(--text3)">No results found</div></div>';box.classList.add('open');return;}
+      box.innerHTML=data.map((r,i)=>{
+        const main=r.display_name.split(',')[0];
+        const sub=r.display_name.split(',').slice(1,3).join(',').trim();
+        return `<div class="loc-item" data-idx="${i}" onmousedown="locPick(this,'${resultsId}','${esc(r.display_name.replace(/'/g,"\\'"))}',${r.lat},${r.lon})">
+          <div class="loc-item-main">${esc(main)}</div>
+          ${sub?`<div class="loc-item-sub">${esc(sub)}</div>`:''}
+        </div>`;
+      }).join('');
+      box.classList.add('open');
+    }catch(e){console.error('locSearch error:',e);}
+  },350);
+}
+function locPick(el,resultsId,display,lat,lng){
+  const box=$(resultsId);
+  const input=box.parentElement.querySelector('input[type="text"],input:not([type="hidden"])');
+  const latInput=box.parentElement.querySelector('input[id$="Lat"]');
+  const lngInput=box.parentElement.querySelector('input[id$="Lng"]');
+  input.value=display;
+  if(latInput)latInput.value=lat;
+  if(lngInput)lngInput.value=lng;
+  box.classList.remove('open');box.innerHTML='';
+}
+/* Close loc dropdowns on outside click */
+document.addEventListener('click',e=>{
+  document.querySelectorAll('.loc-results.open').forEach(b=>{
+    if(!b.parentElement.contains(e.target))b.classList.remove('open');
+  });
+});
+
+/* ==============================================================
+   ACTIVITY MAP (Leaflet)
+   ============================================================== */
+let actMap=null;
+/* Shared function to create a marker for an activity */
+function createActMarker(a){
+  const photo=a.photos&&a.photos.length?a.photos[0]:null;
+  const pinSize=84;
+  const shortName=a.name.length>18?a.name.substring(0,16)+'…':a.name;
+  const labelHtml=`<div style="position:absolute;left:50%;transform:translateX(-50%);top:${pinSize+4}px;white-space:nowrap;font-family:var(--mono);font-size:.6rem;font-weight:600;letter-spacing:.5px;color:var(--text2);text-align:center;max-width:120px;overflow:hidden;text-overflow:ellipsis;text-shadow:0 0 3px var(--bg),0 0 3px var(--bg)">${esc(shortName)}</div>`;
+  const icon=L.divIcon({
+    className:'',
+    iconSize:[pinSize,pinSize+18],
+    iconAnchor:[pinSize/2,pinSize],
+    popupAnchor:[0,-pinSize],
+    html:photo
+      ?`<div style="position:relative"><div style="width:${pinSize}px;height:${pinSize}px;border-radius:50%;border:4px solid ${a.completed?'var(--olive)':'var(--terra)'};overflow:hidden;box-shadow:0 3px 12px rgba(0,0,0,.35);background:var(--bg2)"><img src="${photo}" style="width:100%;height:100%;object-fit:cover"/></div>${labelHtml}</div>`
+      :`<div style="position:relative"><div style="width:${pinSize}px;height:${pinSize}px;border-radius:50%;background:${a.completed?'var(--olive)':'var(--terra)'};border:3px solid #fff;box-shadow:0 3px 12px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;color:#fff;font-family:var(--mono);font-size:.6rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase">${a.completed?'DONE':'PENDING'}</div>${labelHtml}</div>`
+  });
+  const popup=`<div class="map-popup">
+    ${photo?`<img src="${photo}" alt=""/>`:''}
+    <div class="map-popup-name">${esc(a.name)}</div>
+    <div class="map-popup-loc">${esc(a.location)}</div>
+    <div class="map-popup-status ${a.completed?'done':'pending'}">${a.completed?'Completed':'Pending'}</div>
+    <button class="map-popup-btn" onclick="openDetModal('${a.id}')">View Details</button>
+  </div>`;
+  const marker=L.marker([parseFloat(a.locationLat),parseFloat(a.locationLng)],{icon}).bindPopup(popup);
+  marker._actData=a; /* stash for filtering */
+  return marker;
+}
+
+/* Shared cluster config */
+function makeClusterGroup(){
+  const c=L.markerClusterGroup({
+    maxClusterRadius:60,
+    spiderfyOnMaxZoom:true,
+    showCoverageOnHover:false,
+    zoomToBoundsOnClick:false,
+    spiderfyDistanceMultiplier:2.5,
+    iconCreateFunction:function(cluster){
+      const count=cluster.getChildCount();
+      let sz='small';
+      if(count>=10) sz='large';
+      else if(count>=5) sz='medium';
+      return L.divIcon({
+        html:`<div>${count}</div>`,
+        className:'marker-cluster marker-cluster-'+sz,
+        iconSize:[64,64]
+      });
+    }
+  });
+  return c;
+}
+
+/* Shared cluster click handler */
+function attachClusterClick(mapObj,clusters){
+  clusters.on('clusterclick',function(e){
+    const cluster=e.layer;
+    const childMarkers=cluster.getAllChildMarkers();
+    const clusterBounds=cluster.getBounds();
+    const allSame=childMarkers.every(m=>{
+      const ll=m.getLatLng();
+      const first=childMarkers[0].getLatLng();
+      return Math.abs(ll.lat-first.lat)<0.0001&&Math.abs(ll.lng-first.lng)<0.0001;
+    });
+    if(allSame){
+      const ll=childMarkers[0].getLatLng();
+      const refMarker=childMarkers[0];
+      mapObj.setView(ll,14,{animate:true});
+      mapObj.once('zoomend',function(){
+        const parent=clusters.getVisibleParent(refMarker);
+        if(parent&&parent.spiderfy) parent.spiderfy();
+      });
+    } else {
+      mapObj.fitBounds(clusterBounds,{padding:[60,60],maxZoom:16,animate:true});
+    }
+  });
+}
+
+/* Add home button to a map */
+function addHomeBtn(mapObj,mapEl,homeBounds){
+  const homeBtn=L.DomUtil.create('button','map-home-btn');
+  homeBtn.innerHTML='&#x1F3E0;';
+  homeBtn.title='Reset view';
+  homeBtn.onclick=function(e){
+    L.DomEvent.stopPropagation(e);
+    if(homeBounds) mapObj.fitBounds(homeBounds,{padding:[60,60],maxZoom:12,animate:true});
+    else mapObj.setView([20,0],2,{animate:true});
+  };
+  mapEl.appendChild(homeBtn);
+  return homeBtn;
+}
+
+/* ---- Detail-page map (collection-specific) ---- */
+let detMapClusters=null,detMapAllMarkers=[];
+
+function renderMap(acts){
+  const mapEl=$('mapContainer');
+  const geoActs=acts.filter(a=>a.locationLat&&a.locationLng);
+
+  if(actMap){actMap.remove();actMap=null;detMapHomeBounds=null;}
+  detMapClusters=null;detMapAllMarkers=[];
+
+  if(!geoActs.length){
+    mapEl.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100%;font-family:var(--mono);font-size:.8rem;color:var(--text3);letter-spacing:1px;text-transform:uppercase">No activities with locations yet</div>';
+    return;
+  }
+
+  mapEl.innerHTML='';
+  actMap=L.map(mapEl,{scrollWheelZoom:true}).setView([20,0],2);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
+    attribution:'&copy; OpenStreetMap &copy; CARTO',
+    maxZoom:18,
+    subdomains:'abcd'
+  }).addTo(actMap);
+
+  detMapClusters=makeClusterGroup();
+  attachClusterClick(actMap,detMapClusters);
+
+  const bounds=[];
+  geoActs.forEach(a=>{
+    const lat=parseFloat(a.locationLat),lng=parseFloat(a.locationLng);
+    if(isNaN(lat)||isNaN(lng))return;
+    bounds.push([lat,lng]);
+    const marker=createActMarker(a);
+    detMapAllMarkers.push(marker);
+    detMapClusters.addLayer(marker);
+  });
+
+  actMap.addLayer(detMapClusters);
+
+  if(bounds.length===1){
+    actMap.setView(bounds[0],10);
+    detMapHomeBounds=L.latLngBounds(bounds).pad(0.5);
+  } else if(bounds.length>1){
+    detMapHomeBounds=L.latLngBounds(bounds);
+    actMap.fitBounds(detMapHomeBounds,{padding:[60,60],maxZoom:12});
+  }
+
+  addHomeBtn(actMap,mapEl,detMapHomeBounds);
+  setTimeout(()=>actMap.invalidateSize(),200);
+}
+
+/* Update detail map markers without re-zoom (for filter changes) */
+async function updateMapMarkers(){
+  if(!actMap||!detMapClusters)return;
+  let acts=await fetchActivitiesFor(curListId);
+  if(curFilter==='pending') acts=acts.filter(a=>!a.completed);
+  if(curFilter==='completed') acts=acts.filter(a=>a.completed);
+  if(curDetTagFilter) acts=acts.filter(a=>(a.tags||[]).includes(curDetTagFilter));
+  const searchEl=$('detSearch');
+  const search=searchEl?searchEl.value.toLowerCase():'';
+  if(search) acts=acts.filter(a=>a.name.toLowerCase().includes(search)||(a.description||'').toLowerCase().includes(search)||(a.tags||[]).some(t=>t.toLowerCase().includes(search)));
+
+  const visibleIds=new Set(acts.map(a=>a.id));
+  detMapClusters.clearLayers();
+  detMapAllMarkers.forEach(m=>{
+    if(visibleIds.has(m._actData.id)) detMapClusters.addLayer(m);
+  });
+
+  /* Update filter buttons */
+  $('detailBar').querySelectorAll('.filter-btn').forEach(btn=>{
+    const f=btn.textContent.toLowerCase();
+    btn.classList.toggle('active',f===curFilter);
+  });
+}
+
+/* ---- Global Map page ---- */
+async function renderGlobalMap(){
+  const mapEl=$('globalMapContainer');
+
+  /* Render the filter bar */
+  $('globalMapBar').innerHTML=`
+    <div class="detail-bar-right" style="justify-content:center;width:100%">
+      <button class="filter-btn ${globalMapFilter==='all'?'active':''}" onclick="setGlobalMapFilter('all')">All</button>
+      <button class="filter-btn ${globalMapFilter==='pending'?'active':''}" onclick="setGlobalMapFilter('pending')">Pending</button>
+      <button class="filter-btn ${globalMapFilter==='completed'?'active':''}" onclick="setGlobalMapFilter('completed')">Completed</button>
+    </div>`;
+
+  /* If the map already exists, just update markers */
+  if(globalMapObj){
+    updateGlobalMapMarkers();
+    setTimeout(()=>globalMapObj.invalidateSize(),200);
+    return;
+  }
+
+  mapEl.innerHTML='';
+  globalMapObj=L.map(mapEl,{scrollWheelZoom:true}).setView([20,0],2);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
+    attribution:'&copy; OpenStreetMap &copy; CARTO',
+    maxZoom:18,
+    subdomains:'abcd'
+  }).addTo(globalMapObj);
+
+  globalMapClusters=makeClusterGroup();
+  attachClusterClick(globalMapObj,globalMapClusters);
+
+  const allActs=await fetchAllActivities();
+  const geoActs=allActs.filter(a=>a.locationLat&&a.locationLng);
+
+  if(!geoActs.length){
+    mapEl.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100%;font-family:var(--mono);font-size:.8rem;color:var(--text3);letter-spacing:1px;text-transform:uppercase">No activities with locations yet</div>';
+    globalMapObj=null;
+    return;
+  }
+
+  const bounds=[];
+  globalMapAllMarkers=[];
+  geoActs.forEach(a=>{
+    const lat=parseFloat(a.locationLat),lng=parseFloat(a.locationLng);
+    if(isNaN(lat)||isNaN(lng))return;
+    bounds.push([lat,lng]);
+    const marker=createActMarker(a);
+    globalMapAllMarkers.push(marker);
+    globalMapClusters.addLayer(marker);
+  });
+
+  globalMapObj.addLayer(globalMapClusters);
+
+  if(bounds.length===1){
+    globalMapObj.setView(bounds[0],10);
+    globalMapHomeBounds=L.latLngBounds(bounds).pad(0.5);
+  } else if(bounds.length>1){
+    globalMapHomeBounds=L.latLngBounds(bounds);
+    globalMapObj.fitBounds(globalMapHomeBounds,{padding:[60,60],maxZoom:12});
+  }
+
+  addHomeBtn(globalMapObj,mapEl,globalMapHomeBounds);
+  setTimeout(()=>globalMapObj.invalidateSize(),200);
+}
+
+function updateGlobalMapMarkers(){
+  if(!globalMapObj||!globalMapClusters)return;
+  globalMapClusters.clearLayers();
+  globalMapAllMarkers.forEach(m=>{
+    const a=m._actData;
+    if(globalMapFilter==='pending'&&a.completed)return;
+    if(globalMapFilter==='completed'&&!a.completed)return;
+    globalMapClusters.addLayer(m);
+  });
+}
+
+function setGlobalMapFilter(f){
+  globalMapFilter=f;
+  /* Update buttons */
+  $('globalMapBar').querySelectorAll('.filter-btn').forEach(btn=>{
+    btn.classList.toggle('active',btn.textContent.toLowerCase()===f);
+  });
+  updateGlobalMapMarkers();
+}
+
+/* ==============================================================
+   BOOT — check session on load
+   ============================================================== */
+(async()=>{
+  const{data:{session}}=await sb.auth.getSession();
+  if(session?.user){
+    currentUser=session.user;
+    showApp();
+  } else {
+    showAuth();
+  }
+})();
+</script>
+</body>
+</html>
