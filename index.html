@@ -921,6 +921,7 @@
     .map-popup-status.pending { color: var(--terra); }
     .map-popup-btn { display:inline-block; margin-top:6px; padding:4px 12px; font-size:.7rem; font-family:var(--mono); letter-spacing:.8px; background:var(--black); color:#fff; border:none; cursor:pointer; text-transform:uppercase; }
 
+
     /* Cluster styling */
     .marker-cluster {
       background: transparent !important;
@@ -946,6 +947,139 @@
     .marker-cluster-small div { background: var(--olive) !important; }
     .marker-cluster-medium div { background: var(--terra) !important; }
     .marker-cluster-large div { background: var(--black) !important; }
+
+    /* Bulk Add modal */
+    .bulk-modal .modal { width: 96vw; max-width: 1320px; }
+    .bulk-modal .modal-body { padding: 24px 28px 28px; }
+    .bulk-top-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .bulk-hint {
+      font-size: .82rem; color: var(--text3); line-height: 1.6;
+      margin: 0;
+    }
+    .bulk-count {
+      font-family: var(--mono); font-size: .72rem; letter-spacing: 1px;
+      color: var(--text3); white-space: nowrap; margin-left: 16px;
+    }
+    .bulk-table-wrap {
+      overflow-x: auto; border: 1px solid var(--border); background: var(--white);
+    }
+    .bulk-table {
+      width: 100%; min-width: 1050px; border-collapse: collapse;
+    }
+    .bulk-table th {
+      font-family: var(--mono); font-size: .62rem; font-weight: 600;
+      letter-spacing: 1.5px; text-transform: uppercase; color: var(--text4);
+      padding: 10px 8px 10px; text-align: left; background: var(--bg);
+      border-bottom: 1.5px solid var(--border); white-space: nowrap;
+      position: sticky; top: 0; z-index: 2;
+    }
+    .bulk-table th:first-child { width: 40px; text-align: center; }
+    .bulk-table th .bulk-apply-btn {
+      display: inline-block; margin-left: 6px; font-size: .58rem;
+      font-family: var(--mono); font-weight: 500; letter-spacing: .8px;
+      color: var(--terra); cursor: pointer; background: none; border: none;
+      text-transform: uppercase; opacity: .7; transition: opacity .2s;
+      vertical-align: middle;
+    }
+    .bulk-table th .bulk-apply-btn:hover { opacity: 1; text-decoration: underline; }
+    .bulk-table td {
+      padding: 6px 6px; vertical-align: top;
+      border-bottom: 1px solid var(--bg2);
+    }
+    .bulk-table tr:last-child td { border-bottom: none; }
+    .bulk-table tr:hover td { background: rgba(0,0,0,.012); }
+    .bulk-table td:first-child { text-align: center; vertical-align: middle; }
+    .bulk-row-num {
+      font-family: var(--mono); font-size: .72rem; font-weight: 600;
+      color: var(--text4); display: flex; flex-direction: column;
+      align-items: center; gap: 2px;
+    }
+    .bulk-row-remove {
+      background: none; border: none; font-size: .6rem; color: var(--text4);
+      cursor: pointer; padding: 1px 4px; transition: color .2s;
+      line-height: 1;
+    }
+    .bulk-row-remove:hover { color: var(--danger); }
+    /* Compact inputs for bulk table */
+    .bulk-table input, .bulk-table textarea, .bulk-table select {
+      width: 100%; font-size: .8rem; padding: 7px 10px;
+      border: 1.5px solid var(--border); background: var(--white);
+      color: var(--text); font-family: var(--sans); outline: none;
+      transition: border-color .3s;
+    }
+    .bulk-table input:focus, .bulk-table textarea:focus, .bulk-table select:focus {
+      border-color: var(--black); box-shadow: 0 0 0 2px rgba(17,17,17,.06);
+    }
+    .bulk-table input::placeholder, .bulk-table textarea::placeholder {
+      color: var(--text4); font-weight: 400;
+    }
+    .bulk-table textarea { resize: none; height: 34px; line-height: 1.4; }
+    .bulk-table select {
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%233a3a36'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 8px center;
+      padding-right: 24px;
+    }
+    .bulk-table td { position: relative; }
+    .bulk-table .loc-wrap { position: relative; }
+    .bulk-table .loc-results {
+      position: fixed; z-index: 10000;
+      max-height: 220px; overflow-y: auto;
+      box-shadow: 0 8px 24px rgba(0,0,0,.18);
+    }
+    .bulk-table .tag-input-wrap {
+      padding: 4px 6px; min-height: 34px; border: 1.5px solid var(--border);
+      background: var(--white); display: flex; flex-wrap: wrap; gap: 3px;
+      align-items: center; transition: border-color .3s; cursor: text;
+    }
+    .bulk-table .tag-input-wrap:focus-within {
+      border-color: var(--black); box-shadow: 0 0 0 2px rgba(17,17,17,.06);
+    }
+    .bulk-table .tag-input-field {
+      border: none !important; padding: 2px 4px !important;
+      min-width: 50px; flex: 1; font-size: .75rem !important;
+      box-shadow: none !important; outline: none;
+    }
+    .bulk-table .tag-chip {
+      font-size: .62rem; padding: 1px 6px; white-space: nowrap;
+    }
+    .bulk-add-row {
+      display: flex; align-items: center; justify-content: center;
+      gap: 8px; padding: 14px 0; border: 2px dashed var(--border);
+      cursor: pointer; color: var(--text3); transition: all .3s;
+      font-family: var(--mono); font-size: .7rem; letter-spacing: 2px;
+      text-transform: uppercase; font-weight: 500; margin-top: 12px;
+    }
+    .bulk-add-row:hover { color: var(--text); border-color: var(--text3); }
+    .bulk-add-multi {
+      display: flex; align-items: center; gap: 12px;
+      margin-top: 12px;
+    }
+    .bulk-add-multi label {
+      font-family: var(--mono); font-size: .68rem; font-weight: 500;
+      letter-spacing: 1px; text-transform: uppercase; color: var(--text3);
+    }
+    .bulk-add-multi input {
+      width: 60px; padding: 6px 10px; font-size: .82rem; text-align: center;
+      border: 1.5px solid var(--border); background: var(--white);
+      font-family: var(--mono); outline: none;
+    }
+    .bulk-add-multi button {
+      padding: 6px 16px; font-family: var(--mono); font-size: .68rem;
+      font-weight: 600; letter-spacing: 1px; text-transform: uppercase;
+      border: 1px solid var(--border2); background: var(--bg);
+      color: var(--text2); cursor: pointer; transition: all .2s;
+    }
+    .bulk-add-multi button:hover { border-color: var(--text); color: var(--text); }
+    @media (max-width: 900px) {
+      .bulk-modal .modal { width: 98vw; }
+      .bulk-modal .modal-body { padding: 16px; }
+      .bulk-top-bar { flex-direction: column; gap: 8px; align-items: flex-start; }
+    }
+
 
     /* Confetti */
     .confetti-c { position: fixed; inset: 0; pointer-events: none; z-index: 400; }
@@ -1139,6 +1273,7 @@
       <p class="detail-hero-desc" id="detailDesc"></p>
       <div class="detail-hero-actions">
         <button class="detail-hero-btn filled" onclick="openNewActivity()">+ Add Activity</button>
+        <button class="detail-hero-btn" onclick="openBulkAdd()">Bulk Add</button>
         <button class="detail-hero-btn" onclick="openEditList()">Edit Collection</button>
         <button class="detail-hero-btn danger" data-delete="collection">Delete</button>
         <button class="detail-hero-btn" onclick="goBack()">&#8592; Back</button>
@@ -1257,6 +1392,50 @@
   </div>
 </div>
 
+<!-- Bulk Add modal -->
+<div class="modal-overlay bulk-modal" id="bulkAddModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Bulk Add Activities</div>
+      <button class="modal-close" onclick="closeModal('bulkAddModal')">&#x2715;</button>
+    </div>
+    <div class="modal-body">
+      <div class="bulk-top-bar">
+        <p class="bulk-hint">Add multiple activities at once — only the name is required.</p>
+        <div class="bulk-count" id="bulkCount">1 activity</div>
+      </div>
+      <div class="bulk-table-wrap">
+        <table class="bulk-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Name *</th>
+              <th>Description</th>
+              <th>Location <button class="bulk-apply-btn" onclick="bulkApplyDown('loc')" title="Copy first row's location to all rows">&#x25BC; Fill</button></th>
+              <th>Date <button class="bulk-apply-btn" onclick="bulkApplyDown('date')" title="Copy first row's date to all rows">&#x25BC; Fill</button></th>
+              <th>Priority <button class="bulk-apply-btn" onclick="bulkApplyDown('pri')" title="Copy first row's priority to all rows">&#x25BC; Fill</button></th>
+              <th>Tags <button class="bulk-apply-btn" onclick="bulkApplyDown('tags')" title="Copy first row's tags to all rows">&#x25BC; Fill</button></th>
+              <th>Links</th>
+            </tr>
+          </thead>
+          <tbody id="bulkEntries"></tbody>
+        </table>
+      </div>
+      <div class="bulk-add-row" onclick="addBulkEntry()">+ Add Another Row</div>
+      <div class="bulk-add-multi">
+        <label>Add</label>
+        <input type="number" id="bulkAddCount" value="5" min="1" max="50" />
+        <label>rows</label>
+        <button onclick="addBulkMultiple()">Add Rows</button>
+      </div>
+      <div class="form-actions" style="margin-top:20px">
+        <button class="btn btn-s" onclick="closeModal('bulkAddModal')">Cancel</button>
+        <button class="btn btn-p" id="bulkSaveBtn" onclick="saveBulkActivities()">Add All</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Activity detail modal -->
 <div class="modal-overlay detail-modal" id="detModal">
   <div class="modal">
@@ -1280,6 +1459,7 @@
     </div>
   </div>
 </div>
+
 
 <!-- Lightbox / Gallery -->
 <div class="lightbox" id="lightbox">
@@ -1779,6 +1959,171 @@ async function delList(id){
 /* ==============================================================
    ACTIVITY CRUD
    ============================================================== */
+/* ==============================================================
+   BULK ADD
+   ============================================================== */
+let bulkEntries=[];
+function openBulkAdd(){
+  bulkEntries=[];
+  addBulkEntry();
+  openModal('bulkAddModal');
+  setTimeout(()=>{
+    const first=document.querySelector('#bulkEntries input[id^="bName_"]');
+    if(first)first.focus();
+  },300);
+}
+function addBulkEntry(){
+  bulkEntries.push({tags:[],links:[]});
+  renderBulkEntries();
+  setTimeout(()=>{
+    const el=document.getElementById('bEntry_'+(bulkEntries.length-1));
+    if(el)el.scrollIntoView({behavior:'smooth',block:'nearest'});
+    const nameInput=document.getElementById('bName_'+(bulkEntries.length-1));
+    if(nameInput)nameInput.focus();
+  },50);
+}
+function addBulkMultiple(){
+  const count=Math.min(Math.max(parseInt($('bulkAddCount').value)||1,1),50);
+  for(let i=0;i<count;i++) bulkEntries.push({tags:[],links:[]});
+  renderBulkEntries();
+  setTimeout(()=>{
+    const el=document.getElementById('bEntry_'+(bulkEntries.length-1));
+    if(el)el.scrollIntoView({behavior:'smooth',block:'nearest'});
+  },50);
+}
+function removeBulkEntry(idx){
+  if(bulkEntries.length<=1)return;
+  saveBulkFieldValues();
+  bulkEntries.splice(idx,1);
+  renderBulkEntries();
+}
+function updateBulkCount(){
+  $('bulkCount').textContent=bulkEntries.length+' activit'+(bulkEntries.length===1?'y':'ies');
+}
+function saveBulkFieldValues(){
+  bulkEntries.forEach((entry,i)=>{
+    const n=document.getElementById('bName_'+i);
+    if(n){
+      entry._name=n.value;
+      entry._desc=(document.getElementById('bDesc_'+i)||{}).value||'';
+      entry._loc=(document.getElementById('bLoc_'+i)||{}).value||'';
+      entry._locLat=(document.getElementById('bLocLat_'+i)||{}).value||'';
+      entry._locLng=(document.getElementById('bLocLng_'+i)||{}).value||'';
+      entry._date=(document.getElementById('bDate_'+i)||{}).value||'';
+      entry._pri=(document.getElementById('bPri_'+i)||{}).value||'medium';
+    }
+  });
+}
+let _skipSaveBulk=false;
+function bulkApplyDown(field){
+  if(!bulkEntries.length)return;
+  saveBulkFieldValues();
+  const first=bulkEntries[0];
+  if(field==='date'){
+    const v=first._date||'';
+    bulkEntries.forEach(e=>e._date=v);
+  } else if(field==='pri'){
+    const v=first._pri||'medium';
+    bulkEntries.forEach(e=>e._pri=v);
+  } else if(field==='tags'){
+    const v=[...(first.tags||[])];
+    bulkEntries.forEach(e=>e.tags=[...v]);
+  } else if(field==='loc'){
+    const v=first._loc||'';
+    const lat=first._locLat||'';
+    const lng=first._locLng||'';
+    bulkEntries.forEach(e=>{e._loc=v;e._locLat=lat;e._locLng=lng;});
+  }
+  _skipSaveBulk=true;
+  renderBulkEntries();
+  _skipSaveBulk=false;
+}
+function renderBulkEntries(){
+  if(!_skipSaveBulk) saveBulkFieldValues();
+  const wrap=$('bulkEntries');
+  wrap.innerHTML=bulkEntries.map((entry,i)=>{
+    return `<tr id="bEntry_${i}">
+      <td>
+        <div class="bulk-row-num">
+          <span>${i+1}</span>
+          ${bulkEntries.length>1?`<button class="bulk-row-remove" onclick="removeBulkEntry(${i})" title="Remove">&#x2715;</button>`:''}
+        </div>
+      </td>
+      <td><input id="bName_${i}" placeholder="Activity name" maxlength="100" value="${esc(entry._name||'')}" /></td>
+      <td><textarea id="bDesc_${i}" placeholder="Description">${esc(entry._desc||'')}</textarea></td>
+      <td>
+        <div class="loc-wrap">
+          <input id="bLoc_${i}" placeholder="Search location" maxlength="200" autocomplete="off" value="${esc(entry._loc||'')}" oninput="locSearch(this,'bLocRes_${i}')" onfocus="locSearch(this,'bLocRes_${i}')" />
+          <input type="hidden" id="bLocLat_${i}" value="${esc(entry._locLat||'')}" />
+          <input type="hidden" id="bLocLng_${i}" value="${esc(entry._locLng||'')}" />
+          <div class="loc-results" id="bLocRes_${i}"></div>
+        </div>
+      </td>
+      <td><input type="date" id="bDate_${i}" value="${entry._date||''}" /></td>
+      <td><select id="bPri_${i}"><option value="low"${(entry._pri||'medium')==='low'?' selected':''}>Low</option><option value="medium"${(entry._pri||'medium')==='medium'?' selected':''}>Med</option><option value="high"${(entry._pri||'medium')==='high'?' selected':''}>High</option></select></td>
+      <td>
+        <div class="tag-input-wrap" id="bTagsWrap_${i}" onclick="document.getElementById('bTagInput_${i}').focus()">
+          ${(entry.tags||[]).map((t,ti)=>`<span class="tag-chip">${esc(t)}<button onclick="bulkRemoveTag(${i},${ti})">&times;</button></span>`).join('')}
+          <input class="tag-input-field" id="bTagInput_${i}" placeholder="${entry.tags.length?'':'+ tag'}" onkeydown="bulkTagKey(event,${i},'tags')" />
+        </div>
+      </td>
+      <td>
+        <div class="tag-input-wrap" id="bLinksWrap_${i}" onclick="document.getElementById('bLinkInput_${i}').focus()">
+          ${(entry.links||[]).map((l,li)=>`<span class="tag-chip">${esc(l)}<button onclick="bulkRemoveLink(${i},${li})">&times;</button></span>`).join('')}
+          <input class="tag-input-field" id="bLinkInput_${i}" placeholder="${entry.links.length?'':'+ link'}" onkeydown="bulkTagKey(event,${i},'links')" />
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+  updateBulkCount();
+}
+function bulkTagKey(e,idx,which){
+  if(e.key==='Enter'||e.key==='Tab'){
+    e.preventDefault();
+    const v=e.target.value.trim();if(!v)return;
+    if(!bulkEntries[idx][which].includes(v))bulkEntries[idx][which].push(v);
+    e.target.value='';
+    renderBulkEntries();
+    setTimeout(()=>{
+      const id=which==='tags'?'bTagInput_'+idx:'bLinkInput_'+idx;
+      const el=document.getElementById(id);if(el)el.focus();
+    },20);
+  }
+  if(e.key==='Backspace'&&!e.target.value){
+    const arr=bulkEntries[idx][which];
+    if(arr.length){arr.pop();renderBulkEntries();setTimeout(()=>{const id=which==='tags'?'bTagInput_'+idx:'bLinkInput_'+idx;const el=document.getElementById(id);if(el)el.focus();},20);}
+  }
+}
+function bulkRemoveTag(idx,ti){saveBulkFieldValues();bulkEntries[idx].tags.splice(ti,1);renderBulkEntries();}
+function bulkRemoveLink(idx,li){saveBulkFieldValues();bulkEntries[idx].links.splice(li,1);renderBulkEntries();}
+async function saveBulkActivities(){
+  saveBulkFieldValues();
+  const valid=bulkEntries.filter(e=>(e._name||'').trim());
+  if(!valid.length){
+    const first=document.getElementById('bName_0');
+    if(first)shakeEl(first);
+    return;
+  }
+  $('bulkSaveBtn').textContent='Adding…';$('bulkSaveBtn').disabled=true;
+  const rows=valid.map(e=>({
+    name:e._name.trim(),
+    collection_id:curListId,
+    description:e._desc.trim()||null,
+    location:e._loc.trim()||null,
+    location_lat:parseFloat(e._locLat)||null,
+    location_lng:parseFloat(e._locLng)||null,
+    target_date:e._date||null,
+    priority:e._pri||'medium',
+    category_tag:e.tags||[],
+    links:e.links||[]
+  }));
+  const{error}=await sb.from('Activities').insert(rows);
+  $('bulkSaveBtn').textContent='Add All';$('bulkSaveBtn').disabled=false;
+  if(error){console.error('bulkAdd:',error);alert('Error: '+error.message);return;}
+  await updateCollectionStats(curListId);
+  closeModal('bulkAddModal');renderDetail();
+}
+
 function openNewActivity(){
   editingActId=null;aTags=[];aLinks=[];
   $('aName').value='';$('aDesc').value='';$('aLoc').value='';$('aLocLat').value='';$('aLocLng').value='';$('aDate').value='';$('aPri').value='medium';
@@ -1826,6 +2171,7 @@ async function delActivity(id){
   await updateCollectionStats(curListId);
   renderDetail();
 }
+
 
 /* ==============================================================
    COMPLETION
@@ -2134,14 +2480,21 @@ function locSearch(input,resultsId){
         </div>`;
       }).join('');
       box.classList.add('open');
+      /* Position fixed dropdowns in bulk table */
+      if(box.style.position==='fixed'||getComputedStyle(box).position==='fixed'){
+        const rect=input.getBoundingClientRect();
+        box.style.top=rect.bottom+'px';
+        box.style.left=rect.left+'px';
+        box.style.width=rect.width+'px';
+      }
     }catch(e){console.error('locSearch error:',e);}
   },350);
 }
 function locPick(el,resultsId,display,lat,lng){
   const box=$(resultsId);
   const input=box.parentElement.querySelector('input[type="text"],input:not([type="hidden"])');
-  const latInput=box.parentElement.querySelector('input[id$="Lat"]');
-  const lngInput=box.parentElement.querySelector('input[id$="Lng"]');
+  const latInput=box.parentElement.querySelector('input[id*="Lat"]');
+  const lngInput=box.parentElement.querySelector('input[id*="Lng"]');
   input.value=display;
   if(latInput)latInput.value=lat;
   if(lngInput)lngInput.value=lng;
