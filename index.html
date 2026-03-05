@@ -505,8 +505,20 @@
       font-family: var(--mono); font-size: .72rem; letter-spacing: .5px;
       color: var(--text2); font-weight: 500;
     }
-    .activity-row-date.overdue { color: var(--danger); font-weight: 600; }
-    .activity-row-date.soon { color: var(--terra); font-weight: 600; }
+
+    /* Time-left badges */
+    .time-badge {
+      display: inline-block; font-family: var(--mono); font-size: .62rem;
+      letter-spacing: .8px; font-weight: 600; padding: 4px 10px;
+      border-radius: 20px; white-space: nowrap; text-transform: uppercase;
+    }
+    .time-badge.time-overdue { background: #f8d7da; color: #8b2d2d; border: 1px solid #e4a0a0; }
+    .time-badge.time-urgent { background: #fde8e0; color: #b84e4e; border: 1px solid #e8a494; }
+    .time-badge.time-soon { background: #fdf0e2; color: #a0603a; border: 1px solid #dfc09a; }
+    .time-badge.time-moderate { background: #f5f0d8; color: #8a7a30; border: 1px solid #d6cc8a; }
+    .time-badge.time-relaxed { background: var(--olive-light); color: var(--olive); border: 1px solid #b0bda0; }
+    .time-badge.time-forever { background: #e8e4f0; color: #6b5b8a; border: 1px solid #c4bad8; letter-spacing: 1px; }
+    .time-badge.time-done { background: var(--olive-light); color: var(--olive); border: 1px solid var(--olive); }
 
     .activity-row-status {
       font-family: var(--mono); font-size: .62rem; letter-spacing: 1.5px;
@@ -1338,7 +1350,17 @@
         </div>
       </div>
       <div class="fg-row">
-        <div class="fg"><label>Target Date</label><input type="date" id="aDate" /></div>
+        <div class="fg"><label>Target Date</label>
+          <select id="aDate">
+            <option value="Before I Die">Before I Die</option>
+            <option value="This Month">This Month</option>
+            <option value="This Year">This Year</option>
+            <option value="Next Year">Next Year</option>
+            <option value="In 2-3 Years">In 2-3 Years</option>
+            <option value="In 5+ Years">In 5+ Years</option>
+            <option value="">No timeframe</option>
+          </select>
+        </div>
         <div class="fg"><label>Priority</label>
           <select id="aPri"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select>
         </div>
@@ -1412,7 +1434,7 @@
               <th>Name *</th>
               <th>Description</th>
               <th>Location <button class="bulk-apply-btn" onclick="bulkApplyDown('loc')" title="Copy first row's location to all rows">&#x25BC; Fill</button></th>
-              <th>Date <button class="bulk-apply-btn" onclick="bulkApplyDown('date')" title="Copy first row's date to all rows">&#x25BC; Fill</button></th>
+              <th>Target Date <button class="bulk-apply-btn" onclick="bulkApplyDown('date')" title="Copy first row's target date to all rows">&#x25BC; Fill</button></th>
               <th>Priority <button class="bulk-apply-btn" onclick="bulkApplyDown('pri')" title="Copy first row's priority to all rows">&#x25BC; Fill</button></th>
               <th>Tags <button class="bulk-apply-btn" onclick="bulkApplyDown('tags')" title="Copy first row's tags to all rows">&#x25BC; Fill</button></th>
               <th>Links</th>
@@ -1837,6 +1859,7 @@ async function renderActivitiesList(){
 
   if(curView==='grid'){
     $('activitiesList').innerHTML=acts.map((a,i)=>{
+      const di=dateInfo(a);
       const photoCell=a.photos&&a.photos.length
         ? `<div class="activity-card-photo"><img src="${a.photos[0]}" alt="" loading="lazy"/></div>`
         : `<div class="activity-card-photo"><div class="activity-card-photo-empty">Not Yet<br>Completed</div></div>`;
@@ -1846,7 +1869,9 @@ async function renderActivitiesList(){
         <div class="activity-card-body">
           <div class="activity-card-name">${esc(a.name)}</div>
           ${a.tags&&a.tags.length?`<div class="activity-row-tags">${a.tags.map(t=>`<span class="tag-pill">${esc(t)}</span>`).join('')}</div>`:''}
-          <div class="activity-card-status ${a.completed?'done':'pending'}">${a.completed?'Completed':'Pending'}</div>
+          ${a.completed
+            ? `<div class="activity-card-status done">Completed</div>`
+            : (di.label ? `<span class="time-badge ${di.cls}">${di.label}</span>` : `<div class="activity-card-status pending">Pending</div>`)}
         </div>
       </div>`;
     }).join('')+`<div class="activity-card" style="border:2px dashed var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;min-height:200px" onclick="openNewActivity()"><span style="color:var(--text2);font-family:var(--mono);font-size:.8rem;letter-spacing:1px">+ ADD</span></div>`;
@@ -1867,7 +1892,7 @@ async function renderActivitiesList(){
         ${a.description?`<div class="activity-row-desc">${esc(a.description)}</div>`:''}
         ${a.tags&&a.tags.length?`<div class="activity-row-tags">${a.tags.map(t=>`<span class="tag-pill">${esc(t)}</span>`).join('')}</div>`:''}
       </div>
-      <div class="activity-row-date ${di.cls}">${di.label||'—'}</div>
+      <div class="activity-row-date">${di.label ? `<span class="time-badge ${di.cls}">${di.label}</span>` : '—'}</div>
       <div class="activity-row-status ${a.completed?'done':'pending'}">${a.completed?'Completed':'Pending'}</div>
       <div class="activity-row-actions">
         ${compBtn}
@@ -2059,7 +2084,7 @@ function renderBulkEntries(){
           <div class="loc-results" id="bLocRes_${i}"></div>
         </div>
       </td>
-      <td><input type="date" id="bDate_${i}" value="${entry._date||''}" /></td>
+      <td><select id="bDate_${i}"><option value="Before I Die"${(entry._date||'Before I Die')==='Before I Die'?' selected':''}>Before I Die</option><option value="This Month"${(entry._date)==='This Month'?' selected':''}>This Mo</option><option value="This Year"${(entry._date)==='This Year'?' selected':''}>This Year</option><option value="Next Year"${(entry._date)==='Next Year'?' selected':''}>Next Year</option><option value="In 2-3 Years"${(entry._date)==='In 2-3 Years'?' selected':''}>2-3 Yrs</option><option value="In 5+ Years"${(entry._date)==='In 5+ Years'?' selected':''}>5+ Yrs</option><option value=""${(entry._date)===''?' selected':''}>—</option></select></td>
       <td><select id="bPri_${i}"><option value="low"${(entry._pri||'medium')==='low'?' selected':''}>Low</option><option value="medium"${(entry._pri||'medium')==='medium'?' selected':''}>Med</option><option value="high"${(entry._pri||'medium')==='high'?' selected':''}>High</option></select></td>
       <td>
         <div class="tag-input-wrap" id="bTagsWrap_${i}" onclick="document.getElementById('bTagInput_${i}').focus()">
@@ -2126,7 +2151,7 @@ async function saveBulkActivities(){
 
 function openNewActivity(){
   editingActId=null;aTags=[];aLinks=[];
-  $('aName').value='';$('aDesc').value='';$('aLoc').value='';$('aLocLat').value='';$('aLocLng').value='';$('aDate').value='';$('aPri').value='medium';
+  $('aName').value='';$('aDesc').value='';$('aLoc').value='';$('aLocLat').value='';$('aLocLng').value='';$('aDate').value='Before I Die';$('aPri').value='medium';
   renderTagChips('aTags');renderTagChips('aLinks');
   $('actModalTitle').textContent='New Activity';
   $('actSaveBtn').textContent='Add';
@@ -2266,8 +2291,10 @@ async function openDetModal(id){
   } else {
     /* --- Pending view: show all info --- */
     const infoItems=[];
-    if(a.targetDate) infoItems.push(['Target Date',fmtDate(a.targetDate)]);
-    if(a.targetDate){const di=dateInfo(a);if(di.label) infoItems.push(['Status',`<span class="${di.cls}">${di.label}</span>`]);}
+    if(a.targetDate){
+      const di=dateInfo(a);
+      infoItems.push(['Target Date',`${esc(a.targetDate)}${di.label?` <span class="time-badge ${di.cls}" style="margin-left:8px">${di.label}</span>`:''}`]);
+    }
     if(infoItems.length) h+=`<div class="dm-info-grid">${infoItems.map(([k,v])=>`<div class="dm-info-item"><div class="dm-info-label">${k}</div><div class="dm-info-value">${v}</div></div>`).join('')}</div>`;
     if(a.location) h+=`<div class="dm-notes"><strong>Location</strong>${esc(a.location)}</div>`;
     if(a.description) h+=`<div class="dm-notes"><strong>Description</strong>${esc(a.description)}</div>`;
@@ -2411,14 +2438,33 @@ function esc(s){const d=document.createElement('div');d.textContent=s;return d.i
 function cap(s){return s.charAt(0).toUpperCase()+s.slice(1);}
 function fmtDate(s){return new Date(s+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}
 function dateInfo(a){
-  if(a.completed&&a.completedDate) return{label:fmtDate(a.completedDate),cls:''};
+  if(a.completed) return{label:a.completedDate?fmtDate(a.completedDate):'Done',cls:'time-done'};
   if(!a.targetDate) return{label:'',cls:''};
-  const t=new Date(a.targetDate+'T00:00:00'),n=new Date();n.setHours(0,0,0,0);
-  const diff=Math.ceil((t-n)/864e5);
-  if(a.completed) return{label:fmtDate(a.targetDate),cls:''};
-  if(diff<0) return{label:'Overdue',cls:'overdue'};
-  if(diff<=30) return{label:diff+'d left',cls:'soon'};
-  return{label:fmtDate(a.targetDate),cls:''};
+  if(a.targetDate==='Before I Die') return{label:'∞ Lifetime',cls:'time-forever'};
+  const now=new Date();
+  let target;
+  switch(a.targetDate){
+    case 'This Month': target=new Date(now.getFullYear(),now.getMonth()+1,0); break;
+    case 'This Year': target=new Date(now.getFullYear(),11,31); break;
+    case 'Next Year': target=new Date(now.getFullYear()+1,11,31); break;
+    case 'In 2-3 Years': target=new Date(now.getFullYear()+3,11,31); break;
+    case 'In 5+ Years': target=new Date(now.getFullYear()+5,11,31); break;
+    default: return{label:a.targetDate,cls:''};
+  }
+  const diffMs=target-now;
+  const diffDays=Math.ceil(diffMs/(864e5));
+  if(diffDays<0) return{label:'Overdue',cls:'time-overdue'};
+  const diffMonths=Math.round(diffDays/30.44);
+  const diffYears=diffDays/365.25;
+  if(diffYears>2){
+    const y=Math.round(diffYears);
+    return{label:`~${y} yr${y!==1?'s':''}`,cls:'time-relaxed'};
+  }
+  if(diffDays>=30){
+    const cls=diffMonths>6?'time-moderate':'time-soon';
+    return{label:`${diffMonths} mo${diffMonths!==1?'s':''}`,cls};
+  }
+  return{label:`${diffDays} day${diffDays!==1?'s':''}`,cls:'time-urgent'};
 }
 function shakeEl(el){el.style.borderColor='var(--danger)';el.style.animation='shake .4s ease';setTimeout(()=>{el.style.borderColor='';el.style.animation='';},600);}
 
