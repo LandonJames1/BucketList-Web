@@ -318,17 +318,34 @@
     }
     /* New collection card */
     .collection-card-new {
+      position: relative; aspect-ratio: 4/5; overflow: hidden;
       display: flex; flex-direction: column; align-items: center;
-      justify-content: center; gap: 16px;
-      border: 2px dashed var(--border2); background: var(--white);
-      cursor: pointer; transition: all .3s var(--ease);
+      justify-content: center; gap: 14px;
+      background: linear-gradient(145deg, var(--bg2) 0%, var(--white) 100%);
+      border: 2px dashed var(--border2);
+      cursor: pointer; transition: all .4s var(--ease);
     }
-    .collection-card-new:hover { border-color: var(--text); border-style: solid; }
-    .collection-card-new .plus { font-size: 2.4rem; font-weight: 300; color: var(--text2); }
+    .collection-card-new:hover {
+      border-color: var(--olive); border-style: solid;
+      background: linear-gradient(145deg, var(--olive-light) 0%, var(--white) 100%);
+      box-shadow: 0 8px 40px rgba(0,0,0,.1);
+    }
+    .collection-card-new .plus {
+      width: 56px; height: 56px; display: flex; align-items: center;
+      justify-content: center; font-size: 1.6rem; font-weight: 300;
+      color: var(--text3); border: 2px solid var(--border2);
+      border-radius: 50%; transition: all .4s var(--ease);
+    }
+    .collection-card-new:hover .plus {
+      color: var(--olive); border-color: var(--olive);
+      background: var(--white); transform: scale(1.1);
+    }
     .collection-card-new span {
-      font-family: var(--mono); font-size: .72rem; letter-spacing: 2px;
-      text-transform: uppercase; color: var(--text2); font-weight: 600;
+      font-family: var(--mono); font-size: .68rem; letter-spacing: 2px;
+      text-transform: uppercase; color: var(--text3); font-weight: 600;
+      transition: color .3s;
     }
+    .collection-card-new:hover span { color: var(--olive); }
 
     /*  ============================================================
         DETAIL PAGE — Shows a single collection's activities
@@ -459,19 +476,7 @@
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       line-height: 1.5;
     }
-    .activity-row-tag {
-      font-family: var(--mono); font-size: .62rem; letter-spacing: 1.5px;
-      color: var(--text2); text-transform: uppercase; margin-top: 6px;
-      font-weight: 500;
-    }
-    .activity-row-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
-    .activity-row-tags .tag-pill {
-      font-family: var(--mono); font-size: .58rem; letter-spacing: 1px;
-      text-transform: uppercase; font-weight: 600; padding: 3px 10px;
-      background: var(--bg2); color: var(--text3); border: 1px solid var(--border);
-    }
-
-    /* Tag chip input */
+    /* Tag chip input (used by links) */
     .tag-input-wrap {
       display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
       border: 1.5px solid var(--border2); padding: 8px 12px; min-height: 44px;
@@ -594,16 +599,62 @@
 
     /* Add activity row */
     .add-activity-row {
-      display: flex; align-items: center; justify-content: center;
-      gap: 12px; padding: 36px 0; border: 2px dashed var(--border);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 10px; padding: 32px 0; border: 2px dashed var(--border2);
       margin-top: 24px;
-      cursor: pointer; color: var(--text2); transition: all .3s;
+      background: linear-gradient(145deg, var(--bg2) 0%, var(--white) 100%);
+      cursor: pointer; color: var(--text3); transition: all .4s var(--ease);
     }
-    .add-activity-row:hover { color: var(--text); border-color: var(--text2); }
+    .add-activity-row:hover {
+      border-color: var(--olive); border-style: solid;
+      background: linear-gradient(145deg, var(--olive-light) 0%, var(--white) 100%);
+      box-shadow: 0 4px 20px rgba(0,0,0,.06);
+    }
+    .add-activity-row .add-icon {
+      width: 40px; height: 40px; display: flex; align-items: center;
+      justify-content: center; font-size: 1.2rem; font-weight: 300;
+      color: var(--text3); border: 2px solid var(--border2);
+      border-radius: 50%; transition: all .4s var(--ease);
+    }
+    .add-activity-row:hover .add-icon {
+      color: var(--olive); border-color: var(--olive);
+      background: var(--white); transform: scale(1.1);
+    }
     .add-activity-row span {
-      font-family: var(--mono); font-size: .7rem; letter-spacing: 2px;
-      text-transform: uppercase; font-weight: 500;
+      font-family: var(--mono); font-size: .68rem; letter-spacing: 2px;
+      text-transform: uppercase; font-weight: 600; transition: color .3s;
     }
+    .add-activity-row:hover span { color: var(--olive); }
+
+    /* Add activity card (grid view) */
+    .add-activity-card {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 12px;
+      border: 2px dashed var(--border2); min-height: 200px;
+      background: linear-gradient(145deg, var(--bg2) 0%, var(--white) 100%);
+      cursor: pointer; transition: all .4s var(--ease);
+    }
+    .add-activity-card:hover {
+      border-color: var(--olive); border-style: solid;
+      background: linear-gradient(145deg, var(--olive-light) 0%, var(--white) 100%);
+      box-shadow: 0 4px 20px rgba(0,0,0,.06);
+    }
+    .add-activity-card .add-icon {
+      width: 44px; height: 44px; display: flex; align-items: center;
+      justify-content: center; font-size: 1.3rem; font-weight: 300;
+      color: var(--text3); border: 2px solid var(--border2);
+      border-radius: 50%; transition: all .4s var(--ease);
+    }
+    .add-activity-card:hover .add-icon {
+      color: var(--olive); border-color: var(--olive);
+      background: var(--white); transform: scale(1.1);
+    }
+    .add-activity-card span {
+      font-family: var(--mono); font-size: .68rem; letter-spacing: 2px;
+      text-transform: uppercase; color: var(--text3); font-weight: 600;
+      transition: color .3s;
+    }
+    .add-activity-card:hover span { color: var(--olive); }
 
     /*  ============================================================
         MODALS
@@ -644,6 +695,11 @@
       display: block; font-family: var(--mono); font-size: .72rem;
       font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase;
       color: var(--text); margin-bottom: 10px;
+    }
+    .fg label .req { color: var(--terra); margin-left: 2px; }
+    .fg label .opt {
+      font-weight: 400; color: var(--text3); letter-spacing: .8px;
+      font-size: .62rem; margin-left: 6px; text-transform: lowercase;
     }
     .fg input, .fg textarea, .fg select {
       width: 100%; padding: 14px 16px; border: 1.5px solid var(--border2);
@@ -800,12 +856,6 @@
     .dm-info-value {
       font-size: .95rem; font-weight: 600; color: var(--text);
     }
-    .dm-tag-line {
-      font-family: var(--mono); font-size: .68rem; letter-spacing: 1.5px;
-      text-transform: uppercase; color: var(--text2); font-weight: 500;
-      margin-bottom: 20px;
-    }
-
     .dm-notes {
       background: var(--bg); border: 1.5px solid var(--border2);
       padding: 24px; margin-bottom: 20px; font-size: .95rem;
@@ -864,22 +914,6 @@
     .lb-counter {
       margin-top: 16px; font-family: var(--mono); font-size: .75rem;
       letter-spacing: 1.5px; color: rgba(255,255,255,.6); font-weight: 500;
-    }
-
-    /* Tag filter bar */
-    .tag-filter-bar {
-      display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 20px;
-    }
-    .tag-filter-bar:empty { display: none; }
-    .tag-filter-btn {
-      font-family: var(--mono); font-size: .68rem; font-weight: 500;
-      letter-spacing: .8px; text-transform: uppercase; padding: 4px 14px;
-      border: 1px solid var(--border); background: transparent;
-      color: var(--text3); cursor: pointer; transition: all .2s var(--ease);
-    }
-    .tag-filter-btn:hover { border-color: var(--olive); color: var(--olive); }
-    .tag-filter-btn.active {
-      background: var(--olive); color: #fff; border-color: var(--olive);
     }
 
     /* Link chip */
@@ -1259,7 +1293,6 @@
       <button class="btn btn-p" onclick="openNewList()">+ New Collection</button>
     </div>
   </div>
-  <div class="tag-filter-bar" id="collTagFilter"></div>
   <div class="collections-grid" id="collectionsGrid"></div>
 </div>
 
@@ -1293,7 +1326,6 @@
     </div>
   </div>
   <div class="detail-bar" id="detailBar"></div>
-  <div class="tag-filter-bar" id="detTagFilter"></div>
   <div class="activities-wrap">
     <div class="activities-list" id="activitiesList"></div>
     <div class="map-box" id="mapContainer"></div>
@@ -1310,14 +1342,9 @@
       <button class="modal-close" onclick="closeModal('listModal')">&#x2715;</button>
     </div>
     <div class="modal-body">
-      <div class="fg"><label>Name</label><input id="lName" placeholder="e.g. Travel Adventures" maxlength="60" /></div>
-      <div class="fg"><label>Description</label><input id="lDesc" placeholder="A brief description..." maxlength="120" /></div>
-      <div class="fg"><label>Tags</label>
-        <div class="tag-input-wrap" id="lTagsWrap" onclick="$('lTagInput').focus()">
-          <input class="tag-input-field" id="lTagInput" placeholder="Type a tag and press Enter..." onkeydown="handleTagKey(event,'lTags')" />
-        </div>
-      </div>
-      <div class="fg"><label>Cover Image</label>
+      <div class="fg"><label>Name<span class="req">*</span></label><input id="lName" placeholder="e.g. Travel Adventures" maxlength="60" /></div>
+      <div class="fg"><label>Description<span class="opt">optional</span></label><input id="lDesc" placeholder="A brief description..." maxlength="120" /></div>
+      <div class="fg"><label>Cover Image<span class="opt">optional</span></label>
         <div class="photo-zone" id="coverZone" onclick="$('coverInput').click()">
           <div class="uz-icon">&#x1F5BC;</div><p>Upload a cover image</p>
         </div>
@@ -1340,9 +1367,9 @@
       <button class="modal-close" onclick="closeModal('actModal')">&#x2715;</button>
     </div>
     <div class="modal-body">
-      <div class="fg"><label>Activity</label><input id="aName" placeholder="e.g. Skydiving in Dubai" maxlength="100" /></div>
-      <div class="fg"><label>Description</label><textarea id="aDesc" placeholder="Why is this on your list?"></textarea></div>
-      <div class="fg"><label>Location</label>
+      <div class="fg"><label>Activity<span class="req">*</span></label><input id="aName" placeholder="e.g. Skydiving in Dubai" maxlength="100" /></div>
+      <div class="fg"><label>Description<span class="opt">optional</span></label><textarea id="aDesc" placeholder="Why is this on your list?"></textarea></div>
+      <div class="fg"><label>Location<span class="opt">optional</span></label>
         <div class="loc-wrap" id="aLocWrap">
           <input id="aLoc" placeholder="Search for a place..." maxlength="200" autocomplete="off" oninput="locSearch(this,'aLocResults')" onfocus="locSearch(this,'aLocResults')" />
           <input type="hidden" id="aLocLat" /><input type="hidden" id="aLocLng" />
@@ -1365,12 +1392,7 @@
           <select id="aPri"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select>
         </div>
       </div>
-      <div class="fg"><label>Tags</label>
-        <div class="tag-input-wrap" id="aTagsWrap" onclick="$('aTagInput').focus()">
-          <input class="tag-input-field" id="aTagInput" placeholder="Type a tag and press Enter..." onkeydown="handleTagKey(event,'aTags')" />
-        </div>
-      </div>
-      <div class="fg"><label>Links</label>
+      <div class="fg"><label>Links<span class="opt">optional</span></label>
         <div class="tag-input-wrap" id="aLinksWrap" onclick="$('aLinkInput').focus()">
           <input class="tag-input-field" id="aLinkInput" placeholder="Paste a URL and press Enter..." onkeydown="handleTagKey(event,'aLinks')" />
         </div>
@@ -1436,7 +1458,6 @@
               <th>Location <button class="bulk-apply-btn" onclick="bulkApplyDown('loc')" title="Copy first row's location to all rows">&#x25BC; Fill</button></th>
               <th>Target Date <button class="bulk-apply-btn" onclick="bulkApplyDown('date')" title="Copy first row's target date to all rows">&#x25BC; Fill</button></th>
               <th>Priority <button class="bulk-apply-btn" onclick="bulkApplyDown('pri')" title="Copy first row's priority to all rows">&#x25BC; Fill</button></th>
-              <th>Tags <button class="bulk-apply-btn" onclick="bulkApplyDown('tags')" title="Copy first row's tags to all rows">&#x25BC; Fill</button></th>
               <th>Links</th>
             </tr>
           </thead>
@@ -1537,7 +1558,7 @@ function randCover(existingCovers){
    STATE
    ============================================================== */
 let curPage='home',curListId=null,editingListId=null,editingActId=null;
-let completingId=null,curFilter='all',curView='list',curCollTagFilter=null,curDetTagFilter=null,upPhotos=[],coverPhoto='';
+let completingId=null,curFilter='all',curView='list',upPhotos=[],coverPhoto='';
 let globalMapFilter='all',globalMapObj=null,globalMapHomeBounds=null,globalMapClusters=null,globalMapAllMarkers=[];
 let detMapHomeBounds=null;
 
@@ -1606,25 +1627,21 @@ async function handleSignOut(){
    ============================================================== */
 function mapCollection(row){
   try{
-    let tags=[];
-    if(row.category_tag){tags=Array.isArray(row.category_tag)?row.category_tag:typeof row.category_tag==='string'?JSON.parse(row.category_tag):[];}
-    return{id:row.id,name:row.name,description:row.description||'',cover:row.cover_image||'',tags,createdAt:row.created_at};
-  }catch(e){console.error('mapCollection error:',e,row);return{id:row.id,name:row.name||'',description:'',cover:'',tags:[],createdAt:row.created_at};}
+    return{id:row.id,name:row.name,description:row.description||'',cover:row.cover_image||'',createdAt:row.created_at};
+  }catch(e){console.error('mapCollection error:',e,row);return{id:row.id,name:row.name||'',description:'',cover:'',createdAt:row.created_at};}
 }
 function mapActivity(row){
   try{
     let photos=[];
     if(row.photos){photos=Array.isArray(row.photos)?row.photos:typeof row.photos==='string'?JSON.parse(row.photos):[];}
-    let tags=[];
-    if(row.category_tag){tags=Array.isArray(row.category_tag)?row.category_tag:typeof row.category_tag==='string'?JSON.parse(row.category_tag):[];}
     let links=[];
     if(row.links){links=Array.isArray(row.links)?row.links:typeof row.links==='string'?JSON.parse(row.links):[];}
     return{id:row.id,listId:row.collection_id,name:row.name,description:row.description||'',
-      targetDate:row.target_date||null,priority:row.priority||'medium',tags,links,
+      targetDate:row.target_date||null,priority:row.priority||'medium',links,
       completed:!!row.date_completed,completedDate:row.date_completed||null,
       completionNotes:row.experience_notes||'',photos,location:row.location||'',
       locationLat:row.location_lat||null,locationLng:row.location_lng||null,createdAt:row.created_at};
-  }catch(e){console.error('mapActivity error:',e,row);return{id:row.id,listId:row.collection_id,name:row.name||'',description:'',targetDate:null,priority:'medium',tags:[],links:[],completed:!!row.date_completed,completedDate:row.date_completed||null,completionNotes:'',photos:[],location:'',locationLat:null,locationLng:null,createdAt:row.created_at};}
+  }catch(e){console.error('mapActivity error:',e,row);return{id:row.id,listId:row.collection_id,name:row.name||'',description:'',targetDate:null,priority:'medium',links:[],completed:!!row.date_completed,completedDate:row.date_completed||null,completionNotes:'',photos:[],location:'',locationLat:null,locationLng:null,createdAt:row.created_at};}
 }
 
 async function fetchCollections(){
@@ -1680,7 +1697,7 @@ function nav(page,listId){
   if(page!=='detail'&&actMap){actMap.remove();actMap=null;detMapHomeBounds=null;}
   if(page==='home') renderHome();
   if(page==='collections') renderCollections();
-  if(page==='detail'&&listId){curListId=listId;curDetTagFilter=null;renderDetail();}
+  if(page==='detail'&&listId){curListId=listId;renderDetail();}
   if(page==='globalmap') renderGlobalMap();
 }
 function goBack(){nav('collections');}
@@ -1747,17 +1764,8 @@ async function renderCollections(){
     $('collectionsGrid').innerHTML=newCard;
     return;
   }
-  /* --- tag filter bar for collections --- */
-  const allCollTags=[...new Set(lists.flatMap(l=>l.tags||[]))].sort();
-  const tfEl=$('collTagFilter');
-  if(allCollTags.length>1){
-    tfEl.innerHTML=`<button class="tag-filter-btn ${!curCollTagFilter?'active':''}" onclick="setCollTagFilter(null)">All</button>`+allCollTags.map(t=>`<button class="tag-filter-btn ${curCollTagFilter===t?'active':''}" onclick="setCollTagFilter('${esc(t)}')">` + esc(t) + `</button>`).join('');
-  } else if(tfEl){ tfEl.innerHTML=''; }
 
-  let filtered=lists;
-  if(curCollTagFilter) filtered=lists.filter(l=>(l.tags||[]).includes(curCollTagFilter));
-
-  $('collectionsGrid').innerHTML=filtered.map(l=>{
+  $('collectionsGrid').innerHTML=lists.map(l=>{
     const acts=allActs.filter(a=>a.listId===l.id);
     const cnt=acts.length;
     const done=acts.filter(a=>a.completed).length;
@@ -1767,7 +1775,6 @@ async function renderCollections(){
       <div class="collection-card-overlay">
         <div class="collection-card-title">${esc(l.name)}</div>
         ${l.description?`<div class="collection-card-desc">${esc(l.description)}</div>`:''}
-        ${l.tags&&l.tags.length?`<div class="activity-row-tags" style="margin-top:10px;justify-content:center">${l.tags.map(t=>`<span class="tag-pill" style="background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.25)">${esc(t)}</span>`).join('')}</div>`:''}
         <div class="collection-card-meta">${cnt} items &middot; ${done} accomplished</div>
       </div>
     </div>`;
@@ -1777,7 +1784,6 @@ async function renderCollections(){
     $('collectionsGrid').innerHTML=`<div style="padding:20px;color:var(--danger);font-family:var(--mono);font-size:.8rem">Error: ${e.message}</div>`+newCard;
   }
 }
-function setCollTagFilter(tag){curCollTagFilter=tag;renderCollections();}
 
 /* ==============================================================
    DETAIL PAGE
@@ -1814,13 +1820,6 @@ async function renderDetail(){
       </div>
     </div>`;
 
-  /* --- tag filter bar within collection --- */
-  const allActTags=[...new Set(acts.flatMap(a=>a.tags||[]))].sort();
-  const dtfEl=$('detTagFilter');
-  if(dtfEl&&allActTags.length>1){
-    dtfEl.innerHTML=`<button class="tag-filter-btn ${!curDetTagFilter?'active':''}" onclick="setDetTagFilter(null)">All Tags</button>`+allActTags.map(t=>`<button class="tag-filter-btn ${curDetTagFilter===t?'active':''}" onclick="setDetTagFilter('${esc(t)}')">` + esc(t) + `</button>`).join('');
-  } else if(dtfEl){ dtfEl.innerHTML=''; }
-
   renderActivitiesList();
 }
 
@@ -1830,11 +1829,10 @@ async function renderActivitiesList(){
   let acts=await fetchActivitiesFor(curListId);
   if(curFilter==='pending') acts=acts.filter(a=>!a.completed);
   if(curFilter==='completed') acts=acts.filter(a=>a.completed);
-  if(curDetTagFilter) acts=acts.filter(a=>(a.tags||[]).includes(curDetTagFilter));
-  if(search) acts=acts.filter(a=>a.name.toLowerCase().includes(search)||(a.description||'').toLowerCase().includes(search)||(a.tags||[]).some(t=>t.toLowerCase().includes(search)));
+  if(search) acts=acts.filter(a=>a.name.toLowerCase().includes(search)||(a.description||'').toLowerCase().includes(search));
   acts.sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
 
-  const addRow=`<div class="add-activity-row" onclick="openNewActivity()"><span>+ Add Activity</span></div>`;
+  const addRow=`<div class="add-activity-row" onclick="openNewActivity()"><div class="add-icon">+</div><span>Add Activity</span></div>`;
 
   if(!acts.length&&!search&&curFilter==='all'){
     $('activitiesList').style.display='';
@@ -1868,13 +1866,12 @@ async function renderActivitiesList(){
         ${photoCell}
         <div class="activity-card-body">
           <div class="activity-card-name">${esc(a.name)}</div>
-          ${a.tags&&a.tags.length?`<div class="activity-row-tags">${a.tags.map(t=>`<span class="tag-pill">${esc(t)}</span>`).join('')}</div>`:''}
           ${a.completed
             ? `<div class="activity-card-status done">Completed</div>`
             : (di.label ? `<span class="time-badge ${di.cls}">${di.label}</span>` : `<div class="activity-card-status pending">Pending</div>`)}
         </div>
       </div>`;
-    }).join('')+`<div class="activity-card" style="border:2px dashed var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;min-height:200px" onclick="openNewActivity()"><span style="color:var(--text2);font-family:var(--mono);font-size:.8rem;letter-spacing:1px">+ ADD</span></div>`;
+    }).join('')+`<div class="activity-card add-activity-card" onclick="openNewActivity()"><div class="add-icon">+</div><span>Add Activity</span></div>`;
     return;
   }
 
@@ -1890,7 +1887,6 @@ async function renderActivitiesList(){
       <div class="activity-row-info">
         <div class="activity-row-name">${esc(a.name)}</div>
         ${a.description?`<div class="activity-row-desc">${esc(a.description)}</div>`:''}
-        ${a.tags&&a.tags.length?`<div class="activity-row-tags">${a.tags.map(t=>`<span class="tag-pill">${esc(t)}</span>`).join('')}</div>`:''}
       </div>
       <div class="activity-row-date">${di.label ? `<span class="time-badge ${di.cls}">${di.label}</span>` : '—'}</div>
       <div class="activity-row-status ${a.completed?'done':'pending'}">${a.completed?'Completed':'Pending'}</div>
@@ -1913,17 +1909,15 @@ function setFilter(f){
   renderDetail();
 }
 function setView(v){curView=v;if(v!=='map'&&actMap){actMap.remove();actMap=null;detMapHomeBounds=null;}renderDetail();}
-function setDetTagFilter(tag){curDetTagFilter=tag;renderActivitiesList();}
 
 /* ==============================================================
    LIST CRUD
    ============================================================== */
-let lTags=[],aTags=[],aLinks=[];
+let aLinks=[];
 function openNewList(){
-  editingListId=null;coverPhoto='';lTags=[];
+  editingListId=null;coverPhoto='';
   $('lName').value='';$('lDesc').value='';
   $('coverPreview').innerHTML='';$('coverZone').style.display='';
-  renderTagChips('lTags');
   $('listModalTitle').textContent='New Collection';
   $('listSaveBtn').textContent='Create';
   openModal('listModal');
@@ -1932,9 +1926,8 @@ function openNewList(){
 async function openEditList(){
   const l=await fetchCollection(curListId);
   if(!l)return;
-  editingListId=l.id;coverPhoto=l.cover||'';lTags=[...(l.tags||[])];
+  editingListId=l.id;coverPhoto=l.cover||'';
   $('lName').value=l.name;$('lDesc').value=l.description||'';
-  renderTagChips('lTags');
   if(coverPhoto){$('coverPreview').innerHTML=`<div class="photo-th" style="width:160px;height:100px"><img src="${coverPhoto}"/><button class="rm-photo" style="opacity:1" onclick="coverPhoto='';$('coverPreview').innerHTML='';$('coverZone').style.display=''">&#x2715;</button></div>`;$('coverZone').style.display='none';}
   else{$('coverPreview').innerHTML='';$('coverZone').style.display='';}
   $('listModalTitle').textContent='Edit Collection';
@@ -1951,7 +1944,7 @@ async function saveList(){
   const name=$('lName').value.trim();
   if(!name){shakeEl($('lName'));return;}
   if(editingListId){
-    const updates={name,description:$('lDesc').value.trim(),category_tag:lTags};
+    const updates={name,description:$('lDesc').value.trim()};
     if(coverPhoto) updates.cover_image=coverPhoto;
     const{error}=await sb.from('Collections').update(updates).eq('id',editingListId);
     if(error){console.error('saveList update:',error);return;}
@@ -1962,7 +1955,6 @@ async function saveList(){
     const{data,error}=await sb.from('Collections').insert({
       name,description:$('lDesc').value.trim(),
       cover_image:coverPhoto||randCover(existingCovers),
-      category_tag:lTags,
       user_id:currentUser.id
     }).select().single();
     if(error){console.error('saveList insert:',error);return;}
@@ -1998,7 +1990,7 @@ function openBulkAdd(){
   },300);
 }
 function addBulkEntry(){
-  bulkEntries.push({tags:[],links:[]});
+  bulkEntries.push({links:[]});
   renderBulkEntries();
   setTimeout(()=>{
     const el=document.getElementById('bEntry_'+(bulkEntries.length-1));
@@ -2009,7 +2001,7 @@ function addBulkEntry(){
 }
 function addBulkMultiple(){
   const count=Math.min(Math.max(parseInt($('bulkAddCount').value)||1,1),50);
-  for(let i=0;i<count;i++) bulkEntries.push({tags:[],links:[]});
+  for(let i=0;i<count;i++) bulkEntries.push({links:[]});
   renderBulkEntries();
   setTimeout(()=>{
     const el=document.getElementById('bEntry_'+(bulkEntries.length-1));
@@ -2050,9 +2042,6 @@ function bulkApplyDown(field){
   } else if(field==='pri'){
     const v=first._pri||'medium';
     bulkEntries.forEach(e=>e._pri=v);
-  } else if(field==='tags'){
-    const v=[...(first.tags||[])];
-    bulkEntries.forEach(e=>e.tags=[...v]);
   } else if(field==='loc'){
     const v=first._loc||'';
     const lat=first._locLat||'';
@@ -2087,12 +2076,6 @@ function renderBulkEntries(){
       <td><select id="bDate_${i}"><option value="Before I Die"${(entry._date||'Before I Die')==='Before I Die'?' selected':''}>Before I Die</option><option value="This Month"${(entry._date)==='This Month'?' selected':''}>This Mo</option><option value="This Year"${(entry._date)==='This Year'?' selected':''}>This Year</option><option value="Next Year"${(entry._date)==='Next Year'?' selected':''}>Next Year</option><option value="In 2-3 Years"${(entry._date)==='In 2-3 Years'?' selected':''}>2-3 Yrs</option><option value="In 5+ Years"${(entry._date)==='In 5+ Years'?' selected':''}>5+ Yrs</option><option value=""${(entry._date)===''?' selected':''}>—</option></select></td>
       <td><select id="bPri_${i}"><option value="low"${(entry._pri||'medium')==='low'?' selected':''}>Low</option><option value="medium"${(entry._pri||'medium')==='medium'?' selected':''}>Med</option><option value="high"${(entry._pri||'medium')==='high'?' selected':''}>High</option></select></td>
       <td>
-        <div class="tag-input-wrap" id="bTagsWrap_${i}" onclick="document.getElementById('bTagInput_${i}').focus()">
-          ${(entry.tags||[]).map((t,ti)=>`<span class="tag-chip">${esc(t)}<button onclick="bulkRemoveTag(${i},${ti})">&times;</button></span>`).join('')}
-          <input class="tag-input-field" id="bTagInput_${i}" placeholder="${entry.tags.length?'':'+ tag'}" onkeydown="bulkTagKey(event,${i},'tags')" />
-        </div>
-      </td>
-      <td>
         <div class="tag-input-wrap" id="bLinksWrap_${i}" onclick="document.getElementById('bLinkInput_${i}').focus()">
           ${(entry.links||[]).map((l,li)=>`<span class="tag-chip">${esc(l)}<button onclick="bulkRemoveLink(${i},${li})">&times;</button></span>`).join('')}
           <input class="tag-input-field" id="bLinkInput_${i}" placeholder="${entry.links.length?'':'+ link'}" onkeydown="bulkTagKey(event,${i},'links')" />
@@ -2110,16 +2093,15 @@ function bulkTagKey(e,idx,which){
     e.target.value='';
     renderBulkEntries();
     setTimeout(()=>{
-      const id=which==='tags'?'bTagInput_'+idx:'bLinkInput_'+idx;
+      const id='bLinkInput_'+idx;
       const el=document.getElementById(id);if(el)el.focus();
     },20);
   }
   if(e.key==='Backspace'&&!e.target.value){
     const arr=bulkEntries[idx][which];
-    if(arr.length){arr.pop();renderBulkEntries();setTimeout(()=>{const id=which==='tags'?'bTagInput_'+idx:'bLinkInput_'+idx;const el=document.getElementById(id);if(el)el.focus();},20);}
+    if(arr.length){arr.pop();renderBulkEntries();setTimeout(()=>{const id='bLinkInput_'+idx;const el=document.getElementById(id);if(el)el.focus();},20);}
   }
 }
-function bulkRemoveTag(idx,ti){saveBulkFieldValues();bulkEntries[idx].tags.splice(ti,1);renderBulkEntries();}
 function bulkRemoveLink(idx,li){saveBulkFieldValues();bulkEntries[idx].links.splice(li,1);renderBulkEntries();}
 async function saveBulkActivities(){
   saveBulkFieldValues();
@@ -2139,7 +2121,6 @@ async function saveBulkActivities(){
     location_lng:parseFloat(e._locLng)||null,
     target_date:e._date||null,
     priority:e._pri||'medium',
-    category_tag:e.tags||[],
     links:e.links||[]
   }));
   const{error}=await sb.from('Activities').insert(rows);
@@ -2150,9 +2131,9 @@ async function saveBulkActivities(){
 }
 
 function openNewActivity(){
-  editingActId=null;aTags=[];aLinks=[];
+  editingActId=null;aLinks=[];
   $('aName').value='';$('aDesc').value='';$('aLoc').value='';$('aLocLat').value='';$('aLocLng').value='';$('aDate').value='Before I Die';$('aPri').value='medium';
-  renderTagChips('aTags');renderTagChips('aLinks');
+  renderTagChips('aLinks');
   $('actModalTitle').textContent='New Activity';
   $('actSaveBtn').textContent='Add';
   openModal('actModal');setTimeout(()=>$('aName').focus(),300);
@@ -2161,8 +2142,8 @@ async function openEditAct(id){
   const a=await fetchActivity(id);if(!a)return;
   editingActId=id;
   $('aName').value=a.name;$('aDesc').value=a.description||'';$('aLoc').value=a.location||'';$('aLocLat').value=a.locationLat||'';$('aLocLng').value=a.locationLng||'';$('aDate').value=a.targetDate||'';
-  $('aPri').value=a.priority||'medium';aTags=[...(a.tags||[])];aLinks=[...(a.links||[])];
-  renderTagChips('aTags');renderTagChips('aLinks');
+  $('aPri').value=a.priority||'medium';aLinks=[...(a.links||[])];
+  renderTagChips('aLinks');
   $('actModalTitle').textContent='Edit Activity';$('actSaveBtn').textContent='Save';
   openModal('actModal');
 }
@@ -2176,7 +2157,6 @@ async function saveActivity(){
     location_lng:parseFloat($('aLocLng').value)||null,
     target_date:$('aDate').value||null,
     priority:$('aPri').value,
-    category_tag:aTags,
     links:aLinks
   };
   if(editingActId){
@@ -2263,7 +2243,6 @@ async function openDetModal(id){
     :`<span class="dm-badge pending">&#x25CB; Pending</span>`;
   if(a.completed&&a.completedDate) h+=`<span class="dm-badge" style="background:rgba(255,255,255,.18);color:#fff">${fmtDate(a.completedDate)}</span>`;
   if(a.priority) h+=`<span class="dm-priority dm-priority-${a.priority}">${cap(a.priority)}</span>`;
-  if(a.tags&&a.tags.length) a.tags.forEach(t=>{h+=`<span class="dm-badge" style="background:rgba(255,255,255,.12);color:#fff">${esc(t)}</span>`;});
   if(a.location) h+=`<span class="dm-badge" style="background:rgba(255,255,255,.15);color:#fff">&#x1F4CD; ${esc(a.location)}</span>`;
   h+=`</div></div>`;
   h+=`<div class="dm-content">`;
@@ -2468,8 +2447,8 @@ function dateInfo(a){
 }
 function shakeEl(el){el.style.borderColor='var(--danger)';el.style.animation='shake .4s ease';setTimeout(()=>{el.style.borderColor='';el.style.animation='';},600);}
 
-/* Tag chip helpers */
-function getChipArr(which){return which==='lTags'?lTags:which==='aTags'?aTags:aLinks;}
+/* Link chip helpers */
+function getChipArr(which){return aLinks;}
 function handleTagKey(e,which){
   if(e.key==='Enter'||e.key==='Tab'){
     e.preventDefault();
@@ -2491,9 +2470,9 @@ function removeTag(which,idx){
 }
 function renderTagChips(which){
   const arr=getChipArr(which);
-  const wrapId=which==='lTags'?'lTagsWrap':which==='aTags'?'aTagsWrap':'aLinksWrap';
-  const inputId=which==='lTags'?'lTagInput':which==='aTags'?'aTagInput':'aLinkInput';
-  const placeholder=which==='aLinks'?'Paste a URL and press Enter...':'Type a tag and press Enter...';
+  const wrapId='aLinksWrap';
+  const inputId='aLinkInput';
+  const placeholder='Paste a URL and press Enter...';
   const wrap=$(wrapId);if(!wrap)return;
   wrap.innerHTML=arr.map((t,i)=>`<span class="tag-chip">${esc(t)}<button onclick="removeTag('${which}',${i})">&times;</button></span>`).join('');
   const field=document.createElement('input');
@@ -2702,10 +2681,9 @@ async function updateMapMarkers(){
   let acts=await fetchActivitiesFor(curListId);
   if(curFilter==='pending') acts=acts.filter(a=>!a.completed);
   if(curFilter==='completed') acts=acts.filter(a=>a.completed);
-  if(curDetTagFilter) acts=acts.filter(a=>(a.tags||[]).includes(curDetTagFilter));
   const searchEl=$('detSearch');
   const search=searchEl?searchEl.value.toLowerCase():'';
-  if(search) acts=acts.filter(a=>a.name.toLowerCase().includes(search)||(a.description||'').toLowerCase().includes(search)||(a.tags||[]).some(t=>t.toLowerCase().includes(search)));
+  if(search) acts=acts.filter(a=>a.name.toLowerCase().includes(search)||(a.description||'').toLowerCase().includes(search));
 
   const visibleIds=new Set(acts.map(a=>a.id));
   detMapClusters.clearLayers();
