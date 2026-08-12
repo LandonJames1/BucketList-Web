@@ -5,23 +5,24 @@
    before the trip. The activity's *target* is the trip; the reminder
    is the day you have to act.
 
-   WHAT THIS CAN AND CANNOT DO — read before extending it.
+   THREE DELIVERY PATHS — deliberately, in order of reliability.
 
-   A web app cannot wake itself up. There is no reliable way to schedule
-   a notification for a future date from the browser: Notification
-   Triggers never shipped beyond an experiment, and the Push API needs a
-   server to send the push. So a reminder here fires when the app is
-   *opened or foregrounded* on or after its date, not at 9am while the
-   phone is in a pocket.
+   A web app cannot wake itself up: Notification Triggers never shipped
+   past an experiment, so nothing in the browser can schedule a banner
+   for a future date. Hence:
 
-   That is why a due reminder is also surfaced as a banner at the top of
-   Home. The banner is the real mechanism and the notification is a
-   bonus; anything that relied on the notification alone would silently
-   not work.
+   1. The Home banner. Always works, needs no permission, no backend and
+      no install. This is the floor.
+   2. A local notification when the app is opened or foregrounded on or
+      after the date. Needs permission only.
+   3. Real background push, delivered on the day even with the app
+      closed. Needs the backend in supabase/ deployed, VAPID_PUBLIC_KEY
+      set in config.js, permission granted, and — on iOS — the PWA
+      installed to the home screen.
 
-   Making it a true background push means: a Supabase Edge Function
-   holding VAPID keys, a push_subscriptions table, and pg_cron running a
-   daily sweep. See the note in CLAUDE.md.
+   All three coexist because each has a different failure mode. Building
+   on (3) alone would mean a reminder that silently never arrives for
+   anyone who skipped one of its four prerequisites.
    ============================================================== */
 
 /* Reminders already announced, so re-opening the app doesn't re-ping.
@@ -104,12 +105,84 @@ async function requestNotifications(){
     showToast('Notifications are blocked in your browser settings');
     return;
   }
+  /* On iOS, Notification.requestPermission only resolves for a PWA
+     installed to the home screen. Say so rather than appearing to hang. */
+  if(isIOS()&&!isStandalone()){
+    showToast('Add to Home Screen first, then enable reminders');
+    pwaShowInstallHelp();
+    return;
+  }
   const res=await Notification.requestPermission();
   if(res==='granted'){
+    await subscribeToPush();
     showToast('Reminders on');
     checkDueReminders();
   }
   if(curPage==='me') renderMe();
+}
+
+/* ==============================================================
+   WEB PUSH SUBSCRIPTION
+
+   Registers this device with the browser's push service and stores the
+   resulting endpoint so the Edge Function can reach it. Safe to call
+   repeatedly — the endpoint is the primary key on the server side, so
+   re-subscribing updates in place.
+   ============================================================== */
+function pushConfigured(){
+  return typeof VAPID_PUBLIC_KEY==='string' && VAPID_PUBLIC_KEY.length>20;
+}
+
+/* VAPID keys are base64url; PushManager wants raw bytes. */
+function urlBase64ToUint8Array(base64){
+  const padded=(base64+'='.repeat((4-base64.length%4)%4)).replace(/-/g,'+').replace(/_/g,'/');
+  const raw=atob(padded);
+  return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)));
+}
+
+async function subscribeToPush(){
+  if(!pushConfigured()){
+    console.info('[reminders] VAPID_PUBLIC_KEY not set — background push disabled, '+
+      'falling back to the Home banner. See supabase/README.md.');
+    return false;
+  }
+  if(!('PushManager' in window)) return false;
+  try{
+    const reg=await navigator.serviceWorker.ready;
+    let sub=await reg.pushManager.getSubscription();
+    if(!sub){
+      sub=await reg.pushManager.subscribe({
+        userVisibleOnly:true,
+        applicationServerKey:urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+    }
+    const raw=sub.toJSON();
+    const{error}=await sb.from('push_subscriptions').upsert({
+      user_id:currentUser.id,
+      endpoint:raw.endpoint,
+      p256dh:raw.keys.p256dh,
+      auth:raw.keys.auth,
+      user_agent:navigator.userAgent.slice(0,300),
+    },{onConflict:'endpoint'});
+    if(error){console.error('[reminders] could not store subscription:',error);return false;}
+    return true;
+  }catch(e){
+    console.warn('[reminders] push subscribe failed:',e);
+    return false;
+  }
+}
+
+/* Drop this device's subscription — used on sign-out so a shared phone
+   does not keep pushing the previous account's reminders. */
+async function unsubscribeFromPush(){
+  try{
+    const reg=await navigator.serviceWorker.ready;
+    const sub=await reg.pushManager.getSubscription();
+    if(!sub)return;
+    const endpoint=sub.endpoint;
+    await sub.unsubscribe();
+    await sb.from('push_subscriptions').delete().eq('endpoint',endpoint);
+  }catch(e){ /* best effort */ }
 }
 
 /* Fire a local notification for anything newly due. Called on launch

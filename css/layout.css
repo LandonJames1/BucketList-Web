@@ -13,8 +13,8 @@
     ============================================================ */
     .navbar {
       position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-      height: var(--chrome-top);
-      padding: var(--safe-top) calc(14px + var(--safe-right)) 0 calc(14px + var(--safe-left));
+      height: calc(var(--nav-h) + var(--nav-inset));
+      padding: var(--nav-inset) calc(14px + var(--safe-right)) 0 calc(14px + var(--safe-left));
       display: flex; align-items: center; gap: 4px;
       background: transparent;
       -webkit-backdrop-filter: none; backdrop-filter: none;
@@ -43,7 +43,7 @@
     /* The compact centred title. Hidden until the bar condenses. */
     .navbar-title {
       position: absolute; left: 50%; transform: translateX(-50%);
-      top: var(--safe-top); height: var(--nav-h);
+      top: var(--nav-inset); height: var(--nav-h);
       display: flex; align-items: center;
       max-width: 55%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       font-family: var(--serif); font-size: 19px; font-weight: 600;
@@ -137,6 +137,11 @@
          the end of the content rather than pushing it. */
       padding-bottom: calc(var(--chrome-bottom) + 88px);
     }
+    /* Pushed screens carry a back button, so they clear the nav bar's
+       full inset height. Root tabs keep the tighter offset — their bar
+       is empty until you scroll, and padding it out just puts dead space
+       above the title. */
+    .page.page-pushed { padding-top: calc(var(--nav-h) + var(--nav-inset)); }
     .page.active { display: block; }
     /* Root tabs cross-fade; pushed screens slide in from the right the
        way a UINavigationController does. */

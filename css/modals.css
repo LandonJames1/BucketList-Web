@@ -77,9 +77,11 @@
     Fields are grouped-list rows, as in Settings, rather than the
     boxed inputs a web form would use.
     ============================================================ */
-    .fg { margin: 0 var(--gx-r) 18px var(--gx-l); }
+    .fg { margin: 0 var(--gx-r) 22px var(--gx-l); }
+    /* Tight to its own field, loose from whatever is above it — the
+       label has to read as belonging downwards. */
     .fg > label {
-      display: block; margin: 0 0 8px 17px;
+      display: block; margin: 0 0 6px 17px;
       font-family: var(--mono); font-size: 10px; font-weight: 500;
       color: var(--tint); letter-spacing: .14em; text-transform: uppercase;
     }
@@ -141,7 +143,10 @@
     .more-toggle {
       display: flex; align-items: center; justify-content: center; gap: 7px;
       width: calc(100% - var(--gx-l) - var(--gx-r));
-      margin: 4px var(--gx-r) 0 var(--gx-l);
+      /* 24px of air underneath. With none, the first field's label sat
+         flush against the button and read as its caption rather than as
+         the label for the box below it. */
+      margin: 4px var(--gx-r) 24px var(--gx-l);
       min-height: 48px; padding: 0 18px; border-radius: var(--r-row);
       background: var(--tint-soft); color: var(--tint);
       font-family: var(--mono); font-size: 11px; font-weight: 600;

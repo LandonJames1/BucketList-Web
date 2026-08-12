@@ -83,6 +83,7 @@ CLAUDE.md             This guide
 README.md             Human-facing setup + structure overview
 manifest.webmanifest  PWA metadata (name, icons, standalone display, theme color)
 sw.js                 Service worker — offline app shell + runtime caching. Must stay at the root.
+supabase/             Backend for reminders — schema.sql, cron.sql, and the send-reminders Edge Function. Optional; the app hides reminder UI when it is not deployed.
 css/                  One stylesheet per concern (see CSS file map)
 js/                   One script per concern (see JS file map)
 icons/                App icon PNGs + generate.py, the script that draws them
@@ -308,21 +309,29 @@ thumbnail per row, and a search field that appears only past seven lists.
 separate from the activity's own target — the case it exists for is a campsite
 whose reservations open months before the trip.
 
-**Understand the limitation before extending this.** A web app cannot wake
-itself up. Notification Triggers never shipped beyond an experiment, and the
-Push API needs a server to send the push. So a reminder fires when the app is
-**opened or foregrounded** on or after its date — not at 9am while the phone is
-in a pocket.
+**There are three delivery paths, in order of reliability. Understand why
+before changing any of them.** A web app cannot wake itself up — Notification
+Triggers never shipped past an experiment — so nothing in the browser can
+schedule a banner for a future date.
 
-That is why a due reminder is *also* a banner at the top of Home. **The banner
-is the mechanism; the notification is a bonus.** Anything built on the
-notification alone would silently not work, and the failure would look like the
-reminder never existing.
+1. **The Home banner.** Needs no permission, no backend, no install. The floor.
+2. **A local notification** when the app is opened or foregrounded on or after
+   the date. Needs permission only.
+3. **Real background push**, delivered on the day with the app closed. Needs
+   the backend in `supabase/` deployed, `VAPID_PUBLIC_KEY` set in `config.js`,
+   permission granted, and on iOS the PWA installed to the home screen.
 
-Making it a true background push needs: a `push_subscriptions` table, a
-Supabase Edge Function holding VAPID keys, and `pg_cron` running a daily sweep.
-On iOS, Web Push additionally only works for a PWA installed to the home
-screen.
+All three coexist because each fails differently. Building on (3) alone would
+mean a reminder that silently never arrives for anyone missing one of its four
+prerequisites — and the failure would look like the feature not existing.
+
+The backend lives in **`supabase/`**: `schema.sql` (columns, the
+`push_subscriptions` table with RLS, and a trigger that re-arms a reminder when
+its date moves), `functions/send-reminders/` (the daily sweep, which groups by
+user so five due reminders are one notification, and prunes endpoints that
+return 404/410), and `cron.sql`. `supabase/README.md` has the deploy steps.
+The function requires an `x-cron-secret` header — without it, anyone could
+trigger a send to every user's devices.
 
 Already-announced reminders are remembered in `localStorage` keyed by
 `activityId@date`, so re-opening the app does not re-ping but moving a reminder
@@ -556,6 +565,16 @@ these are the defaults, not overrides.
 - **Inputs must never compute below 16px.** Safari zooms the whole page when a
   focused field's text is smaller, and it stays zoomed. Every field in the app
   uses `font-size: max(16px, 17px)`.
+- **The nav bar has its own inset, `--nav-inset`,** floored at 14px. In an
+  installed PWA the notch inset already provides room; in a browser tab
+  `safe-area-inset-top` is 0 and the back button ended up pinned against the
+  viewport edge. Only pushed screens (`.page-pushed`) pad down to match — root
+  tabs keep the tighter offset, since their bar is empty until you scroll and
+  padding it out just puts dead space above the title.
+- **A label belongs to the field below it.** Keep the gap under a label
+  smaller than the gap above it (currently 6px vs 22px), or it reads as a
+  caption for whatever precedes it. This was a real bug: the first label in a
+  disclosure sat flush against the toggle button.
 - **Fixed chrome must account for the safe areas.** `--chrome-top` and
   `--chrome-bottom` already fold the nav/tab bar heights together with the
   notch and home-indicator insets; use them rather than re-deriving.

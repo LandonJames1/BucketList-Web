@@ -95,6 +95,11 @@
 
       /* ---- iOS safe areas ---- */
       --safe-top:    env(safe-area-inset-top, 0px);
+      /* The nav bar's own top inset. In an installed PWA the notch inset
+         is already generous; in a browser tab it is 0, which left the
+         back button pinned against the very top of the viewport. This
+         floors it so the bar always has room to breathe. */
+      --nav-inset:   max(env(safe-area-inset-top, 0px), 14px);
       --safe-bottom: env(safe-area-inset-bottom, 0px);
       --safe-left:   env(safe-area-inset-left, 0px);
       --safe-right:  env(safe-area-inset-right, 0px);

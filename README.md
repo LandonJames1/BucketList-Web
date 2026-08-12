@@ -49,10 +49,12 @@ alter table "Activities" add column if not exists remind_at date;
 Until you do, the app probes for the column and hides all reminder UI, so
 nothing breaks either way.
 
-Note that a web app cannot wake itself up: reminders appear as a banner at the
-top of Home, and fire a notification when you next open the app on or after the
-date — not at a scheduled time in the background. Real scheduled push would
-need a server component.
+Reminders reach you three ways, in order of reliability: a banner at the top of
+Home (always), a notification when you next open the app on or after the date
+(needs permission), and a real background push delivered on the day with the
+app closed (needs the backend in `supabase/` deployed — see
+`supabase/README.md`). On iOS the last one requires the app installed to the
+home screen.
 
 ## Project structure
 
@@ -63,6 +65,7 @@ sw.js                 service worker — offline app shell + runtime caching
 css/                  one stylesheet per concern
 js/                   one script per concern
 icons/                app icon PNGs, plus generate.py which draws them
+supabase/             optional backend for reminders: schema, cron job, Edge Function
 Supabase Setup/       CSV exports of the Collections / Activities / Users tables
 _backup/              previous versions, kept for reference
 ```

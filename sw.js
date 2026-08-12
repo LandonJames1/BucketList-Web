@@ -9,7 +9,7 @@
    installs pick the new build up instead of serving a stale one.
    ============================================================== */
 
-const CACHE_VERSION = 'v11';
+const CACHE_VERSION = 'v12';
 const SHELL_CACHE = `bucketlist-shell-${CACHE_VERSION}`;
 const VENDOR_CACHE = `bucketlist-vendor-${CACHE_VERSION}`;
 const IMAGE_CACHE = `bucketlist-images-${CACHE_VERSION}`;
@@ -118,6 +118,23 @@ self.addEventListener('activate', event => {
     }
     await self.clients.claim();
   })());
+});
+
+/* ---------- Push ----------
+   Delivered by supabase/functions/send-reminders. The payload is JSON;
+   fall back to a generic banner if it is missing or malformed, because
+   a push that arrives and shows nothing is worse than a vague one. */
+self.addEventListener('push', event => {
+  let payload = {};
+  try { payload = event.data ? event.data.json() : {}; } catch { payload = {}; }
+  const title = payload.title || 'Reminder';
+  event.waitUntil(self.registration.showNotification(title, {
+    body: payload.body || 'You have something coming up.',
+    icon: 'icons/icon-192.png',
+    badge: 'icons/favicon-32.png',
+    tag: payload.activityId ? 'bl-reminder-' + payload.activityId : 'bl-reminders',
+    data: { url: './index.html' },
+  }));
 });
 
 /* Tapping a reminder notification should bring the app forward rather

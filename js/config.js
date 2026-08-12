@@ -24,6 +24,22 @@ const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{
   },
 });
 
+/* ==============================================================
+   WEB PUSH
+
+   The public half of a VAPID key pair. It is a public key by design —
+   it identifies the sender to the push service and is safe to ship.
+   The private half lives only in the Edge Function's secrets.
+
+   Generate a pair with:  npx web-push generate-vapid-keys
+   Then paste the public key here and set the private one with:
+     supabase secrets set VAPID_PRIVATE_KEY=...
+
+   Left empty, everything still works except background push: reminders
+   fall back to the Home banner and a notification on next open.
+   ============================================================== */
+const VAPID_PUBLIC_KEY='';
+
 /* Default cover images */
 const COVERS=[
   'https://images.unsplash.com/photo-1501785888041-af3ef285b470?w=1600&q=90',

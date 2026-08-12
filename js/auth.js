@@ -23,6 +23,9 @@ function showApp(){
   probeRemindColumn().then(ok=>{
     if(ok&&curPage==='home') renderHome();
     checkDueReminders();
+    /* Re-register the device if permission was granted on a previous
+       visit — push subscriptions can be rotated by the browser. */
+    if(ok&&notificationState()==='granted') subscribeToPush();
   });
 }
 
@@ -110,6 +113,9 @@ sb.auth.onAuthStateChange((event,session)=>{
 });
 
 async function handleSignOut(){
+  /* Before the session goes: a shared device should stop receiving this
+     account's reminders. */
+  await unsubscribeFromPush();
   sb.auth.stopAutoRefresh();
   await sb.auth.signOut();
   currentUser=null;userProfile=null;

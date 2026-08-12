@@ -1,0 +1,99 @@
+-- ============================================================
+-- Do It All — database changes for reminders + push
+--
+-- Run this once in the Supabase SQL editor (Dashboard → SQL Editor).
+-- Every statement is idempotent, so re-running it is harmless.
+-- ============================================================
+
+
+-- ------------------------------------------------------------
+-- 1. Reminder date on an activity
+--
+-- Separate from target_date: the target is when you want to do the
+-- thing, the reminder is when you need to act on it (bookings opening,
+-- tickets going on sale).
+-- ------------------------------------------------------------
+alter table "Activities" add column if not exists remind_at date;
+
+-- Set when a push has gone out, so the daily sweep never sends the same
+-- reminder twice. Cleared automatically whenever remind_at changes.
+alter table "Activities" add column if not exists reminder_sent_at timestamptz;
+
+
+-- ------------------------------------------------------------
+-- 2. Retire "Someday" and "No date"
+--
+-- Both were removed from the picker. This moves everything still
+-- holding them to "In 5+ Years" so nothing is stranded in a band the
+-- app no longer shows.
+--
+-- PREVIEW FIRST — run this select and check the count looks right:
+--
+--   select target_date, count(*)
+--     from "Activities"
+--    where target_date is null
+--       or target_date = ''
+--       or target_date = 'Before I Die'
+--    group by target_date;
+-- ------------------------------------------------------------
+update "Activities"
+   set target_date = 'In 5+ Years'
+ where target_date is null
+    or target_date = ''
+    or target_date = 'Before I Die';
+
+
+-- ------------------------------------------------------------
+-- 3. Push subscriptions
+--
+-- One row per browser/device a user has granted notifications on. The
+-- endpoint is unique, so re-subscribing the same device updates in
+-- place rather than piling up duplicates.
+-- ------------------------------------------------------------
+create table if not exists push_subscriptions (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  endpoint    text not null unique,
+  p256dh      text not null,
+  auth        text not null,
+  user_agent  text,
+  created_at  timestamptz not null default now()
+);
+
+create index if not exists push_subscriptions_user_id_idx
+  on push_subscriptions(user_id);
+
+alter table push_subscriptions enable row level security;
+
+-- A user may only ever see or touch their own subscriptions. The Edge
+-- Function reads them with the service role, which bypasses RLS.
+drop policy if exists "own subscriptions" on push_subscriptions;
+create policy "own subscriptions" on push_subscriptions
+  for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+
+-- ------------------------------------------------------------
+-- 4. Re-arm a reminder when it is moved
+--
+-- Without this, changing remind_at on an activity that has already been
+-- notified would never fire again, because reminder_sent_at is still
+-- set from the old date.
+-- ------------------------------------------------------------
+create or replace function reset_reminder_sent()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.remind_at is distinct from old.remind_at then
+    new.reminder_sent_at := null;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists activities_reset_reminder_sent on "Activities";
+create trigger activities_reset_reminder_sent
+  before update on "Activities"
+  for each row execute function reset_reminder_sent();
