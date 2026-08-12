@@ -18,6 +18,13 @@
       /* Three photo tiles across a 320px screen leaves each ~88px, which
          is too small to read the caption under. */
       .shelf-3 { grid-template-columns: repeat(2, 1fr); }
+
+      /* Up Next's meta line cannot wrap, so on the narrowest phones
+         something has to give. The collection name loses: truncated to
+         the ~40px left over it renders as "TR…", which is worse than
+         absent. Priority and the deadline are the two things you are
+         actually scanning for, and the collection is one tap away. */
+      .up-meta .up-list { display: none; }
       .large-title h1 { font-size: 30px; }
       .coll-grid { gap: 11px; }
       .stat-num { font-size: 28px; }

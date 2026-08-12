@@ -138,7 +138,14 @@ There is also a screen outside this system: the signed-out `#authPage`, which
 `fetchCollections()` + `fetchAllActivities()`:
 
 - the progress ring, from the completed/total split;
-- **Up Next**, the four most pressing unfinished activities, ranked by
+- **Up Next**, the four most pressing unfinished activities. Its rows are
+  deliberately fixed-height: the name is one ellipsised line and the meta line
+  is `flex-wrap: nowrap` with the collection name as the only shrinkable
+  child. Both matter — letting either wrap made row height depend on how long
+  a name happened to be, so the deadline sat inline on some rows and on its
+  own line on others and the list visibly re-flowed as you read down it. Below
+  375px the collection name is hidden outright rather than truncated to a
+  meaningless stub. Ranked by
   `targetRank()` then `priorityRank()` (both in `utils.js`). Deadline comes
   first and priority second, not the reverse: something due this month
   outranks a high-priority "someday", because the deadline is the part you
@@ -459,6 +466,10 @@ these are the defaults, not overrides.
 - **Fixed chrome must account for the safe areas.** `--chrome-top` and
   `--chrome-bottom` already fold the nav/tab bar heights together with the
   notch and home-indicator insets; use them rather than re-deriving.
+- **Never abbreviate a unit in a glanceable label.** `dateInfo()` spells out
+  "5 months left", not "5 mos left" — an abbreviation saves a few pixels and
+  makes the reader decode instead of read. Give the label a fixed slot and
+  truncate something else around it.
 - **Tap targets are 44px** for anything primary. Deliberate exceptions, matching
   Apple's own control sizes: segmented controls (32px) and search fields (36px).
 - **Viewport heights use `svh`/`dvh` with a `vh` fallback.** Plain `100vh` is

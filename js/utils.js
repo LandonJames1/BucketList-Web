@@ -40,8 +40,12 @@ function dateInfo(a){
   if(diffDays<0) return{label:'Overdue',cls:'overdue'};
   const diffMonths=Math.round(diffDays/30.44);
   const diffYears=diffDays/365.25;
-  if(diffYears>2){const y=Math.round(diffYears);return{label:`${y} yr${y!==1?'s':''} left`,cls:'relaxed'};}
-  if(diffDays>=30) return{label:`${diffMonths} mo${diffMonths!==1?'s':''} left`,cls:diffMonths>6?'moderate':'soon'};
+  /* Units are spelled out. "5 mos left" saves a few pixels and costs
+     more than it saves — abbreviations in a glanceable list make the
+     reader decode rather than read. The layouts that show these give
+     the label a fixed slot and truncate around it instead. */
+  if(diffYears>2){const y=Math.round(diffYears);return{label:`${y} year${y!==1?'s':''} left`,cls:'relaxed'};}
+  if(diffDays>=30) return{label:`${diffMonths} month${diffMonths!==1?'s':''} left`,cls:diffMonths>6?'moderate':'soon'};
   return{label:`${diffDays} day${diffDays!==1?'s':''} left`,cls:'urgent'};
 }
 
