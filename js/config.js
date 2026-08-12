@@ -5,7 +5,24 @@
 
 const SUPABASE_URL='https://xxdmendegyxlkikejvps.supabase.co';
 const SUPABASE_KEY='sb_publishable_45ETmiEMgvWn3QAd58ck5Q_opy0TWnX';
-const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+
+/* Auth options are spelled out rather than left to the defaults. Most of
+   these *are* the defaults, but staying signed in is the thing users
+   notice when it breaks, so it should be obvious here what the app is
+   relying on rather than implied.
+
+   storageKey is pinned so the stored session survives a supabase-js
+   upgrade that might otherwise change the key and silently sign
+   everyone out. */
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{
+  auth:{
+    persistSession:true,        /* keep the session in localStorage */
+    autoRefreshToken:true,      /* renew the access token before it lapses */
+    detectSessionInUrl:true,    /* handle magic-link / OAuth redirects */
+    storageKey:'bucketlist-auth',
+    flowType:'pkce',
+  },
+});
 
 /* Default cover images */
 const COVERS=[

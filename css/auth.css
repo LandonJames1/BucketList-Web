@@ -24,7 +24,7 @@
       color: var(--tint); margin-bottom: 8px;
     }
     .auth-title {
-      font-family: var(--serif); font-size: 38px; font-weight: 600;
+      font-family: var(--serif); font-size: 34px; font-weight: 600;
       letter-spacing: -.016em; color: var(--label); line-height: 1.05;
     }
     .auth-sub {

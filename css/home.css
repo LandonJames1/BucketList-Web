@@ -15,7 +15,7 @@
       color: var(--tint); margin-bottom: 7px;
     }
     .home-greeting h1 {
-      font-family: var(--serif); font-size: 36px; line-height: 1.04;
+      font-family: var(--serif); font-size: 33px; line-height: 1.08;
       font-weight: 600; letter-spacing: -.018em; color: var(--label);
     }
     .home-greeting h1 em { font-style: italic; font-weight: 500; }
@@ -44,7 +44,7 @@
       display: flex; flex-direction: column; align-items: center; justify-content: center;
     }
     .hp-pct {
-      font-family: var(--serif); font-size: 32px; font-weight: 600;
+      font-family: var(--serif); font-size: 29px; font-weight: 600;
       letter-spacing: -.02em; line-height: 1; color: var(--label);
     }
     .hp-pct span { font-size: 17px; color: var(--label-3); }
@@ -57,7 +57,7 @@
     .hp-stats { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
     .hp-stat { display: flex; align-items: baseline; gap: 9px; }
     .hp-num {
-      font-family: var(--serif); font-size: 26px; font-weight: 600;
+      font-family: var(--serif); font-size: 24px; font-weight: 600;
       letter-spacing: -.014em; line-height: 1; color: var(--label);
       font-variant-numeric: tabular-nums; min-width: 34px;
     }
@@ -125,8 +125,8 @@
       align-items: flex-start; gap: 3px; text-align: left; background: none; padding: 0;
     }
     .up-name {
-      font-family: var(--serif); font-size: 19px; font-weight: 600;
-      letter-spacing: -.008em; color: var(--label); line-height: 1.16;
+      font-family: var(--serif); font-size: 18px; font-weight: 600;
+      letter-spacing: -.008em; color: var(--label); line-height: 1.22;
       display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
     }
     .up-meta {
@@ -179,8 +179,8 @@
     }
     .rec-photo-empty .ic { width: 28px; height: 28px; }
     .rec-name {
-      font-family: var(--serif); font-size: 15px; font-weight: 600;
-      line-height: 1.18; color: var(--label);
+      font-family: var(--serif); font-size: 14.5px; font-weight: 600;
+      line-height: 1.25; color: var(--label);
       display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
     }
     .rec-date {
@@ -206,7 +206,7 @@
       display: flex; flex-direction: column; gap: 3px;
     }
     .mini-title {
-      font-family: var(--serif); font-size: 16px; font-weight: 600; color: #fff;
+      font-family: var(--serif); font-size: 15.5px; font-weight: 600; color: #fff;
       line-height: 1.12; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     .mini-meta {

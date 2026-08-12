@@ -26,14 +26,14 @@
   <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png" />
 
   <!-- ===== Fonts =====
-       Cormorant Garamond carries the display type and IBM Plex Mono the
+       Newsreader carries the display type and IBM Plex Mono the
        small-caps labels; the system stack still does all the UI chrome.
        display=swap means the serif fallback (New York on Apple platforms)
        paints immediately and is swapped in place, so there is no blank
        text on a cold load. -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,400;1,6..72,500&family=IBM+Plex+Mono:wght@400;500;600&display=swap" />
 
   <!-- ===== Third-party libraries =====
        MapLibre GL renders on the GPU and has a real globe projection,
@@ -63,7 +63,12 @@
   <link rel="stylesheet" href="css/pwa.css" />
   <link rel="stylesheet" href="css/responsive.css" />
 </head>
-<body>
+<body class="booting">
+
+<!-- Shown only while the stored session is being restored, so a slow
+     network shows the app's own mark rather than a blank page or, worse,
+     a flash of the login screen. -->
+<div class="splash" id="splash"><img src="icons/icon-192.png" alt="" /></div>
 
 <!-- ===================================================================
      AUTH SCREEN — shown while signed out. Not part of the page system.

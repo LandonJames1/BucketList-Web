@@ -12,10 +12,10 @@
      globalMapObj — the Map tab, full-bleed, globe projection
      actMap       — the per-collection map inside the detail screen
 
-   Clustering is done by the GeoJSON source itself (in a worker), not
-   on the main thread. Cluster bubbles are GPU layers; only the handful
-   of *unclustered* pins become DOM markers, so the node count stays
-   tiny however many activities exist.
+   Clustering is done by the GeoJSON source itself (in a worker), not on
+   the main thread, and *everything* is drawn as a GPU symbol layer —
+   there are no DOM markers at all. See the MARKER ICONS section for why
+   that matters.
    ============================================================== */
 
 let actMap=null;
@@ -86,24 +86,190 @@ function actsToGeoJSON(acts){
   };
 }
 
-/* The DOM for one unclustered pin. */
-function makePinEl(p){
-  const el=document.createElement('button');
-  el.className='map-pin '+(p.done?'done':'pending');
-  el.setAttribute('aria-label',p.name);
-  el.innerHTML=p.photo ? `<img src="${p.photo}" alt=""/>` : `<span class="map-pin-dot"></span>`;
-  el.onclick=e=>{e.stopPropagation();openActDetail(p.id);};
-  return el;
+/* ==============================================================
+   MARKER ICONS
+
+   Pins and cluster bubbles are drawn into canvases, registered with
+   map.addImage(), and rendered by symbol layers — i.e. on the GPU, in
+   the same pass as the map itself.
+
+   They used to be maplibregl.Marker DOM elements. Those are positioned
+   by JavaScript writing a CSS transform once per frame, which can never
+   stay perfectly in step with a GPU-composited map: during a pan or a
+   pinch the pins visibly lag and swim against the terrain. Everything
+   below exists to put them in the same coordinate system as the map so
+   they are welded to it.
+   ============================================================== */
+
+const PIN_R=18;              /* pin radius in CSS px */
+const PIN_RING=2.5;
+const iconsAdded=new WeakMap();   /* map -> Set of image ids already added */
+
+function iconSet(map){
+  if(!iconsAdded.has(map)) iconsAdded.set(map,new Set());
+  return iconsAdded.get(map);
+}
+
+/* Device-pixel-ratio-aware canvas, so pins are crisp on a retina screen. */
+function makeCanvas(size){
+  const dpr=Math.min(window.devicePixelRatio||1,3);
+  const c=document.createElement('canvas');
+  c.width=c.height=Math.ceil(size*dpr);
+  const ctx=c.getContext('2d');
+  ctx.scale(dpr,dpr);
+  return{canvas:c,ctx,dpr};
+}
+function addCanvasImage(map,id,canvas,dpr){
+  if(map.hasImage(id)) map.removeImage(id);
+  const ctx=canvas.getContext('2d');
+  const d=ctx.getImageData(0,0,canvas.width,canvas.height);
+  map.addImage(id,{width:canvas.width,height:canvas.height,data:new Uint8Array(d.data.buffer)},{pixelRatio:dpr});
+}
+
+/* A plain dot pin: filled circle, white ring. */
+function ensureDotIcon(map,done){
+  const id='pin-'+(done?'done':'pending');
+  if(iconSet(map).has(id))return id;
+  const size=PIN_R*2+PIN_RING*2+4;
+  const{canvas,ctx,dpr}=makeCanvas(size);
+  const c=size/2;
+  ctx.beginPath();ctx.arc(c,c,PIN_R,0,Math.PI*2);
+  ctx.fillStyle=done?cssVar('--green'):cssVar('--tint');
+  ctx.shadowColor='rgba(0,0,0,.35)';ctx.shadowBlur=6;ctx.shadowOffsetY=1.5;
+  ctx.fill();
+  ctx.shadowColor='transparent';
+  ctx.lineWidth=PIN_RING;ctx.strokeStyle='#fff';ctx.stroke();
+  ctx.beginPath();ctx.arc(c,c,4.5,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();
+  addCanvasImage(map,id,canvas,dpr);
+  iconSet(map).add(id);
+  return id;
+}
+
+/* A photo pin: the activity's first photo, circular-cropped in a ring.
+   Loading is async, so the feature renders as a dot until the image is
+   ready and then repaints. */
+function ensurePhotoIcon(map,id,src,done,onReady){
+  if(iconSet(map).has(id))return;
+  iconSet(map).add(id);                        /* claim it, so we load once */
+  const img=new Image();
+  img.crossOrigin='anonymous';
+  img.onload=()=>{
+    if(!map.getStyle())return;                 /* map torn down mid-load */
+    const size=PIN_R*2+PIN_RING*2+4;
+    const{canvas,ctx,dpr}=makeCanvas(size);
+    const c=size/2;
+    ctx.save();
+    ctx.beginPath();ctx.arc(c,c,PIN_R,0,Math.PI*2);
+    ctx.shadowColor='rgba(0,0,0,.35)';ctx.shadowBlur=6;ctx.shadowOffsetY=1.5;
+    ctx.fillStyle='#fff';ctx.fill();
+    ctx.shadowColor='transparent';
+    ctx.clip();
+    /* cover-fit the photo into the circle */
+    const s=Math.max((PIN_R*2)/img.width,(PIN_R*2)/img.height);
+    const w=img.width*s,h=img.height*s;
+    ctx.drawImage(img,c-w/2,c-h/2,w,h);
+    ctx.restore();
+    ctx.beginPath();ctx.arc(c,c,PIN_R,0,Math.PI*2);
+    ctx.lineWidth=PIN_RING;
+    ctx.strokeStyle=done?cssVar('--green'):'#fff';
+    ctx.stroke();
+    try{
+      addCanvasImage(map,id,canvas,dpr);
+      if(onReady)onReady();
+      map.triggerRepaint();
+    }catch(e){
+      /* Reading the canvas back taints it if the photo came from a
+         cross-origin host that does not send CORS headers. The app's own
+         photos are base64 data URLs, so this only bites on remote covers;
+         drop the claim and let the feature keep its dot. */
+      console.warn('[map] could not build photo pin:',e.message);
+      iconSet(map).delete(id);
+    }
+  };
+  img.onerror=()=>{ iconSet(map).delete(id); };
+  img.src=src;
+}
+
+/* A cluster bubble with its count baked in. One image per (count, state)
+   pair, generated on demand and cached. Drawing the number into the
+   image avoids needing a `glyphs` font endpoint for a symbol layer. */
+function ensureClusterIcon(map,count,allDone){
+  const id='cluster-'+count+'-'+(allDone?'d':'p');
+  if(iconSet(map).has(id))return id;
+  const r=count>=10?25:count>=5?22:19;
+  const size=r*2+6;
+  const{canvas,ctx,dpr}=makeCanvas(size);
+  const c=size/2;
+  ctx.beginPath();ctx.arc(c,c,r,0,Math.PI*2);
+  ctx.fillStyle=allDone?cssVar('--green'):cssVar('--tint');
+  ctx.shadowColor='rgba(0,0,0,.35)';ctx.shadowBlur=7;ctx.shadowOffsetY=2;
+  ctx.fill();
+  ctx.shadowColor='transparent';
+  ctx.lineWidth=2.5;ctx.strokeStyle='#fff';ctx.stroke();
+  ctx.fillStyle='#fff';
+  ctx.font='600 13px ui-monospace, SFMono-Regular, Menlo, monospace';
+  ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText(String(count),c,c+.5);
+  addCanvasImage(map,id,canvas,dpr);
+  iconSet(map).add(id);
+  return id;
+}
+
+/* Pins are drawn from the palette, so they follow light/dark mode. */
+function cssVar(name){
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim()||'#9c5a2e';
 }
 
 /* ==============================================================
-   SHARED SET-UP — clustered source, cluster layers, and the marker
-   syncing that keeps unclustered pins in step with the viewport.
+   LAYER WIRING
    ============================================================== */
-function attachActivityLayer(map,geojson,state){
+
+/* Cluster properties are generated by MapLibre, so a cluster's icon has
+   to be selected by expression rather than stamped on. The id it builds
+   matches what ensureClusterIcon() registers. */
+const CLUSTER_ICON_EXPR=['concat','cluster-',
+  ['to-string',['get','point_count']],
+  ['case',['==',['get','done'],['get','point_count']],'-d','-p']];
+
+const SYMBOL_LAYOUT={
+  'icon-image':['get','_icon'],
+  /* The clustering already handles crowding; leaving collision detection
+     on would only make pins silently vanish. */
+  'icon-allow-overlap':true,
+  'icon-ignore-placement':true,
+};
+
+/* Writes an `_icon` id onto every point feature and pushes the data to
+   the source. Photo icons decode asynchronously, so a feature starts as
+   a dot and is re-stamped once its image is ready. */
+function stampPointIcons(map,state,push){
+  let changed=false;
+  state.geojson.features.forEach(f=>{
+    const p=f.properties;
+    let id;
+    if(p.photo){
+      const pid='photo-'+p.id;
+      ensurePhotoIcon(map,pid,p.photo,p.done===1,()=>stampPointIcons(map,state,true));
+      id=map.hasImage(pid)?pid:ensureDotIcon(map,p.done===1);
+    } else {
+      id=ensureDotIcon(map,p.done===1);
+    }
+    if(p._icon!==id){p._icon=id;changed=true;}
+  });
+  if(changed&&push){
+    const src=map.getSource('acts');
+    if(src) src.setData(state.geojson);
+  }
+  return changed;
+}
+
+function attachActivityLayer(map,acts,state){
+  state.geojson=actsToGeoJSON(acts);
+  stampPointIcons(map,state,false);
+
   map.addSource('acts',{
     type:'geojson',
-    data:geojson,
+    data:state.geojson,
     cluster:true,
     clusterRadius:56,
     clusterMaxZoom:13,
@@ -112,86 +278,55 @@ function attachActivityLayer(map,geojson,state){
     clusterProperties:{done:['+',['get','done']]},
   });
 
-  /* One invisible layer, purely so the source generates tiles for the
-     viewport. Everything visible is a DOM marker below.
+  map.addLayer({id:'points',type:'symbol',source:'acts',
+    filter:['!',['has','point_count']],layout:SYMBOL_LAYOUT});
+  map.addLayer({id:'clusters',type:'symbol',source:'acts',
+    filter:['has','point_count'],
+    layout:Object.assign({},SYMBOL_LAYOUT,{'icon-image':CLUSTER_ICON_EXPR})});
 
-     Clusters are *computed* in MapLibre's worker (fast, off the main
-     thread) but *drawn* as DOM, for two reasons: a GPU symbol layer
-     would need a `glyphs` font endpoint the style does not have, and
-     DOM lets the bubbles use the app's own mono type. Only a handful
-     of clusters are ever on screen, so the node count stays trivial. */
-  map.addLayer({
-    id:'acts-src',type:'circle',source:'acts',
-    paint:{'circle-radius':1,'circle-opacity':0},
-  });
-
-  state.markers={};
-
-  const sync=()=>{
-    if(!map.getLayer('acts-src'))return;
+  /* Cluster counts change with every zoom level, so make sure an image
+     exists for whichever ones are currently on screen. Each is cached
+     after its first use, so this settles almost immediately. */
+  const ensureClusterIcons=()=>{
+    if(!map.getLayer('clusters'))return;
     let feats=[];
-    try{ feats=map.querySourceFeatures('acts'); }catch(e){ return; }
-
-    const nextIds=new Set();
-    feats.forEach(f=>{
-      const p=f.properties;
-      const isCluster=!!p.cluster;
-      const key=isCluster?'c'+p.cluster_id:'a'+p.id;
-      if(nextIds.has(key))return;          /* a feature can repeat across tiles */
-      nextIds.add(key);
-      if(state.markers[key])return;
-      const el=isCluster?makeClusterEl(map,p):makePinEl(p);
-      state.markers[key]=new maplibregl.Marker({element:el})
-        .setLngLat(f.geometry.coordinates).addTo(map);
-    });
-    Object.keys(state.markers).forEach(k=>{
-      if(!nextIds.has(k)){state.markers[k].remove();delete state.markers[k];}
-    });
+    try{ feats=map.querySourceFeatures('acts',{filter:['has','point_count']}); }
+    catch(e){ return; }
+    const before=iconSet(map).size;
+    feats.forEach(f=>ensureClusterIcon(map,f.properties.point_count,
+      f.properties.done===f.properties.point_count));
+    if(iconSet(map).size!==before) map.triggerRepaint();
   };
+  map.on('data',e=>{ if(e.sourceId==='acts'&&e.isSourceLoaded) ensureClusterIcons(); });
+  map.on('moveend',ensureClusterIcons);
+  state.ensureClusterIcons=ensureClusterIcons;
 
-  map.on('data',e=>{ if(e.sourceId==='acts'&&e.isSourceLoaded) sync(); });
-  map.on('moveend',sync);
-  state.sync=sync;
-}
-
-/* A cluster bubble. Tapping it zooms to the point where the cluster
-   breaks apart. */
-function makeClusterEl(map,p){
-  const el=document.createElement('button');
-  const allDone=p.done===p.point_count;
-  el.className='map-cluster'+(allDone?' done':'');
-  el.textContent=p.point_count_abbreviated||p.point_count;
-  el.setAttribute('aria-label',`${p.point_count} places`);
-  /* Bubbles grow with the count, but only so far. */
-  const size=p.point_count>=10?50:p.point_count>=5?44:38;
-  el.style.width=el.style.height=size+'px';
-  el.onclick=ev=>{
-    ev.stopPropagation();
+  map.on('click','clusters',e=>{
+    const f=e.features&&e.features[0];
+    if(!f)return;
     const src=map.getSource('acts');
     if(!src)return;
-    Promise.resolve(src.getClusterExpansionZoom(p.cluster_id))
-      .then(z=>{
-        const m=state_markerLngLat(map,p.cluster_id);
-        map.easeTo({center:m||map.getCenter(),zoom:z+.3,duration:560});
-      })
+    Promise.resolve(src.getClusterExpansionZoom(f.properties.cluster_id))
+      .then(z=>map.easeTo({center:f.geometry.coordinates,zoom:z+.3,duration:560}))
       .catch(()=>{});
-  };
-  return el;
+  });
+  map.on('click','points',e=>{
+    const f=e.features&&e.features[0];
+    if(f) openActDetail(f.properties.id);
+  });
+  ['clusters','points'].forEach(l=>{
+    map.on('mouseenter',l,()=>{map.getCanvas().style.cursor='pointer';});
+    map.on('mouseleave',l,()=>{map.getCanvas().style.cursor='';});
+  });
 }
 
-/* getClusterExpansionZoom only returns a zoom, so look the cluster's
-   position back up from the source's rendered features. */
-function state_markerLngLat(map,clusterId){
-  try{
-    const f=map.querySourceFeatures('acts').find(x=>x.properties.cluster_id===clusterId);
-    return f?f.geometry.coordinates:null;
-  }catch(e){ return null; }
-}
-
-function clearMarkers(state){
-  if(!state||!state.markers)return;
-  Object.values(state.markers).forEach(m=>m.remove());
-  state.markers={};
+/* Swap the visible set without rebuilding the map. */
+function setLayerData(map,state,acts){
+  if(!map||!map.getSource('acts'))return;
+  state.geojson=actsToGeoJSON(acts);
+  stampPointIcons(map,state,false);
+  map.getSource('acts').setData(state.geojson);
+  if(state.ensureClusterIcons) setTimeout(state.ensureClusterIcons,60);
 }
 
 function boundsOf(acts){
@@ -203,7 +338,7 @@ function boundsOf(acts){
 /* ==============================================================
    MAP TAB — the full-bleed globe
    ============================================================== */
-let globalMapState={markers:{}};
+let globalMapState={};
 
 async function renderGlobalMap(){
   const mapEl=$('globalMapContainer');
@@ -255,7 +390,7 @@ async function renderGlobalMap(){
   globalMapObj.setMinZoom(globeFillZoom());
 
   globalMapObj.on('load',()=>{
-    attachActivityLayer(globalMapObj,actsToGeoJSON(geo),globalMapState);
+    attachActivityLayer(globalMapObj,geo,globalMapState);
     globalMapHomeBounds=boundsOf(geo);
     fitGlobal(false);
     updateGlobalMapMarkers();
@@ -309,9 +444,7 @@ async function updateGlobalMapMarkers(){
   let acts=all.filter(a=>a.locationLat&&a.locationLng);
   if(globalMapFilter==='pending')   acts=acts.filter(a=>!a.completed);
   if(globalMapFilter==='completed') acts=acts.filter(a=>a.completed);
-  clearMarkers(globalMapState);
-  globalMapObj.getSource('acts').setData(actsToGeoJSON(acts));
-  if(globalMapState.sync) setTimeout(globalMapState.sync,60);
+  setLayerData(globalMapObj,globalMapState,acts);
   const c=$('globalMapCount');
   if(c) c.innerHTML=`${icon('pin')}${acts.length} ${acts.length===1?'place':'places'}`;
 }
@@ -325,8 +458,8 @@ function setGlobalMapFilter(f){
 }
 
 function destroyGlobalMap(){
-  clearMarkers(globalMapState);
   if(globalMapObj){globalMapObj.remove();globalMapObj=null;}
+  globalMapState={};
   globalMapHomeBounds=null;
 }
 
@@ -334,7 +467,7 @@ function destroyGlobalMap(){
    DETAIL MAP — one collection.
    Flat mercator: at a single collection's scale a globe is unhelpful.
    ============================================================== */
-let detMapState={markers:{}};
+let detMapState={};
 
 function renderMap(acts){
   const mapEl=$('mapContainer');
@@ -360,7 +493,7 @@ function renderMap(acts){
   actMap.addControl(new maplibregl.NavigationControl({showCompass:false}),'top-right');
 
   actMap.on('load',()=>{
-    attachActivityLayer(actMap,actsToGeoJSON(geo),detMapState);
+    attachActivityLayer(actMap,geo,detMapState);
     detMapHomeBounds=boundsOf(geo);
     actMap.fitBounds(detMapHomeBounds,{padding:44,maxZoom:11,duration:0});
     actMap.resize();
@@ -376,14 +509,12 @@ async function updateMapMarkers(){
   const search=searchEl?searchEl.value.trim().toLowerCase():'';
   if(search) acts=acts.filter(a=>
     a.name.toLowerCase().includes(search)||(a.description||'').toLowerCase().includes(search));
-  clearMarkers(detMapState);
-  actMap.getSource('acts').setData(actsToGeoJSON(acts));
-  if(detMapState.sync) setTimeout(detMapState.sync,60);
+  setLayerData(actMap,detMapState,acts);
 }
 
 function destroyDetailMap(){
-  clearMarkers(detMapState);
   if(actMap){actMap.remove();actMap=null;}
+  detMapState={};
   detMapHomeBounds=null;
 }
 

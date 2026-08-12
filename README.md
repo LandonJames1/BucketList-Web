@@ -54,8 +54,8 @@ _backup/              previous versions, kept for reference
 The interface has **iOS bones and its own voice** — UIKit structure (bottom tab
 bar, collapsing large titles, bottom sheets, action sheets) wearing a warm
 parchment/olive/terracotta palette with full dark mode. Three typefaces, each
-with one job: Cormorant Garamond for display, the system stack for UI chrome,
-IBM Plex Mono for the small-caps labels.
+with one job: Newsreader for display, the system stack for UI chrome, IBM Plex
+Mono for the small-caps labels.
 
 Four tabs, plus one screen that pushes on top of the second:
 
@@ -75,6 +75,10 @@ Three things are deliberately quick:
 - **Completing.** Tap the circle beside an activity. That's it — no dialog.
   Tapping again un-completes it, and *doesn't* discard the photos and notes
   from the earlier completion. Attaching those is a separate, optional step.
+- **Staying signed in.** The session is restored on launch and the token is
+  refreshed when the app comes back to the foreground, so you should only see
+  the login screen after signing out. Note an installed PWA has its own storage
+  on iOS — signing in in Safari and then installing means signing in once more.
 - **Finding.** The Map tab is a WebGL globe. Zoomed out you get the Earth as a
   sphere; it eases into a flat map as you zoom in. The map fills the screen and
   its controls float on top, rather than sitting in a box on a page.

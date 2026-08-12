@@ -52,7 +52,7 @@
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     .row-title.serif {
-      font-family: var(--serif); font-size: 20px; font-weight: 600;
+      font-family: var(--serif); font-size: 19px; font-weight: 600;
       letter-spacing: -.008em;
     }
     .row-sub {
@@ -191,8 +191,8 @@
       background: var(--tint-soft);
     }
     .empty-title {
-      font-family: var(--serif); font-size: 26px; font-weight: 600;
-      color: var(--label); letter-spacing: -.012em; line-height: 1.15;
+      font-family: var(--serif); font-size: 24px; font-weight: 600;
+      color: var(--label); letter-spacing: -.012em; line-height: 1.18;
     }
     .empty-sub { font-size: 15px; max-width: 290px; line-height: 1.45; color: var(--label-2); }
     .empty .btn { margin-top: 16px; }
@@ -246,4 +246,29 @@
     @keyframes fabIn {
       from { opacity: 0; transform: scale(.6) translateY(10px); }
       to   { opacity: 1; transform: none; }
+    }
+
+/*  ============================================================
+    BOOT SPLASH
+
+    body.booting is set in the markup and removed by main.js once the
+    session has been restored. Without it a cold launch shows an empty
+    page while getSession() is in flight, and on a slow connection can
+    flash the login screen at someone who is already signed in.
+    ============================================================ */
+    .splash {
+      position: fixed; inset: 0; z-index: 500;
+      display: none; align-items: center; justify-content: center;
+      background: var(--bg);
+      transition: opacity .3s var(--ease);
+    }
+    body.booting .splash { display: flex; }
+    .splash img {
+      width: 76px; height: 76px; border-radius: 18px;
+      box-shadow: var(--shadow-lg);
+      animation: splashPulse 1.6s var(--ease) infinite;
+    }
+    @keyframes splashPulse {
+      0%,100% { opacity: 1; transform: scale(1); }
+      50%     { opacity: .72; transform: scale(.96); }
     }

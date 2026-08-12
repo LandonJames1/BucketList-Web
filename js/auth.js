@@ -17,6 +17,7 @@ function showApp(){
   /* Only offer the iOS install walkthrough once someone is signed in;
      installing a login screen is pointless. */
   pwaMaybeShowIosHint();
+  sb.auth.startAutoRefresh();
 }
 
 let authIsSignUp=false;
@@ -74,7 +75,36 @@ async function handleAuth(){
   btn.textContent=label;
 }
 
+/* ==============================================================
+   KEEPING THE SESSION ALIVE
+
+   supabase-js refreshes the access token on a timer, but browsers
+   throttle timers in background tabs and suspend them outright in a
+   backgrounded PWA. Without this the token can be stale on resume and
+   the next request 401s, which reads to the user as "it logged me out
+   again". The documented fix is to stop the timer when hidden and
+   restart it — which also forces an immediate refresh — when visible.
+   ============================================================== */
+document.addEventListener('visibilitychange',()=>{
+  if(!currentUser)return;
+  if(document.visibilityState==='visible') sb.auth.startAutoRefresh();
+  else sb.auth.stopAutoRefresh();
+});
+
+/* Keep currentUser in step with whatever the auth client decides.
+   TOKEN_REFRESHED fires on every successful renewal; SIGNED_OUT fires if
+   a refresh ultimately fails, which is the one case where showing the
+   login screen is correct. */
+sb.auth.onAuthStateChange((event,session)=>{
+  if(event==='SIGNED_OUT'){
+    if(currentUser){ currentUser=null;userProfile=null;showAuth(); }
+    return;
+  }
+  if(session?.user) currentUser=session.user;
+});
+
 async function handleSignOut(){
+  sb.auth.stopAutoRefresh();
   await sb.auth.signOut();
   currentUser=null;userProfile=null;
   curTab='home';curPage='home';curListId=null;

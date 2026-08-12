@@ -4,8 +4,8 @@
 
    The structure of the app is iOS (tab bar, large titles, sheets,
    action sheets) but the *voice* is the app's own: warm parchment
-   grounds, an olive/terracotta palette, a high-contrast serif for
-   display type and a mono for the small caps labels.
+   grounds, an olive/terracotta palette, a reading serif for display
+   type and a mono for the small caps labels.
 
    Three typefaces, each with one job:
      --serif  display — screen titles, list and activity names
@@ -21,8 +21,14 @@
     :root {
       color-scheme: light dark;
 
-      /* ---- Type ---- */
-      --serif: 'Cormorant Garamond', ui-serif, 'New York', Georgia, serif;
+      /* ---- Type ----
+         Newsreader, not a Garamond: it is drawn for reading on screen,
+         with a large x-height and even stroke weight, so it stays
+         legible at the 19–22px where most of the app's content sits.
+         A display Garamond looks beautiful at 40px and turns to spidery
+         grey below about 24px, which is the wrong trade for a list of
+         things you actually read. */
+      --serif: 'Newsreader', ui-serif, 'New York', Georgia, serif;
       --sans:  -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI',
                system-ui, Roboto, sans-serif;
       --mono:  'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -179,18 +185,18 @@
 /*  ============================================================
     TYPE
 
-    Display sizes are serif and set tight; the serif is high-contrast
-    and needs negative tracking and a snug leading to look composed
-    rather than airy.
+    Display sizes are serif. Newsreader has a large x-height, so these
+    run a few px smaller than the old Garamond did at the same optical
+    size — if you swap the face again, expect to rebalance them.
     ============================================================ */
     .t-display {
       font-family: var(--serif); font-weight: 600;
       letter-spacing: -.012em; line-height: 1.1;
     }
-    .t-large-title { font-family: var(--serif); font-size: 40px; line-height: 1.06; font-weight: 600; letter-spacing: -.018em; }
-    .t-title1      { font-family: var(--serif); font-size: 32px; line-height: 1.1;  font-weight: 600; letter-spacing: -.014em; }
-    .t-title2      { font-family: var(--serif); font-size: 26px; line-height: 1.14; font-weight: 600; letter-spacing: -.012em; }
-    .t-title3      { font-family: var(--serif); font-size: 22px; line-height: 1.2;  font-weight: 600; letter-spacing: -.01em; }
+    .t-large-title { font-family: var(--serif); font-size: 36px; line-height: 1.06; font-weight: 600; letter-spacing: -.018em; }
+    .t-title1      { font-family: var(--serif); font-size: 29px; line-height: 1.1;  font-weight: 600; letter-spacing: -.014em; }
+    .t-title2      { font-family: var(--serif); font-size: 24px; line-height: 1.14; font-weight: 600; letter-spacing: -.012em; }
+    .t-title3      { font-family: var(--serif); font-size: 20px; line-height: 1.2;  font-weight: 600; letter-spacing: -.01em; }
     .t-headline    { font-size: 17px; line-height: 1.29; font-weight: 600; letter-spacing: -.011em; }
     .t-body        { font-size: 17px; line-height: 1.29; font-weight: 400; letter-spacing: -.011em; }
     .t-callout     { font-size: 16px; line-height: 1.31; font-weight: 400; letter-spacing: -.007em; }
