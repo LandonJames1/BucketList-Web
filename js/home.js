@@ -212,16 +212,17 @@ async function addActivityToList(listId,name){
 async function toggleCompleteFrom(source,id){
   const a=await fetchActivity(id);
   if(!a)return;
-  const nowDone=!a.completed;
+  /* Completing goes through the date sheet — see toggleComplete. */
+  if(!a.completed){ openCompletedDate(id,source); return; }
+  const nowDone=false;
   const{error}=await sb.from('Activities')
-    .update({date_completed: nowDone ? todayISO() : null}).eq('id',id);
+    .update({date_completed: null}).eq('id',id);
   if(error){
     console.error('toggleCompleteFrom:',error);
     showToast(error.message||'Couldn’t update that.');
     return;
   }
   await updateCollectionStats(a.listId);
-  if(nowDone){ confetti(); showToast('Accomplished','Set date',()=>openCompletedDate(id)); }
   if(source==='home') renderHome();
   else if(source==='upnext') renderUpNext();
   else if(source==='done') renderDone();

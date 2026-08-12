@@ -53,9 +53,14 @@ function openNewActivityFromComposer(){
    re-completing brings them straight back.
    ============================================================== */
 async function toggleComplete(id,isDone){
-  const nowDone=!isDone;
+  /* Completing asks for the date first — the activity is not marked
+     accomplished until that sheet is saved, so cancelling leaves it
+     alone rather than filing it under a guess. Un-completing is still
+     immediate: there is nothing to ask. */
+  if(!isDone){ openCompletedDate(id,'detail'); return; }
+  const nowDone=false;
   const{error}=await sb.from('Activities')
-    .update({date_completed: nowDone ? todayISO() : null})
+    .update({date_completed: null})
     .eq('id',id);
   if(error){
     console.error('toggleComplete:',error);
@@ -64,34 +69,35 @@ async function toggleComplete(id,isDone){
   }
   await updateCollectionStats(curListId);
   await renderDetail();
-  if(nowDone){
-    confetti();
-    /* One tap files it as today, which is right nearly always. The
-       toast is the way back for the times it is not — an offer, so the
-       fast path stays one tap. */
-    showToast('Accomplished','Set date',()=>openCompletedDate(id));
-  }
 }
 
 /* ==============================================================
    COMPLETION DATE
 
-   Completing writes today. This is the only place that is editable
-   on its own, without going through the photos-and-notes sheet — the
-   common correction is "I did this on Saturday", not "let me write
-   about it".
-   ============================================================== */
-let compDateId=null;
+   The step that actually completes an activity. Tapping the check
+   opens this, and nothing is written until Save — so an accidental tap
+   costs a Cancel, not a wrong date to hunt down later.
 
-async function openCompletedDate(id){
+   Also reachable from the date pill in the activity sheet, for
+   correcting one afterwards. Kept separate from openComp(), which is
+   photos and notes: the common correction is "I did this on Saturday",
+   not "let me write about it".
+   ============================================================== */
+let compDateId=null,compDateSrc='detail',compDateList=null,compDateNew=false;
+
+async function openCompletedDate(id,source){
   const a=await fetchActivity(id);
   if(!a)return;
   compDateId=id;
+  compDateSrc=source||curPage;
+  compDateList=a.listId;
+  compDateNew=!a.completed;
   $('compDateName').textContent=a.name;
   /* Defaults to the stored date, or today for anything completed
      before the app recorded one. */
   $('compDateOnly').value=a.completedDate||todayISO();
   $('compDateOnly').max=todayISO();     /* you cannot have done it yet */
+  $('compDateSaveBtn').textContent=compDateNew?'Done':'Save';
   openModal('compDateSheet');
 }
 
@@ -109,16 +115,19 @@ async function saveCompletedDate(){
   }
   closeModal('compDateSheet');
   compDateId=null;
-  showToast('Date updated');
-  refreshAfterChange();
+  await updateCollectionStats(compDateList||curListId);
+  if(compDateNew){ confetti(); showToast('Accomplished'); }
+  else showToast('Date updated');
+  refreshAfterChange(compDateSrc);
 }
 
-/* Whichever screen is showing owns the rows that just changed. */
-function refreshAfterChange(){
-  if(curPage==='home') renderHome();
-  else if(curPage==='upnext') renderUpNext();
-  else if(curPage==='done') renderDone();
-  else if(curPage==='detail') renderDetail();
+/* The screen that was showing owns the rows that just changed. */
+function refreshAfterChange(src){
+  const p=src||curPage;
+  if(p==='home') renderHome();
+  else if(p==='upnext') renderUpNext();
+  else if(p==='done') renderDone();
+  else renderDetail();
 }
 
 /* ==============================================================

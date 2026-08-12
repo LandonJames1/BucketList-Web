@@ -527,21 +527,17 @@ functions look redundant:
   name, and keeps focus for the next one. `openNewActivity(prefillName)` is the
   full sheet; the composer's "Details" button hands whatever was typed over to
   it rather than making the user retype.
-- **Completing.** `toggleComplete()` writes **only `date_completed`**, set to
-  today. Today is right nearly always and wrong sometimes, so the success toast
-  carries a *Set date* action that opens `openCompletedDate()` — a sheet holding
-  nothing but a date picker, defaulting to the stored date (or today) and capped
-  at today, since you cannot have done it yet. The same sheet is reachable
-  permanently from the completion date pill in the activity sheet
-  (`.ad-datebtn`), which is a button rather than a label for exactly this
-  reason. It is deliberately separate from `openComp()`: the common correction
-  is "I did this on Saturday", not "let me write about it", and routing the
-  first through the photos-and-notes sheet made a one-field edit feel like a
-  chore. That is
-  deliberate: un-completing therefore never destroys the notes and photos
-  attached to a past completion, and re-completing brings them straight back.
-  The old destructive "undo" that also nulled `experience_notes`/`photos` is
-  gone. `openComp()` is now for *attaching* details to something already done,
+- **Completing.** Tapping the check opens `openCompletedDate()` — a sheet
+  holding nothing but a date picker, defaulting to today and capped there.
+  **Nothing is written until Save**, so an accidental tap costs a Cancel rather
+  than a wrong date to find later. Un-completing is still immediate: there is
+  nothing to ask. It writes **only `date_completed`**, so un-completing never
+  destroys the notes and photos on a past completion. The same sheet reopens
+  from the date pill in the activity sheet (`.ad-datebtn`) for corrections, and
+  is deliberately separate from `openComp()` — the common correction is "I did
+  this on Saturday", not "let me write about it".
+
+`openComp()` is now for *attaching* details to something already done,
   not for doing it.
 
 ## Back end
