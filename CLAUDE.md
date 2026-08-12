@@ -302,6 +302,32 @@ at twenty. The picker is a normal sheet with a compact scrollable list, a cover
 thumbnail per row, and a search field that appears only past seven lists.
 **Don't route this back through an action sheet.**
 
+#### Reminders
+
+`js/reminders.js`. A reminder is a date to be nudged *about* an activity,
+separate from the activity's own target — the case it exists for is a campsite
+whose reservations open months before the trip.
+
+**Understand the limitation before extending this.** A web app cannot wake
+itself up. Notification Triggers never shipped beyond an experiment, and the
+Push API needs a server to send the push. So a reminder fires when the app is
+**opened or foregrounded** on or after its date — not at 9am while the phone is
+in a pocket.
+
+That is why a due reminder is *also* a banner at the top of Home. **The banner
+is the mechanism; the notification is a bonus.** Anything built on the
+notification alone would silently not work, and the failure would look like the
+reminder never existing.
+
+Making it a true background push needs: a `push_subscriptions` table, a
+Supabase Edge Function holding VAPID keys, and `pg_cron` running a daily sweep.
+On iOS, Web Push additionally only works for a PWA installed to the home
+screen.
+
+Already-announced reminders are remembered in `localStorage` keyed by
+`activityId@date`, so re-opening the app does not re-ping but moving a reminder
+re-arms it.
+
 #### The floating action button
 
 The primary "add" action is a fixed `.fab` in the shell, not a bar button. The
@@ -454,7 +480,7 @@ from `js/api.js`.
 | Table | Columns |
 | --- | --- |
 | `Collections` | `id`, `created_at`, `name`, `description`, `cover_image`, `user_id`, `number_activities`, `activites_completed`, `category_tag` |
-| `Activities` | `id`, `created_at`, `collection_id`, `name`, `description`, `target_date`, `priority`, `date_completed`, `experience_notes`, `photos`, `links`, `location`, `location_lat`, `location_lng`, `category_tag` |
+| `Activities` | `id`, `created_at`, `collection_id`, `name`, `description`, `target_date`, `priority`, `date_completed`, `experience_notes`, `photos`, `links`, `location`, `location_lat`, `location_lng`, `category_tag`, `remind_at` (see below) |
 | `Users` | `id` (= `auth.users.id`), `created_at`, `display_name`, `username`, `icon` |
 
 Schema notes and traps:

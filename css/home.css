@@ -242,3 +242,52 @@
       letter-spacing: .1em; color: var(--label-3);
     }
     #page-upnext .up-list + .home-sec-head { padding-top: 24px; }
+
+/*  ============================================================
+    DUE REMINDERS — the banner at the top of Home.
+
+    Deliberately the loudest thing on the page: it is the only part of
+    the app that is time-critical, and it is also the only reminder
+    mechanism that works reliably (see js/reminders.js).
+    ============================================================ */
+    .rem-list {
+      margin: 0 var(--gx-r) 18px var(--gx-l);
+      background: var(--tint-soft); border-radius: var(--r-card);
+      overflow: hidden;
+      box-shadow: var(--shadow-sm), 0 0 0 1px var(--tint-soft);
+    }
+    .rem-row {
+      position: relative; display: flex; align-items: center; gap: 12px;
+      padding: 12px 10px 12px 14px; min-height: 60px;
+    }
+    .rem-row:not(:last-child)::after {
+      content: ''; position: absolute; left: 48px; right: 0; bottom: 0;
+      height: .5px; background: var(--tint); opacity: .18;
+    }
+    .rem-icon {
+      width: 26px; height: 26px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--tint);
+    }
+    .rem-icon .ic { width: 22px; height: 22px; }
+    .rem-main {
+      flex: 1; min-width: 0; display: flex; flex-direction: column;
+      align-items: flex-start; gap: 3px; text-align: left; background: none; padding: 0;
+    }
+    .rem-name {
+      font-family: var(--serif); font-size: 18px; font-weight: 600;
+      letter-spacing: -.008em; color: var(--label); line-height: 1.22;
+      width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .rem-meta {
+      font-family: var(--mono); font-size: 10px; font-weight: 500;
+      letter-spacing: .08em; text-transform: uppercase; color: var(--tint);
+      width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .rem-dismiss {
+      width: 40px; height: 40px; flex-shrink: 0; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--tint); opacity: .6;
+    }
+    .rem-dismiss .ic { width: 15px; height: 15px; }
+    .rem-dismiss:active { opacity: 1; background: var(--fill-3); }

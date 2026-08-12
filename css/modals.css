@@ -133,14 +133,23 @@
       background-position: right 0 center;
     }
 
-    /* Disclosure for the optional half of a form. */
+    /* Disclosure for the optional half of a form.
+
+       Sized up and given a fill: as a bare 10px mono line it read as a
+       caption rather than a control, and the fields behind it — notes,
+       location, links, reminders — are most of what the sheet can do. */
     .more-toggle {
-      display: flex; align-items: center; justify-content: center; gap: 6px;
-      width: 100%; padding: 14px; color: var(--tint);
-      font-family: var(--mono); font-size: 10px; font-weight: 500;
-      letter-spacing: .12em; text-transform: uppercase;
+      display: flex; align-items: center; justify-content: center; gap: 7px;
+      width: calc(100% - var(--gx-l) - var(--gx-r));
+      margin: 4px var(--gx-r) 0 var(--gx-l);
+      min-height: 48px; padding: 0 18px; border-radius: var(--r-row);
+      background: var(--tint-soft); color: var(--tint);
+      font-family: var(--mono); font-size: 11px; font-weight: 600;
+      letter-spacing: .11em; text-transform: uppercase;
+      transition: opacity .15s;
     }
-    .more-toggle .ic { width: 15px; height: 15px; transition: transform .25s var(--ease); }
+    .more-toggle:active { opacity: .65; }
+    .more-toggle .ic { width: 16px; height: 16px; transition: transform .25s var(--ease); }
     .more-toggle[aria-expanded="true"] .ic { transform: rotate(180deg); }
     .more-fields { display: none; }
     .more-fields.open { display: block; animation: fadeIn .2s linear; }
@@ -378,3 +387,10 @@
     }
     .lp-new:active { opacity: .7; }
     .lp-new .ic { width: 17px; height: 17px; }
+
+    /* Explanatory line under a field, for behaviour that isn't obvious
+       from the control itself. */
+    .fg-hint {
+      margin: 8px 4px 0 17px;
+      font-size: 13px; line-height: 1.4; color: var(--label-2);
+    }

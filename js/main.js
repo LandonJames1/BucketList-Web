@@ -35,6 +35,7 @@ function paintStaticIcons(){
   set('homeComposerIcon',icon('plus'));
   set('homeComposerGo',icon('chevron-right'));
   set('actListChevron',icon('chevron-right'));
+  set('meNotifyIcon',icon('clock'));
   set('listPickerSearchIcon',icon('search'));
   set('listPickerNewIcon',icon('plus'));
   set('meInstallChevron',icon('chevron-right'));

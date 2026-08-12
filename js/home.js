@@ -20,6 +20,7 @@ async function renderHome(){
   const acts=await fetchAllActivities(lists);
 
   renderHomeGreeting();
+  renderHomeReminders(acts,lists);
   renderHomeProgress(lists,acts);
   renderHomeUpNext(acts,lists);
   renderHomeRecent(acts,lists);

@@ -9,7 +9,7 @@
    installs pick the new build up instead of serving a stale one.
    ============================================================== */
 
-const CACHE_VERSION = 'v10';
+const CACHE_VERSION = 'v11';
 const SHELL_CACHE = `bucketlist-shell-${CACHE_VERSION}`;
 const VENDOR_CACHE = `bucketlist-vendor-${CACHE_VERSION}`;
 const IMAGE_CACHE = `bucketlist-images-${CACHE_VERSION}`;
@@ -48,6 +48,7 @@ const SHELL_ASSETS = [
   './js/home.js',
   './js/upnext.js',
   './js/done.js',
+  './js/reminders.js',
   './js/collections.js',
   './js/detail.js',
   './js/activities.js',
@@ -116,6 +117,17 @@ self.addEventListener('activate', event => {
       await self.registration.navigationPreload.enable();
     }
     await self.clients.claim();
+  })());
+});
+
+/* Tapping a reminder notification should bring the app forward rather
+   than opening a second copy of it. */
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const c of clients) { if ('focus' in c) return c.focus(); }
+    if (self.clients.openWindow) return self.clients.openWindow('./index.html');
   })());
 });
 

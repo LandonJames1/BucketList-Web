@@ -121,6 +121,12 @@
     <h1 id="homeGreeting"></h1>
   </div>
 
+  <!-- Due reminders. This banner is the reminder mechanism that always
+       works; the notification in reminders.js is a bonus on top. -->
+  <div id="homeRemindersSection" style="display:none">
+    <div class="rem-list" id="homeReminders"></div>
+  </div>
+
   <div class="home-progress" id="homeProgress"></div>
 
   <!-- Quick add with no collection context: the list is chosen on submit. -->
@@ -212,6 +218,11 @@
 
   <div class="section-header">App</div>
   <div class="group">
+    <button class="row tappable has-leading" id="meNotifyRow" style="display:none">
+      <span class="row-leading li-orange" id="meNotifyIcon"></span>
+      <span class="row-body"><span class="row-title">Reminder alerts</span></span>
+      <span class="row-trailing"><span id="meNotifyValue"></span></span>
+    </button>
     <button class="row tappable has-leading" onclick="pwaShowInstallHelp()">
       <span class="row-leading li-blue"></span>
       <span class="row-body"><span class="row-title">Add to Home Screen</span></span>
@@ -359,6 +370,21 @@
         <div class="fg">
           <label>Links<span class="opt"> optional</span></label>
           <div class="chip-field" id="aLinksWrap" onclick="$('aLinkInput').focus()"></div>
+        </div>
+        <!-- Hidden entirely until the remind_at column exists; see
+             probeRemindColumn() in api.js. -->
+        <div class="fg" id="aRemindRow" style="display:none">
+          <label>Remind me<span class="opt"> optional</span></label>
+          <div class="fg-stack">
+            <div class="fg-inline">
+              <span>On</span>
+              <input type="date" id="aRemind" />
+            </div>
+            <button class="row tappable" id="aRemindClear" onclick="clearRemindField()">
+              <span class="row-body"><span class="row-title" style="color:var(--tint)">Clear reminder</span></span>
+            </button>
+          </div>
+          <div class="fg-hint">Nudges you when you next open the app on or after that day &mdash; useful for things that need booking ahead.</div>
         </div>
       </div>
     </div>
@@ -552,6 +578,7 @@
 <script src="js/home.js"></script>
 <script src="js/upnext.js"></script>
 <script src="js/done.js"></script>
+<script src="js/reminders.js"></script>
 <script src="js/collections.js"></script>
 <script src="js/detail.js"></script>
 <script src="js/activities.js"></script>

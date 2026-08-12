@@ -87,6 +87,7 @@ async function openNewActivity(prefillName){
   $('aDate').value=DEFAULT_TARGET_DATE;$('aPri').value='medium';
   $('aDateCustom').value='';onTargetDateChange();
   renderTagChips('aLinks');
+  setRemindField(null);
   setMoreFields(false);
   $('actSheetTitle').textContent='New Activity';
   $('actSaveBtn').textContent='Add';
@@ -117,8 +118,9 @@ async function openEditAct(id){
   $('aPri').value=a.priority||'medium';
   aLinks=[...(a.links||[])];
   renderTagChips('aLinks');
+  setRemindField(a.remindAt);
   /* Open the extra fields straight away when any of them are in use. */
-  setMoreFields(!!(a.description||a.location||a.links&&a.links.length));
+  setMoreFields(!!(a.description||a.location||a.remindAt||(a.links&&a.links.length)));
   $('actSheetTitle').textContent='Edit Activity';
   $('actSaveBtn').textContent='Save';
   openModal('actSheet');
@@ -186,6 +188,20 @@ function addLegacyDateOption(v){
   $('aDate').appendChild(o);
 }
 
+/* The reminder field only exists once the remind_at column does. */
+function setRemindField(value){
+  const row=$('aRemindRow');
+  if(!row)return;
+  if(!remindersReady()){row.style.display='none';return;}
+  row.style.display='';
+  $('aRemind').value=value||'';
+  $('aRemindClear').style.display=value?'':'none';
+}
+function clearRemindField(){
+  $('aRemind').value='';
+  $('aRemindClear').style.display='none';
+}
+
 function setMoreFields(open){
   $('actMore').classList.toggle('open',open);
   $('actMoreToggle').setAttribute('aria-expanded',open?'true':'false');
@@ -214,6 +230,9 @@ async function saveActivity(){
     priority:$('aPri').value,
     links:aLinks
   };
+  /* Only send the column if the database actually has it, or every
+     insert fails for people who have not run the migration. */
+  if(remindersReady()) fields.remind_at=$('aRemind').value||null;
   try{
     if(editingActId){
       const{error}=await sb.from('Activities').update(fields).eq('id',editingActId);

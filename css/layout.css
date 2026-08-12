@@ -80,9 +80,22 @@
     .navbtn.disc.ghost .ic {
       background: var(--fill-2); color: var(--label-2); box-shadow: none;
     }
-    /* Back button: chevron hugs the label the way UIKit draws it. */
-    .navbtn.back { padding-left: 0; gap: 0; }
-    .navbtn.back .ic { margin-right: -1px; }
+    /* Back button.
+
+       A bare chevron in the corner is the UIKit convention, but on a
+       screen whose nav bar is otherwise transparent it reads as a stray
+       mark rather than a control. This one is a tinted pill: same
+       position, but with a filled background it is visibly a button,
+       and the whole pill is the target rather than just the glyph. */
+    .navbtn.back {
+      height: 38px; padding: 0 14px 0 9px; gap: 3px;
+      border-radius: 19px;
+      background: var(--fill-3);
+      -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+      font-size: 16px; font-weight: 500;
+    }
+    .navbtn.back .ic { width: 20px; height: 20px; stroke-width: 2.4; }
+    .navbtn.back:active { opacity: 1; background: var(--fill-2); transform: scale(.95); }
     .navbtn.back span {
       max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }

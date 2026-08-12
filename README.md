@@ -36,6 +36,24 @@ Once installed, the app shell (HTML/CSS/JS/icons/fonts/MapLibre) is cached and
 launches offline. Your collections come from Supabase, so they need a
 connection — an offline launch shows the UI with an "Offline" banner.
 
+## Reminders (optional)
+
+An activity can carry a reminder date — useful for things that need booking
+ahead of the trip itself. It needs one column that isn't in the original
+schema; run this once in the Supabase SQL editor to switch the feature on:
+
+```sql
+alter table "Activities" add column if not exists remind_at date;
+```
+
+Until you do, the app probes for the column and hides all reminder UI, so
+nothing breaks either way.
+
+Note that a web app cannot wake itself up: reminders appear as a banner at the
+top of Home, and fire a notification when you next open the app on or after the
+date — not at a scheduled time in the background. Real scheduled push would
+need a server component.
+
 ## Project structure
 
 ```
@@ -147,6 +165,7 @@ chain below.
 | `home.js` | The Home dashboard, and the quick-add that files an activity into a chosen list. |
 | `upnext.js` | The full Up Next screen, grouped by target band (this month, this year, next year…). |
 | `done.js` | The full Accomplished screen, grouped by the month things were finished. |
+| `reminders.js` | Reminder dates: the due banner on Home, and local notifications when the app is opened. |
 | `collections.js` | The Lists tab plus create/edit/delete a collection. |
 | `detail.js` | One collection: banner, filter, the activity list/grid/map switch, the composer. |
 | `activities.js` | Quick add, one-tap complete, the full activity sheet, completion details, the ⋯ menu. |

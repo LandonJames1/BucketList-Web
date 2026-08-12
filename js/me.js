@@ -9,6 +9,7 @@
 async function renderMe(){
   /* Identity first — it needs no network beyond the cached profile. */
   renderMeIdentity();
+  renderMeNotifications();
 
   const lists=await fetchCollections();
   const allActs=await fetchAllActivities(lists);
@@ -52,6 +53,23 @@ async function loadUserProfile(){
   if(error){console.error('loadUserProfile:',error);return;}
   userProfile=data||null;
   if(curPage==='me') renderMeIdentity();
+}
+
+/* Notification row in the You tab: reflects the real permission state
+   rather than pretending it is a toggle we control. */
+function renderMeNotifications(){
+  const row=$('meNotifyRow');
+  if(!row)return;
+  if(!remindersReady()){row.style.display='none';return;}
+  row.style.display='';
+  const state=notificationState();
+  const label={granted:'On',denied:'Blocked in browser settings',
+               default:'Off',unsupported:'Not supported'}[state];
+  $('meNotifyValue').textContent=label;
+  row.onclick=state==='default'?requestNotifications:()=>{
+    if(state==='denied') showToast('Allow notifications in your browser settings');
+    else if(state==='granted') showToast('Reminders are on');
+  };
 }
 
 function confirmSignOut(){

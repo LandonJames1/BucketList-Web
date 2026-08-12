@@ -18,6 +18,12 @@ function showApp(){
      installing a login screen is pointless. */
   pwaMaybeShowIosHint();
   sb.auth.startAutoRefresh();
+  /* Find out whether reminders are available, then re-render Home so the
+     banner can appear, and ping anything already due. */
+  probeRemindColumn().then(ok=>{
+    if(ok&&curPage==='home') renderHome();
+    checkDueReminders();
+  });
 }
 
 let authIsSignUp=false;
