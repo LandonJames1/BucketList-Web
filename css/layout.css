@@ -92,8 +92,10 @@
     ============================================================ */
     /* A mono eyebrow sits above the serif title — the app's signature
        pairing, and what stops a big title reading as a bare heading. */
+    /* Same reasoning as .home-greeting: .page already clears the nav
+       bar, so this only needs breathing room underneath. */
     .large-title {
-      padding: 10px var(--gx-r) 10px var(--gx-l);
+      padding: 0 var(--gx-r) 10px var(--gx-l);
     }
     .large-title .eyebrow {
       font-family: var(--mono); font-size: 11px; font-weight: 500;
@@ -101,7 +103,7 @@
       color: var(--tint); margin-bottom: 5px;
     }
     .large-title h1 {
-      font-family: var(--serif); font-size: 36px; line-height: 1.08;
+      font-family: var(--serif); font-size: 39px; line-height: 1.06;
       font-weight: 600; letter-spacing: -.018em; color: var(--label);
     }
     .large-title h1 em { font-style: italic; font-weight: 500; }

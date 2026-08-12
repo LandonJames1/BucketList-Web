@@ -10,14 +10,14 @@
 
 /* Which tab each screen belongs to, so the right tab stays lit while
    a pushed screen is showing. */
-const PAGE_TAB={home:'home',lists:'lists',globalmap:'map',me:'me',detail:'lists',upnext:'home'};
+const PAGE_TAB={home:'home',lists:'lists',globalmap:'map',me:'me',detail:'lists',upnext:'home',done:'home'};
 
 function nav(page,listId){
   const prev=curPage;
   if(page==='detail'&&listId) curListId=listId;
 
   /* Pushed screens slide in from the right; switching tabs cross-fades. */
-  const PUSHED=['detail','upnext'];
+  const PUSHED=['detail','upnext','done'];
   const pushing = PUSHED.includes(page) && !PUSHED.includes(prev);
   if(pushing) backTab=curTab;
 
@@ -41,6 +41,7 @@ function nav(page,listId){
 
   if(page==='home')      renderHome();
   if(page==='upnext')    renderUpNext();
+  if(page==='done')      renderDone();
   if(page==='lists')     renderCollections();
   if(page==='detail')    renderDetail();
   if(page==='globalmap') renderGlobalMap();
@@ -78,8 +79,8 @@ function updateNavbar(){
   } else if(curPage==='lists'){
     title.textContent='Your Lists';
     fabFn=openNewList;fabLabel='New list';
-  } else if(curPage==='upnext'){
-    title.textContent='Up Next';
+  } else if(curPage==='upnext'||curPage==='done'){
+    title.textContent=curPage==='upnext'?'Up Next':'Accomplished';
     left.innerHTML=`<button class="navbtn back" onclick="nav('home')">${icon('chevron-left')}<span>Home</span></button>`;
   } else if(curPage==='detail'){
     left.innerHTML=`<button class="navbtn back" onclick="goBack()">${icon('chevron-left')}<span>Lists</span></button>`;

@@ -131,6 +131,11 @@ function renderHomeRecent(acts,lists){
   const sec=$('homeRecentSection');
   if(!done.length){sec.style.display='none';return;}
   sec.style.display='';
+
+  /* "See all" only when there is more than the shelf is showing. */
+  const total=acts.filter(a=>a.completed).length;
+  const all=$('homeRecentAll');
+  if(all) all.style.display=total>done.length?'':'none';
   $('homeRecent').innerHTML=done.map(a=>{
     const photo=a.photos&&a.photos.length?a.photos[0]:null;
     return `<button class="rec-card" onclick="openActDetail('${a.id}')">
@@ -214,5 +219,6 @@ async function toggleCompleteFrom(source,id){
   if(nowDone){ confetti(); showToast('Accomplished'); }
   if(source==='home') renderHome();
   else if(source==='upnext') renderUpNext();
+  else if(source==='done') renderDone();
   else renderDetail();
 }

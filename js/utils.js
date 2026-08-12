@@ -43,14 +43,48 @@ function daysUntil(iso){
    priority push tomorrow's flight below something three weeks out.
    Undated things sort last. */
 const NO_TARGET=10**7;
+
+/* The actual Date an activity is aiming at: itself if the user picked a
+   date, the end of the window if they picked a band. Null for Someday
+   and undated. This is what lets a specific date slot into the running
+   order beside the bands — a date in September sorts before a "This
+   year" band, which resolves to 31 December. */
+function resolvedTarget(a){
+  if(!a.targetDate||a.targetDate==='Before I Die') return null;
+  if(isCustomDate(a.targetDate)) return new Date(a.targetDate+'T00:00:00');
+  return presetTargetDate(a.targetDate);
+}
+
 function daysToTarget(a){
   if(!a.targetDate) return NO_TARGET;
   if(a.targetDate==='Before I Die') return NO_TARGET-1;
-  if(isCustomDate(a.targetDate)) return daysUntil(a.targetDate);
-  const t=presetTargetDate(a.targetDate);
+  const t=resolvedTarget(a);
   if(!t) return NO_TARGET;
   const today=new Date();today.setHours(0,0,0,0);
   return Math.round((t-today)/864e5);
+}
+
+/* Which calendar bucket an activity falls in, worked out from its
+   *resolved* date rather than from the band it was given. That is the
+   whole point: an activity dated 5 September and one set to "This year"
+   both belong under this year, and sorting inside the bucket puts the
+   5th before 31 December automatically.
+
+   `order` is what the Up Next screen sorts its groups by. */
+function targetBand(a){
+  if(!a.targetDate)                 return{id:'none',   label:'No date',    order:90};
+  if(a.targetDate==='Before I Die') return{id:'someday',label:'Someday',    order:80};
+  if(daysToTarget(a)<0)             return{id:'overdue',label:'Overdue',    order:0};
+
+  const t=resolvedTarget(a);
+  if(!t)                            return{id:'none',   label:'No date',    order:90};
+  const now=new Date();
+  const endOf=(y,m,d)=>new Date(y,m,d,23,59,59);
+  if(t<=endOf(now.getFullYear(),now.getMonth()+1,0)) return{id:'month',label:'This month', order:1};
+  if(t<=endOf(now.getFullYear(),11,31))              return{id:'year', label:'This year',  order:2};
+  if(t<=endOf(now.getFullYear()+1,11,31))            return{id:'next', label:'Next year',  order:3};
+  if(t<=endOf(now.getFullYear()+3,11,31))            return{id:'y23',  label:'2–3 years',  order:4};
+  return{id:'y5',label:'5+ years',order:5};
 }
 
 /* The end of the window each preset band describes. */

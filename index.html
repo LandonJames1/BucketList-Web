@@ -139,7 +139,10 @@
   <div class="up-list" id="homeUpNext"></div>
 
   <div id="homeRecentSection" style="display:none">
-    <div class="home-sec-head"><h2>Recently accomplished</h2></div>
+    <div class="home-sec-head">
+      <h2>Recently accomplished</h2>
+      <button onclick="nav('done')" id="homeRecentAll" style="display:none">See all</button>
+    </div>
     <div class="shelf shelf-3" id="homeRecent"></div>
   </div>
 
@@ -153,6 +156,16 @@
     <h1>Up <em>Next</em></h1>
   </div>
   <div id="upnextBody"></div>
+</div>
+
+<!-- ===== ACCOMPLISHED — pushed on top of Home =====
+     Everything ever completed, newest first, grouped by month. -->
+<div class="page" id="page-done">
+  <div class="large-title">
+    <div class="eyebrow" id="doneEyebrow"></div>
+    <h1><em>Accomplished</em></h1>
+  </div>
+  <div id="doneBody"></div>
 </div>
 
 <!-- ===== LISTS TAB (root) ===== -->
@@ -538,6 +551,7 @@
 <!-- Screens and features -->
 <script src="js/home.js"></script>
 <script src="js/upnext.js"></script>
+<script src="js/done.js"></script>
 <script src="js/collections.js"></script>
 <script src="js/detail.js"></script>
 <script src="js/activities.js"></script>

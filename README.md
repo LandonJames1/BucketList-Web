@@ -61,7 +61,7 @@ Four tabs, plus one screen that pushes on top of the second:
 
 | Tab | Screen | What's there |
 | --- | --- | --- |
-| **Home** | `page-home` | Dashboard: progress ring, quick add, Up Next, recently accomplished. "See all" pushes the full Up Next list, grouped by urgency. |
+| **Home** | `page-home` | Dashboard: progress ring, quick add, Up Next, recently accomplished. Both "See all" links push a full list — Up Next grouped by target band, Accomplished grouped by month. |
 | **Lists** | `page-lists` | Every collection as a photo card. Tapping one pushes `page-detail`. |
 | **Map** | `page-globalmap` | A full-screen map of everywhere you're going. |
 | **You** | `page-me` | Profile, install, sign out. |
@@ -145,7 +145,8 @@ chain below.
 | File | Contains |
 | --- | --- |
 | `home.js` | The Home dashboard, and the quick-add that files an activity into a chosen list. |
-| `upnext.js` | The full Up Next screen, grouped by how soon things are due. |
+| `upnext.js` | The full Up Next screen, grouped by target band (this month, this year, next year…). |
+| `done.js` | The full Accomplished screen, grouped by the month things were finished. |
 | `collections.js` | The Lists tab plus create/edit/delete a collection. |
 | `detail.js` | One collection: banner, filter, the activity list/grid/map switch, the composer. |
 | `activities.js` | Quick add, one-tap complete, the full activity sheet, completion details, the ⋯ menu. |

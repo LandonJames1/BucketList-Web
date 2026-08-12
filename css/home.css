@@ -6,8 +6,11 @@
    of a stack of unrelated panels.
    ============================================================ */
 
+    /* No top padding: .page already reserves the nav bar's height, and
+       stacking more on top left a visibly dead band under the status
+       bar before the first thing you read. */
     .home-greeting {
-      padding: 8px var(--gx-r) 20px var(--gx-l);
+      padding: 0 var(--gx-r) 18px var(--gx-l);
     }
     .home-greeting .eyebrow {
       font-family: var(--mono); font-size: 10px; font-weight: 500;
@@ -15,7 +18,7 @@
       color: var(--tint); margin-bottom: 7px;
     }
     .home-greeting h1 {
-      font-family: var(--serif); font-size: 33px; line-height: 1.08;
+      font-family: var(--serif); font-size: 37px; line-height: 1.06;
       font-weight: 600; letter-spacing: -.018em; color: var(--label);
     }
     .home-greeting h1 em { font-style: italic; font-weight: 500; }

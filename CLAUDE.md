@@ -99,7 +99,7 @@ rest of the app still works — registration failure is caught and logged.
 ### Screens and navigation
 
 The app is modelled on a UIKit tab controller: **four root destinations in a
-bottom tab bar**, plus two screens that push on top of a tab. All are
+bottom tab bar**, plus three screens that push on top of a tab. All are
 `<div class="page">` siblings shown one at a time by `nav()` toggling `.active`.
 There is no router and no URL state — reloading always lands on Home.
 
@@ -107,6 +107,7 @@ There is no router and no URL state — reloading always lands on Home.
 | --- | --- | --- | --- |
 | `page-home` | `home` | Home | `renderHome()` — the dashboard |
 | `page-upnext` | `upnext` | (pushed on Home) | `renderUpNext()` — every unfinished activity |
+| `page-done` | `done` | (pushed on Home) | `renderDone()` — everything ever completed |
 | `page-lists` | `lists` | Lists | `renderCollections()` — every collection as a photo card |
 | `page-detail` | `detail` | (pushed on Lists) | `renderDetail()` — one collection's activities |
 | `page-globalmap` | `globalmap` | Map | `renderGlobalMap()` — every located activity |
@@ -267,6 +268,13 @@ into the single value that gets stored. The sentinel is never written.
 A specific date counts down while it is close and then shows the date itself —
 once something is months out, "Dec 25" is more use than "184 days left".
 
+**`targetBand()` buckets by the resolved date, not by the band that was
+chosen.** That is what lets the two kinds of value interleave correctly on the
+Up Next screen: an activity dated 5 September and one set to "This year" both
+land under *This year*, and because the band resolves to 31 December the dated
+one sorts above it. Grouping and ordering therefore agree by construction —
+there is no separate list of rules to keep in step.
+
 "Someday" (`Before I Die`) and "No date" (`''`) were retired from the picker:
 both were reachable, one was the default, and anything holding them never
 surfaced in Up Next.
@@ -403,7 +411,8 @@ Loaded in this order; **order matters**.
 
 | File | Domain |
 | --- | --- |
-| `upnext.js` | The Up Next screen pushed from Home: every unfinished activity, bucketed into the `UPNEXT_GROUPS` urgency bands. Borrows its rows and sort from `home.js`. |
+| `upnext.js` | The Up Next screen pushed from Home: every unfinished activity, bucketed by `targetBand()`. Borrows its rows and sort from `home.js`. |
+| `done.js` | The Accomplished screen pushed from Home: everything completed, grouped by the month it was finished. Reuses Home's photo tiles. |
 | `home.js` | The Home tab. `renderHome()` plus one function per section, the shared `upNextRowHTML()`/`sortUpNext()` the Up Next screen also uses, the context-free composer (`homeQuickAdd` → `addActivityToList`), and `toggleCompleteFrom()` — Home's copy of the completion toggle, which cannot rely on `curListId`. |
 | `collections.js` | `renderCollections()` (the Lists tab) plus the collection CRUD: `openNewList`, `openEditList`, `renderCoverPreview`, `clearCover`, `handleCoverUpload`, `saveList`, `delList`. `delList` deletes the collection's activities first — there is no DB cascade. |
 | `detail.js` | One collection. Rendering is **deliberately split in two**: `renderDetail()` builds the banner and the controls, `renderActivitiesList()` rebuilds only the list. Search and filter call the second, so the search field never loses focus mid-typing. Also `activityRowHTML`/`activityCardHTML` and the quick-add composer helpers (`composerHTML`, `onComposerKey`, `focusComposer`). |

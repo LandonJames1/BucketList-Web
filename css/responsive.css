@@ -25,7 +25,8 @@
          absent. Priority and the deadline are the two things you are
          actually scanning for, and the collection is one tap away. */
       .up-meta .up-list { display: none; }
-      .large-title h1 { font-size: 30px; }
+      .large-title h1 { font-size: 33px; }
+      .home-greeting h1 { font-size: 32px; }
       .coll-grid { gap: 11px; }
       .stat-num { font-size: 28px; }
       .det-banner-title { font-size: 21px; }

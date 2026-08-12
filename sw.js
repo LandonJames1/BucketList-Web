@@ -9,7 +9,7 @@
    installs pick the new build up instead of serving a stale one.
    ============================================================== */
 
-const CACHE_VERSION = 'v8';
+const CACHE_VERSION = 'v9';
 const SHELL_CACHE = `bucketlist-shell-${CACHE_VERSION}`;
 const VENDOR_CACHE = `bucketlist-vendor-${CACHE_VERSION}`;
 const IMAGE_CACHE = `bucketlist-images-${CACHE_VERSION}`;
@@ -47,6 +47,7 @@ const SHELL_ASSETS = [
   './js/photos.js',
   './js/home.js',
   './js/upnext.js',
+  './js/done.js',
   './js/collections.js',
   './js/detail.js',
   './js/activities.js',

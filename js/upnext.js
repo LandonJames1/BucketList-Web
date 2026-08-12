@@ -5,20 +5,17 @@
    reuses `upNextRowHTML()` and `sortUpNext()` from home.js so the two
    screens can never disagree about what "next" means.
 
-   Rows are grouped by how soon they are due rather than listed flat: a
-   long undifferentiated list of everything you have ever wanted to do
-   is exactly the thing this screen exists to make navigable.
-   ============================================================== */
+   Rows are grouped by target band — This month, This year, Next year
+   and so on — rather than listed flat, because a long undifferentiated
+   list of everything you have ever wanted to do is the thing this
+   screen exists to make navigable.
 
-/* Bands are derived from the urgency class dateInfo() already hands the
-   badges, so a row's group always agrees with the colour of its label. */
-const UPNEXT_GROUPS=[
-  {id:'overdue', label:'Overdue',        match:c=>c==='overdue'},
-  {id:'soon',    label:'Coming up',      match:c=>c==='urgent'||c==='soon'},
-  {id:'later',   label:'Later this year',match:c=>c==='moderate'},
-  {id:'distant', label:'Further out',    match:c=>c==='relaxed'},
-  {id:'someday', label:'No fixed date',  match:c=>c==='forever'||c===''},
-];
+   Grouping comes from targetBand() in utils.js, which buckets by an
+   activity's *resolved* date rather than by the band it was given. An
+   activity dated 5 September therefore sits under "This year" alongside
+   the ones set to that band, and sorts above them, because 5 September
+   comes before the 31 December the band resolves to.
+   ============================================================== */
 
 async function renderUpNext(){
   const body=$('upnextBody');
@@ -40,18 +37,20 @@ async function renderUpNext(){
     return;
   }
 
-  /* Bucket in one pass, preserving the sort within each group. */
-  const buckets={};
+  /* Bucket in one pass. `pending` is already sorted by resolved date, so
+     each bucket keeps that order and dated activities land ahead of the
+     band they share a window with. */
+  const buckets=new Map();
   pending.forEach(a=>{
-    const cls=dateInfo(a).cls;
-    const g=UPNEXT_GROUPS.find(g=>g.match(cls))||UPNEXT_GROUPS[UPNEXT_GROUPS.length-1];
-    (buckets[g.id]=buckets[g.id]||[]).push(a);
+    const g=targetBand(a);
+    if(!buckets.has(g.id)) buckets.set(g.id,{group:g,items:[]});
+    buckets.get(g.id).items.push(a);
   });
 
-  body.innerHTML=UPNEXT_GROUPS
-    .filter(g=>buckets[g.id]&&buckets[g.id].length)
-    .map(g=>`
-      <div class="home-sec-head"><h2>${esc(g.label)}</h2><span class="upnext-count">${buckets[g.id].length}</span></div>
-      <div class="up-list">${buckets[g.id].map(a=>upNextRowHTML(a,lists,'upnext')).join('')}</div>`)
+  body.innerHTML=[...buckets.values()]
+    .sort((x,y)=>x.group.order-y.group.order)
+    .map(({group,items})=>`
+      <div class="home-sec-head"><h2>${esc(group.label)}</h2><span class="upnext-count">${items.length}</span></div>
+      <div class="up-list">${items.map(a=>upNextRowHTML(a,lists,'upnext')).join('')}</div>`)
     .join('');
 }
