@@ -163,6 +163,12 @@ There is also a screen outside this system: the signed-out `#authPage`, which
 - Recently accomplished, by `completedDate` descending, **capped at six** —
   two rows of three.
 
+Both shelves' "See all" links are shown whenever their section has anything in
+it, **not** only once there is more than the shelf displays. Gating them on a
+threshold was tried and reverted: it made the Up Next and Accomplished screens
+undiscoverable for anyone with a short history, which is exactly the person
+still learning where things are.
+
 Home has no floating action button: the composer near the top is already the
 add affordance, and two competing ones on a single screen is one too many. It
 also has no lists shelf — that duplicated the Lists tab sitting in the tab bar.

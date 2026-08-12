@@ -75,9 +75,10 @@ function renderHomeUpNext(acts,lists){
   const pending=sortUpNext(acts.filter(a=>!a.completed));
   const next=pending.slice(0,4);
 
-  /* "See all" only earns its place when there is more to see. */
+  /* Always offered, for the same reason as the Accomplished shelf: a
+     control that appears only past a threshold is one people never find. */
   const all=$('homeUpNextAll');
-  if(all) all.style.display=pending.length>next.length?'':'none';
+  if(all) all.style.display=pending.length?'':'none';
 
   if(!next.length){
     $('homeUpNext').innerHTML=`<div class="home-empty">${icon('sparkle')}
@@ -123,8 +124,8 @@ function sortUpNext(acts){
 
 /* ---- Recently accomplished ---- */
 function renderHomeRecent(acts,lists){
-  /* Two rows of three at most — enough to feel like a record without
-     pushing the lists shelf off the screen. */
+  /* Two rows of three at most: the shelf is a taster, the full record
+     lives behind "See all". */
   const done=acts.filter(a=>a.completed&&a.completedDate)
     .sort((a,b)=>new Date(b.completedDate)-new Date(a.completedDate))
     .slice(0,6);
@@ -132,10 +133,13 @@ function renderHomeRecent(acts,lists){
   if(!done.length){sec.style.display='none';return;}
   sec.style.display='';
 
-  /* "See all" only when there is more than the shelf is showing. */
-  const total=acts.filter(a=>a.completed).length;
+  /* Always offered, not only once there is more than the shelf shows.
+     Hiding it below the cut made the whole Accomplished screen
+     undiscoverable for anyone with a short history — which is exactly
+     who is still learning where things are. A predictable affordance
+     beats a clever one. */
   const all=$('homeRecentAll');
-  if(all) all.style.display=total>done.length?'':'none';
+  if(all) all.style.display='';
   $('homeRecent').innerHTML=done.map(a=>{
     const photo=a.photos&&a.photos.length?a.photos[0]:null;
     return `<button class="rec-card" onclick="openActDetail('${a.id}')">
