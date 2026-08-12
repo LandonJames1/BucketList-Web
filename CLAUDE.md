@@ -138,10 +138,14 @@ There is also a screen outside this system: the signed-out `#authPage`, which
 `fetchCollections()` + `fetchAllActivities()`:
 
 - the progress ring, from the completed/total split;
-- **Up Next**, the four most urgent unfinished activities, ranked by
-  `targetRank()` in `utils.js` — which reads the same class `dateInfo()` hands
-  the badges, so the ordering can never disagree with what is displayed;
-- Recently accomplished, by `completedDate` descending;
+- **Up Next**, the four most pressing unfinished activities, ranked by
+  `targetRank()` then `priorityRank()` (both in `utils.js`). Deadline comes
+  first and priority second, not the reverse: something due this month
+  outranks a high-priority "someday", because the deadline is the part you
+  cannot move. `targetRank()` reads the same class `dateInfo()` hands the
+  badges, so the ordering can never disagree with what is displayed;
+- Recently accomplished, by `completedDate` descending, **capped at six** —
+  two rows of three, so it cannot push the lists shelf off the screen;
 - the lists shelf.
 
 Because Home has no collection context, it has its own copies of two flows:

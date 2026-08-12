@@ -64,12 +64,19 @@ function renderHomeProgress(lists,acts){
 }
 
 /* ---- Up Next ----
-   Unfinished activities ranked by how soon their target date lands.
-   Anything with no date sinks to the bottom. */
+   The four most pressing unfinished activities.
+
+   Ordered by deadline first and priority second, not the other way
+   round: something due this month outranks a high-priority "someday",
+   because the deadline is the part you cannot move. Priority breaks ties
+   within the same urgency band, which is where it actually helps. */
 function renderHomeUpNext(acts,lists){
   const listName=id=>{const l=lists.find(c=>c.id===id);return l?l.name:'';};
   const next=acts.filter(a=>!a.completed)
-    .sort((a,b)=>targetRank(a)-targetRank(b)||new Date(b.createdAt)-new Date(a.createdAt))
+    .sort((a,b)=>
+      targetRank(a)-targetRank(b) ||
+      priorityRank(a)-priorityRank(b) ||
+      new Date(b.createdAt)-new Date(a.createdAt))
     .slice(0,4);
 
   if(!next.length){
@@ -85,8 +92,9 @@ function renderHomeUpNext(acts,lists){
       <button class="up-main" onclick="openActDetail('${a.id}')">
         <span class="up-name">${esc(a.name)}</span>
         <span class="up-meta">
+          <span class="tag tag-${esc(a.priority||'medium')}">${esc(cap(a.priority||'medium'))}</span>
           <span class="up-list">${esc(listName(a.listId))}</span>
-          ${di.label?`<span class="dot">·</span><span class="badge b-${di.cls}">${esc(di.label)}</span>`:''}
+          ${di.label?`<span class="badge b-${di.cls}">${esc(di.label)}</span>`:''}
         </span>
       </button>
       <span class="act-chevron">${icon('chevron-right')}</span>

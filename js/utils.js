@@ -54,6 +54,14 @@ function targetRank(a){
   return TARGET_RANK[cls]!==undefined?TARGET_RANK[cls]:6;
 }
 
+/* Sort key for priority: lower is more important. Anything unset counts
+   as medium, matching the column default. */
+const PRIORITY_RANK={high:0,medium:1,low:2};
+function priorityRank(a){
+  const p=PRIORITY_RANK[a.priority];
+  return p!==undefined?p:1;
+}
+
 /* Nudge an invalid field. Uses a transform animation rather than a
    colour change so it reads the same in light and dark. */
 function shakeEl(el){
@@ -79,7 +87,13 @@ function compress(url,maxD,q,cb){
 function confetti(){
   if(window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
   const c=$('confetti');
-  const cols=['#34c759','#007aff','#ff9500','#af52de','#ffcc00'];
+  /* Palette colours, read live so the burst matches light/dark mode.
+     These were left over as iOS system blues/greens and clashed badly
+     with the warm ground. */
+  const cs=getComputedStyle(document.documentElement);
+  const cols=['--green','--tint','--orange','--sand','--purple']
+    .map(v=>cs.getPropertyValue(v).trim()).filter(Boolean);
+  if(!cols.length) cols.push('#9c5a2e');
   for(let i=0;i<44;i++){
     const p=document.createElement('div');
     const sz=Math.random()*7+4;
