@@ -169,23 +169,24 @@
       font-family: var(--mono); font-size: 10px; font-weight: 600;
       letter-spacing: .1em; text-transform: uppercase;
     }
-    /* High is terracotta, not red. Red belongs to the deadline badge
-       above — an overdue activity and an important one are different
-       claims on your attention, and sharing a colour made them argue.
-       Low is an outline rather than a fill, so it recedes; it used to
-       be byte-identical to medium, which made two of the three levels
-       indistinguishable everywhere the tag appeared. */
-    .tag-high   { background: var(--tint-soft);  color: var(--tint-strong); }
-    .tag-medium { background: var(--fill-3);     color: var(--label-2); }
-    .tag-low    { background: none;              color: var(--label-3);
-                  box-shadow: inset 0 0 0 1px var(--separator); }
-    .tag-done   { background: var(--green-soft); color: var(--green); }
+    /* One shape for all three priorities; only the hue changes. They are
+       three steps of a single scale, so giving each a different shape
+       made them read as three unrelated things instead of a ranking.
+
+       None of the three is red: red belongs to the deadline badge
+       above, and an overdue activity and an important one are different
+       claims on your attention. */
+    .tag-high   { background: var(--tint-soft);   color: var(--tint-strong); }
+    .tag-medium { background: var(--purple-soft); color: var(--purple); }
+    .tag-low    { background: var(--slate-soft);  color: var(--slate); }
+    .tag-done   { background: var(--green-soft);  color: var(--green); }
 
 /*  ============================================================
     PRIORITY — the leading rail.
 
-    See the SHOWING PRIORITY note in utils.js for why this is a rail
-    and not a colour: hue is already spoken for by deadline urgency.
+    Every priority gets the same rail in the same place at the same
+    width; only the hue changes, matching the capsules above. See the
+    SHOWING PRIORITY note in utils.js.
 
     The rail costs no height, which matters — the rows it sits on are
     deliberately fixed-height, and anything that grows a row makes the
@@ -193,15 +194,15 @@
     .act-row, .up-row and .act-card, all of which are position:
     relative already.
     ============================================================ */
-    .pri-high::before {
+    .pri-high::before,
+    .pri-medium::before,
+    .pri-low::before {
       content: ''; position: absolute; left: 0; top: 0; bottom: 0;
-      width: 3.5px; z-index: 2;
-      background: var(--tint); border-radius: 0 3px 3px 0;
+      width: 3.5px; z-index: 2; border-radius: 0 3px 3px 0;
     }
-    /* Low recedes instead of announcing itself. */
-    .pri-low .act-name,
-    .pri-low .up-name,
-    .pri-low .act-card-name { color: var(--label-2); }
+    .pri-high::before   { background: var(--tint); }
+    .pri-medium::before { background: var(--purple); }
+    .pri-low::before    { background: var(--slate); }
 
 /*  ============================================================
     EMPTY STATE

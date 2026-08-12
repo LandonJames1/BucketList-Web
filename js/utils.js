@@ -157,34 +157,36 @@ function priorityRank(a){
 /* ==============================================================
    SHOWING PRIORITY
 
-   Deadline urgency already owns hue: dateInfo() paints its badge red,
-   orange or yellow. Giving priority a hue too would put two colour
-   systems on one row and neither would read. So priority is shown in
-   a different channel entirely — position and weight:
+   All three levels get the *same* treatment — a rail at the leading
+   edge of the row and a capsule in the meta line — and differ only by
+   hue:
 
-     high    a rail at the leading edge, plus an explicit tag
-     medium  nothing
-     low     the name recedes, plus an outline tag
+     high    terracotta   --tint
+     medium  violet       --purple
+     low     slate blue   --slate
 
-   Medium gets nothing deliberately. It is the column default, so most
-   activities carry it, and marking the common case would flatten the
-   contrast that makes high legible. Completed activities get nothing
-   either — priority is about what to do next, and a finished thing has
-   no next.
+   They are three steps of one scale, so they have to look like it.
+   Marking only some of them, or giving each a different shape, read as
+   three unrelated things rather than a ranking.
+
+   None of the three is red. Red is the deadline badge that sits beside
+   them: an overdue activity and an important one are different claims
+   on your attention, and sharing a colour made them argue.
+
+   Completed activities show no priority at all — it is about what to
+   do next, and a finished thing has no next.
    ============================================================== */
 function priClass(a){
   if(a.completed)return '';
   const p=a.priority||'medium';
-  return p==='high'?' pri-high':p==='low'?' pri-low':'';
+  return PRIORITY_RANK[p]!==undefined?' pri-'+p:' pri-medium';
 }
 
-/* The capsule, for the places that have room to spell it out. Returns
-   nothing for medium, so a list is not papered with a label that says
-   the same thing on nearly every row. */
 function priTagHTML(a){
+  if(a.completed)return '';
   const p=a.priority||'medium';
-  if(a.completed||p==='medium')return '';
-  return `<span class="tag tag-${p}">${cap(p)}</span>`;
+  const k=PRIORITY_RANK[p]!==undefined?p:'medium';
+  return `<span class="tag tag-${k}">${cap(k)}</span>`;
 }
 
 /* Nudge an invalid field. Uses a transform animation rather than a
