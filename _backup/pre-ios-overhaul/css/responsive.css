@@ -1,0 +1,307 @@
+/* ============================================================
+   RESPONSIVE — tablet and phone breakpoint overrides.
+   Load this LAST so its media queries win over the page styles.
+
+   Breakpoints, widest first:
+     1100px  laptop      — tighten the gutter, drop the activity grid to 3-up
+      900px  tablet      — hamburger takes over from the nav links
+      760px  large phone — single-column grids, modals become bottom sheets
+      600px  phone       — activity rows restack, detail bar goes two-line
+      400px  small phone — final squeeze (iPhone SE)
+
+   Most horizontal padding is driven by the --gutter token from base.css,
+   so a breakpoint usually only has to change that one number.
+   ============================================================ */
+
+/*  ============================================================
+    LAPTOP
+    ============================================================ */
+    @media (max-width: 1100px) {
+      :root { --gutter: 44px; }
+      .activities-list.grid-view { grid-template-columns: repeat(3, 1fr); }
+      .collections-grid { gap: 24px; }
+    }
+
+/*  ============================================================
+    TABLET — the nav links collapse into the hamburger menu here
+    ============================================================ */
+    @media (max-width: 900px) {
+      :root { --gutter: 28px; }
+
+      /* Shell */
+      .topnav {
+        padding: var(--safe-top) calc(20px + var(--safe-right)) 0 calc(20px + var(--safe-left));
+      }
+      .topnav-links { display: none; }
+      .hamburger { display: flex; }
+      /* Sign Out already has a row in the mobile menu; two of them just
+         crowds a 375px bar. */
+      .topnav-right > .topnav-link { display: none; }
+
+      /* Home */
+      .home-section { padding-top: 64px; padding-bottom: 64px; }
+      .home-section-header { margin-bottom: 36px; }
+      .featured-grid { grid-template-columns: 1fr 1fr; gap: 18px; }
+      .stats-strip { grid-template-columns: 1fr 1fr; }
+      .stats-strip-item { padding: 32px 20px; }
+      /* With two columns the third and fourth cells need their right border
+         back, and only the last row should lose its bottom rule. */
+      .stats-strip-item { border-right: 1px solid var(--border); }
+      .stats-strip-item:nth-child(2n) { border-right: none; }
+      .stats-strip-item:nth-child(-n+2) { border-bottom: 1px solid var(--border); }
+      .stats-strip-item:last-child { border-right: none; }
+      .banner { height: 380px; }
+
+      /* Collections */
+      .page-header { padding-top: 52px; padding-bottom: 40px; }
+      .collections-grid { padding-top: 36px; padding-bottom: 64px; }
+
+      /* Detail */
+      .detail-hero, .detail-hero-content { min-height: 320px; }
+      .detail-hero-content { padding-top: 32px; padding-bottom: 32px; }
+      .detail-hero-btn { padding: 11px 20px; }
+      .activities-wrap { padding-top: 32px; padding-bottom: 64px; }
+      .activities-list.grid-view { grid-template-columns: repeat(2, 1fr); }
+
+      /* Map */
+      .map-box { height: 460px; }
+      #globalMapContainer { height: calc(100svh - 340px); min-height: 380px; }
+
+      /* Footer */
+      .site-footer { padding-top: 48px; padding-bottom: calc(48px + var(--safe-bottom)); }
+    }
+
+/*  ============================================================
+    LARGE PHONE — grids go single-column, dialogs become sheets
+    ============================================================ */
+    @media (max-width: 760px) {
+      :root { --gutter: 20px; }
+
+      /* Home */
+      .featured-grid { grid-template-columns: 1fr; }
+      .hero { min-height: 420px; }
+      .hero-subtitle { font-size: .92rem; margin-top: 18px; }
+      .hero-btn { margin-top: 32px; padding: 15px 36px; width: 100%; max-width: 320px; }
+      .banner { height: 320px; }
+      .section-link { font-size: .66rem; }
+
+      /* Collections */
+      .collections-grid { grid-template-columns: 1fr; gap: 20px; }
+      .collection-card, .collection-card-new { aspect-ratio: 16/11; }
+      .collection-card-overlay { padding: 24px; }
+      .page-header-sub { font-size: .88rem; }
+      .page-header-actions .btn { width: 100%; }
+
+      /*  ---- MODALS BECOME BOTTOM SHEETS ----
+          A centered dialog fights the on-screen keyboard on a phone: the
+          keyboard shrinks the viewport and the box jumps. Anchoring to the
+          bottom edge instead keeps the focused field in a stable place. */
+      .modal-overlay { align-items: flex-end; padding: 0; }
+      .modal-overlay .modal {
+        width: 100%; max-width: 100%;
+        max-height: 92dvh;
+        border: none; border-top: 1px solid var(--border2);
+        border-radius: 16px 16px 0 0;
+        /* Slide up from off-screen rather than fading in place. */
+        transform: translateY(100%);
+      }
+      .modal-overlay.open .modal { transform: none; }
+      .modal-header { padding: 22px 20px 0; }
+      .modal-title { font-size: 1.5rem; }
+      .modal-body { padding: 20px 20px calc(28px + var(--safe-bottom)); }
+      .complete-body { padding: 22px 20px calc(28px + var(--safe-bottom)); }
+      .complete-hero { padding: 20px 20px 16px; }
+      .dm-banner { padding: 24px 20px 22px; }
+      .dm-content { padding: 22px 20px calc(28px + var(--safe-bottom)); }
+      .dm-photo { max-height: 200px; }
+      /* Grab handle so the sheet reads as draggable-looking and the rounded
+         top edge has something to hold. */
+      .modal-overlay .modal::before {
+        content: ''; display: block; width: 38px; height: 4px;
+        margin: 10px auto 0; border-radius: 2px; background: var(--border2);
+      }
+
+      /* Stacked, full-width dialog buttons — much easier to hit than a
+         right-aligned row, and no risk of overflow.
+         Form footers read Cancel-then-Confirm in the markup, so they are
+         reversed to float the primary action to the top of the stack.
+         .dm-actions is already written primary-first, so it stacks in
+         source order — reversing it would surface Delete first. */
+      .form-actions, .complete-actions {
+        flex-direction: column-reverse; align-items: stretch; gap: 10px;
+      }
+      .dm-actions { flex-direction: column; align-items: stretch; gap: 10px; }
+      .form-actions .btn, .complete-actions .btn, .dm-actions .btn { width: 100%; }
+      .photo-zone { padding: 26px 16px; }
+      .fg { margin-bottom: 18px; }
+
+      /* Delete-confirm modal has an inline width:420px in the markup. */
+      #deleteConfirmModal .modal { width: 100% !important; }
+
+      /* Lightbox */
+      .lb-nav { width: 44px; height: 44px; }
+      .lb-prev { left: 4px; }
+      .lb-next { right: 4px; }
+
+      /* Map */
+      .map-box { height: 420px; }
+      #globalMapContainer { height: calc(100svh - 300px); min-height: 340px; }
+    }
+
+/*  ============================================================
+    PHONE — and any coarse-pointer device up to tablet size.
+
+    The second query is what pulls iPad portrait (768px, no hover) into
+    the touch layout: at that width the desktop six-column activity row
+    still technically fits, but it squeezes the row-action buttons down
+    to ~25px, which is unusable with a thumb. A mouse user with a narrow
+    window keeps the denser layout.
+    ============================================================ */
+    @media (max-width: 600px), (hover: none) and (max-width: 900px) {
+      :root { --gutter: 16px; }
+
+      /* ---- Detail bar: progress on one line, controls on the next ---- */
+      .detail-bar { padding-top: 14px; padding-bottom: 14px; gap: 12px; }
+      .detail-bar-left, .detail-bar-right { width: 100%; }
+      .detail-bar-left { justify-content: space-between; }
+      .detail-progress { width: 100%; gap: 12px; }
+      .progress-bar-track { flex: 1; width: auto; min-width: 0; }
+      .progress-label { font-size: .66rem; white-space: nowrap; }
+      /* Two lines, via flex `order` plus deliberate flex-bases:
+           line 1  search + view toggle
+           line 2  the three filter buttons
+         `order` fixes the sequence (the DOM has the toggle last), and the
+         bases decide where the line breaks. Flex wrapping measures the
+         *basis*, not the final size — a basis of 0 on the filter buttons
+         would let all five items pack onto one line, which is what
+         squashed "Completed" onto two lines before. A basis of one third
+         guarantees they cannot join line 1 and that they exactly fill
+         line 2. */
+      .detail-bar-right { flex-wrap: wrap; gap: 8px; }
+      .detail-search { order: 1; flex: 1 1 120px; width: auto; min-width: 0; padding: 12px 14px; }
+      .view-toggle { order: 2; margin-left: 0; gap: 6px; flex: 0 0 auto; }
+      .view-btn { width: 42px; height: 44px; }
+      .filter-btn {
+        order: 3; flex: 1 1 calc(33.333% - 6px); min-width: 0;
+        padding: 12px 6px; min-height: 44px;
+        font-size: .62rem; letter-spacing: .5px;
+      }
+
+      /* ---- Activity rows restack ----
+         The desktop six-column grid (32/80/1fr/140/110/90 + gaps) needs
+         ~550px. On a phone it folds to two rows: photo + title on top,
+         then the time badge and the action buttons beneath.
+         Column 1 stays a fixed 64px so the title starts at the same x on
+         every card; the time badge below spans columns 1-2 so a long label
+         like "∞ Lifetime" has room without widening that column. */
+      .activity-row {
+        grid-template-columns: 64px minmax(0, 1fr) auto;
+        grid-template-areas:
+          'photo info info'
+          'date  date actions';
+        gap: 10px 12px; padding: 14px; align-items: center;
+      }
+      .activity-num { display: none; }
+      .activity-row-photo { grid-area: photo; width: 64px; height: 64px; }
+      .activity-row-info { grid-area: info; }
+      .activity-row-name { font-size: 1.15rem; margin-bottom: 3px; }
+      .activity-row-desc {
+        font-size: .8rem; white-space: normal;
+        display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .activity-row-date { grid-area: date; }
+      /* The Pending/Completed pill is dropped here: the time badge beside
+         it already encodes the same state in its colour (olive = done,
+         terra = pending), and two pills on one line leaves no room for the
+         action buttons. The full status is still in the detail modal. */
+      .activity-row-status { display: none; }
+      .activity-row-actions { grid-area: actions; gap: 8px; justify-self: end; }
+      /* base.css already reveals these under (hover: none). Repeating it on
+         the width breakpoint means a phone-width viewport that reports a
+         fine pointer still gets reachable buttons rather than invisible
+         ones — this is the only way to edit or delete from the list. */
+      .row-action { width: 40px; height: 40px; opacity: 1; }
+      .photo-th .rm-photo { opacity: 1; width: 26px; height: 26px; font-size: .65rem; }
+
+      /* Map controls */
+      .leaflet-touch .leaflet-bar a { width: 44px; height: 44px; line-height: 44px; }
+      .map-home-btn { width: 44px; height: 44px; }
+
+      /* Grid view */
+      .activities-list.grid-view { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+      .activity-card-body { padding: 12px; }
+      .activity-card-name { font-size: 1rem; }
+      .add-activity-card { min-height: 150px; }
+
+      /* Detail hero */
+      .detail-hero, .detail-hero-content { min-height: 280px; }
+      .detail-hero-desc { font-size: .9rem; margin-top: 6px; }
+      .detail-hero-actions { gap: 8px; margin-top: 20px; }
+      .detail-hero-btn {
+        padding: 12px 12px; min-height: 44px;
+        font-size: .62rem; letter-spacing: 1px;
+        /* Two per row. An explicit basis (rather than `auto`, which measures
+           the label) is what keeps "Edit Collection" from claiming a whole
+           row to itself; min-width:0 lets the wider labels shrink to fit. */
+        flex: 1 1 calc(50% - 6px); min-width: 0;
+      }
+
+      /* Forms */
+      .fg-row { grid-template-columns: 1fr; gap: 0; }
+      .fg-row .fg { margin-bottom: 18px; }
+
+      /* Footer */
+      .site-footer { flex-direction: column; align-items: flex-start; gap: 20px; }
+
+      /* Home */
+      .banner { height: 280px; }
+      .stats-strip-item { padding: 24px 12px; }
+      .stats-strip-number { font-size: 2.2rem; }
+      .stats-strip-label { font-size: .58rem; letter-spacing: 1.5px; }
+
+      /* Map */
+      .map-box { height: 380px; }
+      #globalMapContainer { height: calc(100svh - 270px); min-height: 320px; }
+      .map-home-btn { top: 92px; }
+    }
+
+/*  ============================================================
+    TOUCH TABLET — undo the phone-sized gutter for coarse-pointer
+    devices that are still comfortably wide (iPad portrait).
+    ============================================================ */
+    @media (hover: none) and (min-width: 601px) and (max-width: 900px) {
+      :root { --gutter: 28px; }
+      .activities-list.grid-view { grid-template-columns: repeat(3, 1fr); }
+      .detail-search { flex: 1 1 220px; }
+    }
+
+/*  ============================================================
+    SMALL PHONE (iPhone SE and friends)
+    ============================================================ */
+    @media (max-width: 400px) {
+      :root { --gutter: 14px; }
+      .topnav-logo { font-size: .68rem; letter-spacing: 2.5px; }
+      .stats-strip-number { font-size: 1.9rem; }
+      .collection-card, .collection-card-new { aspect-ratio: 4/3; }
+      .hero-subtitle { font-size: .88rem; }
+      .activity-card-name { font-size: .95rem; }
+      /* Note: the activity grid stays 2-up and the hero buttons stay 2-up
+         all the way down. 390px (iPhone 12–15) lands inside this query, and
+         collapsing either to a single column there makes cards taller than
+         the screen. */
+    }
+
+/*  ============================================================
+    LANDSCAPE PHONE — the hero and maps must not eat the whole
+    screen when the viewport is only ~380px tall.
+    ============================================================ */
+    @media (max-height: 520px) and (orientation: landscape) {
+      .hero { min-height: 0; height: auto; padding: 60px 0; }
+      .banner { height: auto; min-height: 240px; }
+      .modal-overlay .modal { max-height: 96dvh; }
+      .map-box { height: 300px; }
+      #globalMapContainer { height: 300px; min-height: 0; }
+      .mobile-menu { gap: 0; }
+      .mobile-menu a { font-size: 1.4rem; padding: 10px 8px; }
+    }

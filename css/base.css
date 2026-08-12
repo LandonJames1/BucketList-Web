@@ -1,0 +1,241 @@
+/* ============================================================
+   BASE — the design system: palette, type, metrics, reset.
+   Load this FIRST: every other stylesheet depends on its variables.
+
+   The structure of the app is iOS (tab bar, large titles, sheets,
+   action sheets) but the *voice* is the app's own: warm parchment
+   grounds, an olive/terracotta palette, a high-contrast serif for
+   display type and a mono for the small caps labels.
+
+   Three typefaces, each with one job:
+     --serif  display — screen titles, list and activity names
+     --sans   UI      — controls, body copy, anything system-ish
+     --mono   labels  — eyebrows, section headers, counts, metadata
+
+   Token names are semantic (--tint, --label-2, --bg-elevated), so
+   re-theming the whole app means editing this file and nothing else.
+   ============================================================ */
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      color-scheme: light dark;
+
+      /* ---- Type ---- */
+      --serif: 'Cormorant Garamond', ui-serif, 'New York', Georgia, serif;
+      --sans:  -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI',
+               system-ui, Roboto, sans-serif;
+      --mono:  'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+      /* ---- Grounds ----
+         --bg is the warm paper the app sits on; --bg-elevated is the
+         card/row surface floating on it. */
+      --bg:              #eeeae2;
+      --bg-elevated:     #fbf9f5;
+      --bg-raised:       #ffffff;
+      --sheet-bg:        #f7f4ee;
+      --nav-bg:          rgba(238,234,226,.78);
+      --scrim:           rgba(34,30,24,.44);
+
+      /* ---- Fills (translucent warm greys for controls) ---- */
+      --fill-1:          rgba(122,112,92,.22);
+      --fill-2:          rgba(122,112,92,.17);
+      --fill-3:          rgba(122,112,92,.12);
+      --fill-4:          rgba(122,112,92,.07);
+
+      /* ---- Ink ---- */
+      --label:           #1c1a16;
+      --label-2:         rgba(58,55,48,.74);
+      --label-3:         rgba(78,74,64,.52);
+      --label-4:         rgba(110,104,92,.34);
+
+      --separator:       rgba(120,110,92,.20);
+      --separator-solid: #d6d0c4;
+
+      /* ---- Accent ----
+         --tint is "you can touch this" (terracotta).
+         --green is completion (olive) — named for its semantic role,
+         not its hue, so the component CSS reads the same either way. */
+      --tint:            #9c5a2e;
+      --tint-strong:     #8a4d25;
+      --green:           #4a5340;
+      --red:             #a8443c;
+      --orange:          #b8752f;
+      --yellow:          #9a8433;
+      --purple:          #6b5b8a;
+      --gray:            #8a8375;
+      --sand:            #b5a688;
+
+      --tint-soft:       rgba(156,90,46,.13);
+      --green-soft:      rgba(74,83,64,.14);
+      --red-soft:        rgba(168,68,60,.12);
+
+      /* ---- Depth ----
+         Warm-tinted rather than neutral black, so shadows sit on the
+         parchment instead of greying it. */
+      --shadow-sm: 0 1px 2px rgba(60,48,32,.06), 0 1px 1px rgba(60,48,32,.04);
+      --shadow-md: 0 4px 14px rgba(60,48,32,.10), 0 1px 3px rgba(60,48,32,.06);
+      --shadow-lg: 0 12px 34px rgba(50,40,26,.18), 0 3px 10px rgba(50,40,26,.09);
+      --shadow-xl: 0 -10px 44px rgba(44,36,24,.20);
+
+      /* ---- Metrics ---- */
+      --nav-h:    44px;
+      --tab-h:    50px;
+      --gutter:   16px;
+      --r-row:    14px;
+      --r-card:   18px;
+      --r-sheet:  20px;
+      --r-ctl:    10px;
+
+      /* ---- iOS safe areas ---- */
+      --safe-top:    env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-left:   env(safe-area-inset-left, 0px);
+      --safe-right:  env(safe-area-inset-right, 0px);
+      --gx-l: calc(var(--gutter) + var(--safe-left));
+      --gx-r: calc(var(--gutter) + var(--safe-right));
+      --chrome-top:    calc(var(--nav-h) + var(--safe-top));
+      --chrome-bottom: calc(var(--tab-h) + var(--safe-bottom));
+
+      --ease: cubic-bezier(.32,.72,0,1);
+    }
+
+    /* Dark mode is a warm near-black, not #000 — the palette is warm,
+       and pure black would make the olive and terracotta look muddy. */
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg:              #16140f;
+        --bg-elevated:     #211e18;
+        --bg-raised:       #2b2720;
+        --sheet-bg:        #201d17;
+        --nav-bg:          rgba(22,20,15,.78);
+        --scrim:           rgba(0,0,0,.6);
+
+        --fill-1:          rgba(200,186,158,.20);
+        --fill-2:          rgba(200,186,158,.15);
+        --fill-3:          rgba(200,186,158,.11);
+        --fill-4:          rgba(200,186,158,.07);
+
+        --label:           #f2eee4;
+        --label-2:         rgba(233,226,211,.68);
+        --label-3:         rgba(220,212,196,.46);
+        --label-4:         rgba(210,200,182,.28);
+
+        --separator:       rgba(200,186,158,.16);
+        --separator-solid: #3a352c;
+
+        --tint:            #d98f5c;
+        --tint-strong:     #e5a273;
+        --green:           #9db184;
+        --red:             #e0736a;
+        --orange:          #d99a4e;
+        --yellow:          #cfb85e;
+        --purple:          #a695c9;
+        --gray:            #8a8375;
+        --sand:            #c7b795;
+
+        --tint-soft:       rgba(217,143,92,.18);
+        --green-soft:      rgba(157,177,132,.18);
+        --red-soft:        rgba(224,115,106,.16);
+
+        --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
+        --shadow-md: 0 4px 16px rgba(0,0,0,.5);
+        --shadow-lg: 0 12px 34px rgba(0,0,0,.6);
+        --shadow-xl: 0 -10px 44px rgba(0,0,0,.6);
+      }
+    }
+
+/*  ============================================================
+    ELEMENTS
+    ============================================================ */
+    html {
+      -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
+      background: var(--bg);
+    }
+    body {
+      font-family: var(--sans);
+      font-size: 17px; line-height: 1.29; letter-spacing: -.01em;
+      background: var(--bg);
+      color: var(--label);
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+      -webkit-tap-highlight-color: transparent;
+      overscroll-behavior-y: none;
+    }
+    img { display: block; max-width: 100%; }
+    a { color: var(--tint); text-decoration: none; }
+    button, input, select, textarea { font: inherit; color: inherit; }
+    button {
+      background: none; border: none; cursor: pointer; color: var(--tint);
+      touch-action: manipulation;   /* kills the 300ms double-tap delay */
+    }
+    h1, h2, h3, p, span, div, a, label { overflow-wrap: break-word; }
+
+    .ic { width: 24px; height: 24px; flex-shrink: 0; display: block; }
+    .ic-sm { width: 18px; height: 18px; }
+    .ic-xs { width: 15px; height: 15px; }
+    .ic-lg { width: 30px; height: 30px; }
+
+/*  ============================================================
+    TYPE
+
+    Display sizes are serif and set tight; the serif is high-contrast
+    and needs negative tracking and a snug leading to look composed
+    rather than airy.
+    ============================================================ */
+    .t-display {
+      font-family: var(--serif); font-weight: 600;
+      letter-spacing: -.012em; line-height: 1.1;
+    }
+    .t-large-title { font-family: var(--serif); font-size: 40px; line-height: 1.06; font-weight: 600; letter-spacing: -.018em; }
+    .t-title1      { font-family: var(--serif); font-size: 32px; line-height: 1.1;  font-weight: 600; letter-spacing: -.014em; }
+    .t-title2      { font-family: var(--serif); font-size: 26px; line-height: 1.14; font-weight: 600; letter-spacing: -.012em; }
+    .t-title3      { font-family: var(--serif); font-size: 22px; line-height: 1.2;  font-weight: 600; letter-spacing: -.01em; }
+    .t-headline    { font-size: 17px; line-height: 1.29; font-weight: 600; letter-spacing: -.011em; }
+    .t-body        { font-size: 17px; line-height: 1.29; font-weight: 400; letter-spacing: -.011em; }
+    .t-callout     { font-size: 16px; line-height: 1.31; font-weight: 400; letter-spacing: -.007em; }
+    .t-subhead     { font-size: 15px; line-height: 1.33; font-weight: 400; letter-spacing: -.002em; }
+    .t-footnote    { font-size: 13px; line-height: 1.38; font-weight: 400; }
+    .t-caption     { font-size: 12px; line-height: 1.33; font-weight: 400; }
+
+    /* The signature small-caps label: mono, wide-tracked, uppercase.
+       Used for eyebrows, section headers, counts and metadata. */
+    .t-eyebrow {
+      font-family: var(--mono); font-size: 11px; font-weight: 500;
+      letter-spacing: .14em; text-transform: uppercase;
+      color: var(--label-2);
+    }
+
+    .c-secondary { color: var(--label-2); }
+    .c-tertiary  { color: var(--label-3); }
+    .c-tint      { color: var(--tint); }
+    .c-green     { color: var(--green); }
+    .c-red       { color: var(--red); }
+
+/*  ============================================================
+    MOTION
+    ============================================================ */
+    @keyframes fadeIn  { from { opacity: 0 } to { opacity: 1 } }
+    @keyframes popIn   { from { opacity: 0; transform: scale(.94) } to { opacity: 1; transform: none } }
+    @keyframes pushIn  { from { transform: translateX(28px); opacity: 0 } to { transform: none; opacity: 1 } }
+    @keyframes riseIn  { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: none } }
+
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      22% { transform: translateX(-6px); }
+      66% { transform: translateX(6px); }
+    }
+
+    /* Completion burst. */
+    #confetti { position: fixed; inset: 0; pointer-events: none; z-index: 400; overflow: hidden; }
+    @keyframes confettiFall {
+      0%   { transform: translateY(0) rotate(0) scale(1); opacity: 1; }
+      100% { transform: translateY(102vh) rotate(680deg) scale(.4); opacity: 0; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: .01ms !important; animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important; scroll-behavior: auto !important;
+      }
+    }

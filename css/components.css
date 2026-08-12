@@ -1,0 +1,249 @@
+/* ============================================================
+   COMPONENTS — the reusable iOS primitives every page builds from:
+   inset grouped lists, segmented controls, buttons, the search
+   field, badges, and empty states.
+
+   Kept in one file so a page stylesheet only has to describe what
+   is genuinely unique about that page.
+   ============================================================ */
+
+/*  ============================================================
+    INSET GROUPED LIST
+    The iOS Settings pattern: a rounded white card with hairline
+    separators that stop short of the left edge.
+    ============================================================ */
+    .group {
+      background: var(--bg-elevated);
+      border-radius: var(--r-row);
+      margin: 0 var(--gx-r) 0 var(--gx-l);
+      overflow: hidden;
+      /* A hairline plus a soft warm shadow, so cards sit *on* the
+         parchment rather than being cut out of it. */
+      box-shadow: var(--shadow-sm), 0 0 0 .5px var(--separator);
+    }
+    .group + .group { margin-top: 22px; }
+
+    .row {
+      position: relative;
+      display: flex; align-items: center; gap: 12px;
+      min-height: 44px; padding: 11px 16px;
+      width: 100%; text-align: left;
+      color: var(--label); font-size: 17px; letter-spacing: -.011em;
+      background: var(--bg-elevated);
+      transition: background .12s;
+    }
+    /* Separator inset to line up under the text, not the icon. */
+    .row:not(:last-child)::after {
+      content: ''; position: absolute; left: 16px; right: 0; bottom: 0;
+      height: .5px; background: var(--separator);
+    }
+    .row.has-leading:not(:last-child)::after { left: 56px; }
+    .row.tappable:active { background: var(--fill-4); }
+
+    .row-leading {
+      width: 29px; height: 29px; border-radius: 7px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; background: var(--gray);
+    }
+    .row-leading .ic { width: 18px; height: 18px; }
+    .row-body { flex: 1; min-width: 0; }
+    .row-title {
+      font-size: 17px; letter-spacing: -.011em; color: var(--label);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .row-title.serif {
+      font-family: var(--serif); font-size: 20px; font-weight: 600;
+      letter-spacing: -.008em;
+    }
+    .row-sub {
+      font-size: 13px; color: var(--label-2); margin-top: 1px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .row-trailing {
+      display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+      color: var(--label-2); font-size: 17px;
+    }
+    .row-chevron { color: var(--label-3); }
+    .row-chevron .ic { width: 17px; height: 17px; stroke-width: 2.4; }
+    .row.destructive .row-title, .row.destructive { color: var(--red); }
+    .row.tint-row .row-title, .row.tint-row { color: var(--tint); }
+
+/*  ============================================================
+    SEGMENTED CONTROL
+    ============================================================ */
+    .seg {
+      display: flex; position: relative;
+      background: var(--fill-3); border-radius: 11px; padding: 3px;
+      margin: 0 var(--gx-r) 0 var(--gx-l);
+    }
+    .seg button {
+      flex: 1; min-width: 0; position: relative; z-index: 1;
+      height: 32px; border-radius: 8px;
+      font-family: var(--mono); font-size: 11px; font-weight: 500;
+      letter-spacing: .09em; text-transform: uppercase;
+      color: var(--label-2);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      transition: color .18s, background .18s;
+    }
+    .seg button.active {
+      background: var(--bg-elevated); color: var(--label); font-weight: 600;
+      box-shadow: var(--shadow-sm);
+    }
+    .seg button:active { opacity: .6; }
+
+/*  ============================================================
+    BUTTONS
+    ============================================================ */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+      min-height: 52px; padding: 0 22px; border-radius: var(--r-ctl);
+      font-family: var(--mono); font-size: 12px; font-weight: 600;
+      letter-spacing: .11em; text-transform: uppercase;
+      transition: opacity .15s, background .15s, transform .15s var(--ease);
+    }
+    .btn:active { opacity: .7; transform: scale(.985); }
+    .btn .ic { width: 18px; height: 18px; }
+    .btn-filled  { background: var(--tint); color: #fff; box-shadow: var(--shadow-sm); }
+    .btn-green   { background: var(--green); color: #fff; box-shadow: var(--shadow-sm); }
+    .btn-tinted  { background: var(--tint-soft); color: var(--tint); }
+    .btn-gray    { background: var(--fill-3); color: var(--label); }
+    .btn-plain   { color: var(--tint); min-height: 44px; }
+    .btn-destructive { background: var(--red-soft); color: var(--red); }
+    .btn-block   { width: 100%; }
+    .btn[disabled] { opacity: .4; pointer-events: none; }
+
+    /* Small pill for secondary inline actions. 36px matches the height
+       of the search field — Apple's own compact control size — rather
+       than the 44px used for primary targets. */
+    .pill {
+      display: inline-flex; align-items: center; gap: 5px;
+      height: 36px; padding: 0 14px; border-radius: 18px;
+      background: var(--fill-3); color: var(--tint);
+      font-family: var(--mono); font-size: 11px; font-weight: 500;
+      letter-spacing: .09em; text-transform: uppercase;
+    }
+    .pill:active { opacity: .55; }
+
+/*  ============================================================
+    SEARCH FIELD
+    ============================================================ */
+    .searchbar { padding: 0 var(--gx-r) 0 var(--gx-l); }
+    .searchfield {
+      display: flex; align-items: center; gap: 7px;
+      height: 38px; padding: 0 10px; border-radius: var(--r-ctl);
+      background: var(--fill-3); color: var(--label-2);
+      transition: background .2s;
+    }
+    .searchfield:focus-within { background: var(--bg-elevated); box-shadow: 0 0 0 .5px var(--separator), var(--shadow-sm); }
+    .searchfield .ic { width: 17px; height: 17px; }
+    .searchfield input {
+      flex: 1; min-width: 0; border: none; outline: none; background: none;
+      /* 16px minimum or Safari zooms the page on focus. */
+      font-size: max(16px, 17px); letter-spacing: -.011em; color: var(--label);
+      -webkit-appearance: none; appearance: none;
+    }
+    .searchfield input::placeholder { color: var(--label-2); }
+    .searchfield input::-webkit-search-cancel-button { -webkit-appearance: none; }
+    .search-clear { display: none; color: var(--label-3); padding: 4px; }
+    .searchfield.has-value .search-clear { display: block; }
+
+/*  ============================================================
+    BADGES — target-date urgency and completion state.
+    ============================================================ */
+    .badge {
+      display: inline-flex; align-items: center; gap: 3px;
+      font-family: var(--mono); font-size: 10.5px; font-weight: 500;
+      letter-spacing: .07em; text-transform: uppercase;
+      color: var(--label-2); white-space: nowrap;
+    }
+    .badge.b-overdue,  .badge.b-urgent   { color: var(--red); }
+    .badge.b-soon                        { color: var(--orange); }
+    .badge.b-moderate                    { color: var(--yellow); }
+    .badge.b-relaxed,  .badge.b-forever  { color: var(--label-2); }
+    .badge.b-done                        { color: var(--green); }
+
+    /* Filled capsule variant for priority. */
+    .tag {
+      display: inline-flex; align-items: center;
+      height: 22px; padding: 0 9px; border-radius: 11px;
+      font-family: var(--mono); font-size: 10px; font-weight: 600;
+      letter-spacing: .1em; text-transform: uppercase;
+    }
+    .tag-high   { background: var(--red-soft);   color: var(--red); }
+    .tag-medium { background: var(--fill-3);     color: var(--label-2); }
+    .tag-low    { background: var(--fill-3);     color: var(--label-2); }
+    .tag-done   { background: var(--green-soft); color: var(--green); }
+
+/*  ============================================================
+    EMPTY STATE
+    ============================================================ */
+    .empty {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; gap: 7px;
+      padding: 52px 32px;
+      color: var(--label-2);
+    }
+    /* The glyph gets a soft tinted disc so an empty screen still has
+       something to look at. */
+    .empty .ic {
+      width: 30px; height: 30px; color: var(--tint); margin-bottom: 14px;
+      box-sizing: content-box; padding: 15px; border-radius: 50%;
+      background: var(--tint-soft);
+    }
+    .empty-title {
+      font-family: var(--serif); font-size: 26px; font-weight: 600;
+      color: var(--label); letter-spacing: -.012em; line-height: 1.15;
+    }
+    .empty-sub { font-size: 15px; max-width: 290px; line-height: 1.45; color: var(--label-2); }
+    .empty .btn { margin-top: 16px; }
+
+/*  ============================================================
+    PROGRESS BAR
+    ============================================================ */
+    .progress {
+      height: 5px; border-radius: 3px; background: var(--fill-2);
+      overflow: hidden; flex: 1; min-width: 0;
+    }
+    .progress-fill {
+      height: 100%; border-radius: 3px; background: var(--green);
+      transition: width .5s var(--ease);
+    }
+
+/*  ============================================================
+    SPINNER — shown while a screen's first fetch is in flight.
+    ============================================================ */
+    .spinner {
+      width: 20px; height: 20px; border-radius: 50%;
+      border: 2px solid var(--fill-2); border-top-color: var(--tint);
+      animation: spin .7s linear infinite; margin: 40px auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+/*  ============================================================
+    FLOATING ACTION BUTTON
+
+    The primary "add" action. It lives in the shell rather than in
+    any page, floats above the content, and sits over the bottom
+    right where a thumb actually reaches — the top-right corner of a
+    phone is the hardest place on the screen to tap.
+
+    Because it is fixed it never reflows the page; .page simply
+    reserves bottom padding so the last row can scroll clear of it.
+    ============================================================ */
+    .fab {
+      position: fixed; z-index: 90;
+      right: calc(16px + var(--safe-right));
+      bottom: calc(var(--chrome-bottom) + 16px);
+      width: 58px; height: 58px; border-radius: 50%;
+      display: none; align-items: center; justify-content: center;
+      background: var(--tint); color: #fff;
+      box-shadow: var(--shadow-lg), 0 0 0 .5px rgba(0,0,0,.06);
+      transition: transform .26s var(--ease), opacity .2s;
+    }
+    .fab.show { display: flex; animation: fabIn .32s var(--ease); }
+    .fab:active { transform: scale(.9); }
+    .fab .ic { width: 26px; height: 26px; }
+    @keyframes fabIn {
+      from { opacity: 0; transform: scale(.6) translateY(10px); }
+      to   { opacity: 1; transform: none; }
+    }

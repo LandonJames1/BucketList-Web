@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <!-- viewport-fit=cover lets the page paint into the notch/home-indicator
+       area when installed; base.css reads the env(safe-area-inset-*) values
+       back out so nothing actually sits under the hardware. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Bucket List</title>
+  <meta name="description" content="Curate and track the experiences that define your life." />
+
+  <!-- ===== PWA ===== -->
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#efece6" />
+  <meta name="color-scheme" content="light" />
+  <!-- iOS ignores the manifest's display mode; these three are what make
+       "Add to Home Screen" launch chrome-less with the right status bar. -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Bucket List" />
+  <!-- iOS takes the home-screen icon from here, not from the manifest. -->
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png" />
+
+  <!-- ===== Fonts ===== -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500&family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600&family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
+
+  <!-- ===== Third-party libraries ===== -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- ===== Styles — order matters =====
+       base       design tokens + reset, everything depends on it
+       layout     nav, page system, footer (the app shell)
+       auth       the signed-out screen
+       home / collections / detail   one file per page
+       modals / map / bulk / pwa     per-feature components
+       responsive breakpoint overrides, must load last -->
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/layout.css" />
+  <link rel="stylesheet" href="css/auth.css" />
+  <link rel="stylesheet" href="css/home.css" />
+  <link rel="stylesheet" href="css/collections.css" />
+  <link rel="stylesheet" href="css/detail.css" />
+  <link rel="stylesheet" href="css/modals.css" />
+  <link rel="stylesheet" href="css/map.css" />
+  <link rel="stylesheet" href="css/bulk.css" />
+  <link rel="stylesheet" href="css/pwa.css" />
+  <link rel="stylesheet" href="css/responsive.css" />
+</head>
+<body>
+
+<!-- ===== AUTH PAGE ===== -->
+<div class="auth-page" id="authPage">
+  <div class="auth-inner">
+    <div class="auth-brand">
+      <div class="auth-eyebrow">BUCKET LIST</div>
+      <h1 class="auth-title" id="authTitle">Sign In</h1>
+    </div>
+    <div class="auth-card">
+      <div id="authExtraFields" style="display:none;">
+        <div class="fg"><label for="authDisplayName">Display Name</label><input id="authDisplayName" autocomplete="name" placeholder="John Doe" /></div>
+        <div class="fg"><label for="authUsername">Username</label><input id="authUsername" autocomplete="username" autocapitalize="none" autocorrect="off" placeholder="johndoe" /></div>
+      </div>
+      <!-- inputmode/autocomplete give iOS the right keyboard and let it
+           offer saved credentials instead of forcing a manual retype. -->
+      <div class="fg"><label for="authEmail">Email</label><input id="authEmail" type="email" inputmode="email" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="you@example.com" /></div>
+      <div class="fg"><label for="authPass">Password</label><input id="authPass" type="password" autocomplete="current-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')handleAuth()" /></div>
+      <div class="auth-error" id="authError"></div>
+      <button class="btn btn-p auth-submit" id="authBtn" onclick="handleAuth()">Sign In</button>
+      <div class="auth-toggle" id="authToggle">Don&#39;t have an account? <a href="#" onclick="event.preventDefault();toggleAuthMode()">Create one</a></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MAIN APP ===== -->
+<div id="appWrap" style="display:none">
+
+<!-- ===== TOP NAV ===== -->
+<nav class="topnav" id="topnav">
+  <div class="topnav-logo">BUCKET LIST</div>
+  <div class="topnav-links" id="navLinks">
+    <button class="topnav-link active" data-page="home" onclick="nav('home')">Home</button>
+    <button class="topnav-link" data-page="collections" onclick="nav('collections')">Collections</button>
+    <button class="topnav-link" data-page="globalmap" onclick="nav('globalmap')">Map</button>
+  </div>
+  <div class="topnav-right">
+    <button class="topnav-link" onclick="handleSignOut()" style="margin-left:8px">Sign Out</button>
+    <button class="hamburger" onclick="toggleMobileMenu()">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+<!-- Mobile menu -->
+<div class="mobile-menu" id="mobileMenu">
+  <button class="mobile-menu-close" onclick="toggleMobileMenu()">&#x2715;</button>
+  <a href="#" onclick="nav('home');toggleMobileMenu()">Home</a>
+  <a href="#" onclick="nav('collections');toggleMobileMenu()">Collections</a>
+  <a href="#" onclick="nav('globalmap');toggleMobileMenu()">Map</a>
+  <a href="#" onclick="handleSignOut()">Sign Out</a>
+</div>
+
+<!-- ===== HOME PAGE ===== -->
+<div class="page active" id="page-home">
+  <div class="hero">
+    <div class="hero-bg"></div>
+    <div class="hero-overlay"></div>
+    <div class="hero-content">
+      <div class="hero-eyebrow">From Essential to Extraordinary</div>
+      <h1 class="hero-title">From dreams<br>to <em>reality</em></h1>
+      <p class="hero-subtitle">Curate and track the experiences that define your life. Every adventure begins with a single step.</p>
+      <button class="hero-btn" onclick="nav('collections')">Explore Collections</button>
+    </div>
+  </div>
+
+  <div id="homeStats" class="stats-strip"></div>
+
+  <div class="home-section">
+    <div class="home-section-header">
+      <div>
+        <div class="section-eyebrow">Your Collections</div>
+        <div class="section-title">Featured</div>
+      </div>
+      <a class="section-link" href="#" onclick="event.preventDefault();nav('collections')">View All &rarr;</a>
+    </div>
+    <div class="featured-grid" id="featuredGrid"></div>
+  </div>
+
+  <div class="banner">
+    <div class="banner-bg"></div>
+    <div class="banner-content">
+      <div class="banner-title">Make it <em>happen</em></div>
+      <p class="banner-sub">The world is full of extraordinary experiences waiting for you.</p>
+    </div>
+  </div>
+
+  <div class="site-footer">
+    <div class="footer-brand">Bucket List &copy; 2026</div>
+    <div class="footer-links">
+      <a class="footer-link" href="#" onclick="event.preventDefault();nav('home')">Home</a>
+      <a class="footer-link" href="#" onclick="event.preventDefault();nav('collections')">Collections</a>
+      <a class="footer-link" href="#" onclick="event.preventDefault();nav('globalmap')">Map</a>
+    </div>
+  </div>
+</div>
+
+<!-- ===== COLLECTIONS PAGE ===== -->
+<div class="page" id="page-collections">
+  <div class="page-header">
+    <div class="page-header-eyebrow">All Collections</div>
+    <h1 class="page-header-title">Your Bucket Lists</h1>
+    <p class="page-header-sub">Each collection is a curated set of dreams, adventures, and milestones.</p>
+    <div class="page-header-actions">
+      <button class="btn btn-p" onclick="openNewList()">+ New Collection</button>
+    </div>
+  </div>
+  <div class="collections-grid" id="collectionsGrid"></div>
+</div>
+
+<!-- ===== GLOBAL MAP PAGE ===== -->
+<div class="page" id="page-globalmap">
+  <div class="page-header">
+    <div class="page-header-eyebrow">All Locations</div>
+    <h1 class="page-header-title">World Map</h1>
+    <p class="page-header-sub">Every activity with a location, across all your collections.</p>
+  </div>
+  <div class="detail-bar" id="globalMapBar"></div>
+  <div class="activities-wrap" style="padding-top:24px">
+    <!-- Height lives in css/map.css so the breakpoints can adjust it. -->
+    <div class="map-box active" id="globalMapContainer"></div>
+  </div>
+</div>
+
+<!-- ===== DETAIL PAGE (single collection) ===== -->
+<div class="page" id="page-detail">
+  <div class="detail-hero" id="detailHero">
+    <div class="detail-hero-bg" id="detailHeroBg"></div>
+    <div class="detail-hero-content">
+      <h1 class="detail-hero-title" id="detailTitle"></h1>
+      <p class="detail-hero-desc" id="detailDesc"></p>
+      <div class="detail-hero-actions">
+        <button class="detail-hero-btn filled" onclick="openNewActivity()">+ Add Activity</button>
+        <button class="detail-hero-btn" onclick="openBulkAdd()">Bulk Add</button>
+        <button class="detail-hero-btn" onclick="openEditList()">Edit Collection</button>
+        <button class="detail-hero-btn danger" data-delete="collection">Delete</button>
+        <button class="detail-hero-btn" onclick="goBack()">&#8592; Back</button>
+      </div>
+    </div>
+  </div>
+  <div class="detail-bar" id="detailBar"></div>
+  <div class="activities-wrap">
+    <div class="activities-list" id="activitiesList"></div>
+    <div class="map-box" id="mapContainer"></div>
+  </div>
+</div>
+
+<!-- ===== MODALS ===== -->
+
+<!-- List modal -->
+<div class="modal-overlay" id="listModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="listModalTitle">New Collection</div>
+      <button class="modal-close" onclick="closeModal('listModal')">&#x2715;</button>
+    </div>
+    <div class="modal-body">
+      <div class="fg"><label>Name<span class="req">*</span></label><input id="lName" placeholder="e.g. Travel Adventures" maxlength="60" /></div>
+      <div class="fg"><label>Description<span class="opt">optional</span></label><input id="lDesc" placeholder="A brief description..." maxlength="120" /></div>
+      <div class="fg"><label>Cover Image<span class="opt">optional</span></label>
+        <div class="photo-zone" id="coverZone" onclick="$('coverInput').click()">
+          <div class="uz-icon">&#x1F5BC;</div><p>Upload a cover image</p>
+        </div>
+        <input type="file" id="coverInput" accept="image/*" style="display:none" onchange="handleCoverUpload(event)" />
+        <div id="coverPreview"></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-s" onclick="closeModal('listModal')">Cancel</button>
+        <button class="btn btn-p" id="listSaveBtn" onclick="saveList()">Create</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Activity modal -->
+<div class="modal-overlay" id="actModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="actModalTitle">New Activity</div>
+      <button class="modal-close" onclick="closeModal('actModal')">&#x2715;</button>
+    </div>
+    <div class="modal-body">
+      <div class="fg"><label>Activity<span class="req">*</span></label><input id="aName" placeholder="e.g. Skydiving in Dubai" maxlength="100" /></div>
+      <div class="fg"><label>Description<span class="opt">optional</span></label><textarea id="aDesc" placeholder="Why is this on your list?"></textarea></div>
+      <div class="fg"><label>Location<span class="opt">optional</span></label>
+        <div class="loc-wrap" id="aLocWrap">
+          <input id="aLoc" placeholder="Search for a place..." maxlength="200" autocomplete="off" oninput="locSearch(this,'aLocResults')" onfocus="locSearch(this,'aLocResults')" />
+          <input type="hidden" id="aLocLat" /><input type="hidden" id="aLocLng" />
+          <div class="loc-results" id="aLocResults"></div>
+        </div>
+      </div>
+      <div class="fg-row">
+        <div class="fg"><label>Target Date</label>
+          <select id="aDate">
+            <option value="Before I Die">Before I Die</option>
+            <option value="This Month">This Month</option>
+            <option value="This Year">This Year</option>
+            <option value="Next Year">Next Year</option>
+            <option value="In 2-3 Years">In 2-3 Years</option>
+            <option value="In 5+ Years">In 5+ Years</option>
+            <option value="">No timeframe</option>
+          </select>
+        </div>
+        <div class="fg"><label>Priority</label>
+          <select id="aPri"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select>
+        </div>
+      </div>
+      <div class="fg"><label>Links<span class="opt">optional</span></label>
+        <div class="tag-input-wrap" id="aLinksWrap" onclick="$('aLinkInput').focus()">
+          <input class="tag-input-field" id="aLinkInput" placeholder="Paste a URL and press Enter..." onkeydown="handleTagKey(event,'aLinks')" />
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-s" onclick="closeModal('actModal')">Cancel</button>
+        <button class="btn btn-p" id="actSaveBtn" onclick="saveActivity()">Add</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Complete modal -->
+<div class="modal-overlay complete-modal" id="compModal">
+  <div class="modal">
+    <div class="complete-hero">
+      <div class="complete-hero-icon">&#10003;</div>
+      <h2 id="compModalTitle">Accomplished</h2>
+      <span class="complete-hero-name" id="compName"></span>
+    </div>
+    <div class="complete-body">
+      <div class="fg"><label>Location</label>
+        <div class="loc-wrap" id="compLocWrap">
+          <input id="compLoc" placeholder="Search for a place..." maxlength="200" autocomplete="off" oninput="locSearch(this,'compLocResults')" onfocus="locSearch(this,'compLocResults')" />
+          <input type="hidden" id="compLocLat" /><input type="hidden" id="compLocLng" />
+          <div class="loc-results" id="compLocResults"></div>
+        </div>
+      </div>
+      <div class="fg"><label>Date Completed</label><input type="date" id="compDate" /></div>
+      <div class="fg"><label>Your Experience</label><textarea id="compNotes" placeholder="Tell the story..." style="min-height:100px"></textarea></div>
+      <div class="fg"><label>Photos</label>
+        <div class="photo-zone" onclick="$('photoInput').click()"><div class="uz-icon">&#x1F4F7;</div><p>Upload photos</p></div>
+        <input type="file" id="photoInput" multiple accept="image/*" style="display:none" onchange="handlePhotos(event)" />
+        <div class="photo-previews" id="photoPrev"></div>
+      </div>
+      <div class="complete-actions">
+        <button class="btn btn-s" onclick="closeModal('compModal')">Cancel</button>
+        <button class="btn btn-g" id="compSaveBtn" onclick="confirmComplete()">Mark Complete</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk Add modal -->
+<div class="modal-overlay bulk-modal" id="bulkAddModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Bulk Add Activities</div>
+      <button class="modal-close" onclick="closeModal('bulkAddModal')">&#x2715;</button>
+    </div>
+    <div class="modal-body">
+      <div class="bulk-top-bar">
+        <p class="bulk-hint">Add multiple activities at once — only the name is required.</p>
+        <div class="bulk-count" id="bulkCount">1 activity</div>
+      </div>
+      <!-- Mobile-only equivalent of the "▼ Fill" buttons in the table
+           header, which is hidden once the table restacks into cards. -->
+      <div class="bulk-fill-row">
+        <span class="bulk-fill-row-label">Copy row 1 to all</span>
+        <button onclick="bulkApplyDown('loc')">&#x25BC; Location</button>
+        <button onclick="bulkApplyDown('date')">&#x25BC; Date</button>
+        <button onclick="bulkApplyDown('pri')">&#x25BC; Priority</button>
+      </div>
+      <div class="bulk-table-wrap">
+        <table class="bulk-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Name *</th>
+              <th>Description</th>
+              <th>Location <button class="bulk-apply-btn" onclick="bulkApplyDown('loc')" title="Copy first row's location to all rows">&#x25BC; Fill</button></th>
+              <th>Target Date <button class="bulk-apply-btn" onclick="bulkApplyDown('date')" title="Copy first row's target date to all rows">&#x25BC; Fill</button></th>
+              <th>Priority <button class="bulk-apply-btn" onclick="bulkApplyDown('pri')" title="Copy first row's priority to all rows">&#x25BC; Fill</button></th>
+              <th>Links</th>
+            </tr>
+          </thead>
+          <tbody id="bulkEntries"></tbody>
+        </table>
+      </div>
+      <div class="bulk-add-row" onclick="addBulkEntry()">+ Add Another Row</div>
+      <div class="bulk-add-multi">
+        <label>Add</label>
+        <input type="number" id="bulkAddCount" value="5" min="1" max="50" />
+        <label>rows</label>
+        <button onclick="addBulkMultiple()">Add Rows</button>
+      </div>
+      <div class="form-actions" style="margin-top:20px">
+        <button class="btn btn-s" onclick="closeModal('bulkAddModal')">Cancel</button>
+        <button class="btn btn-p" id="bulkSaveBtn" onclick="saveBulkActivities()">Add All</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Activity detail modal -->
+<div class="modal-overlay detail-modal" id="detModal">
+  <div class="modal">
+    <div class="modal-body" id="detModalBody"></div>
+  </div>
+</div>
+
+<!-- Delete confirmation modal -->
+<div class="modal-overlay" id="deleteConfirmModal">
+  <div class="modal" style="width:420px">
+    <div class="modal-header">
+      <div class="modal-title" id="delConfirmTitle">Confirm Delete</div>
+      <button class="modal-close" id="delConfirmClose">&#x2715;</button>
+    </div>
+    <div class="modal-body">
+      <p id="delConfirmMsg" style="font-size:1rem;color:var(--text2);line-height:1.6;margin-bottom:0">Are you sure?</p>
+      <div class="form-actions" style="margin-top:24px">
+        <button class="btn btn-d" id="delConfirmYes">Delete</button>
+        <button class="btn btn-s" id="delConfirmNo">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- Lightbox / Gallery -->
+<div class="lightbox" id="lightbox">
+  <button class="lb-close" onclick="closeLightbox()">&#x2715;</button>
+  <div class="lb-img-wrap">
+    <button class="lb-nav lb-prev" id="lbPrev" onclick="lbStep(-1)">&#8592;</button>
+    <img id="lbImg" src="" />
+    <button class="lb-nav lb-next" id="lbNext" onclick="lbStep(1)">&#8594;</button>
+  </div>
+  <div class="lb-counter" id="lbCounter"></div>
+</div>
+<!-- Confetti -->
+<div class="confetti-c" id="confC"></div>
+
+</div><!-- /appWrap -->
+
+<!-- ===== PWA OVERLAYS =====
+     Outside #appWrap so they stay visible on the auth screen too. -->
+
+<!-- Shown whenever the device drops offline (Supabase reads will fail). -->
+<div class="offline-bar" id="offlineBar">Offline &mdash; changes can&rsquo;t be saved</div>
+
+<!-- Chrome/Edge/Android install bar, driven by beforeinstallprompt. -->
+<div class="install-bar" id="pwaInstall">
+  <img src="icons/icon-192.png" alt="" />
+  <div class="install-bar-text">
+    <div class="install-bar-title">Install Bucket List</div>
+    <div class="install-bar-sub">Add it to your home screen for full-screen, offline access.</div>
+  </div>
+  <div class="install-bar-actions">
+    <button class="btn btn-p" onclick="pwaInstall()">Install</button>
+    <button class="install-bar-close" onclick="pwaDismissInstall()" aria-label="Dismiss">&#x2715;</button>
+  </div>
+</div>
+
+<!-- iOS has no install API, so Safari users get the manual instructions. -->
+<div class="ios-install" id="iosInstall">
+  <button class="ios-install-close" onclick="pwaDismissIosHint()" aria-label="Dismiss">&#x2715;</button>
+  <div class="ios-install-head">
+    <img src="icons/icon-192.png" alt="" />
+    <div>
+      <div class="ios-install-title">Add to Home Screen</div>
+      <div class="ios-install-sub">Run Bucket List full screen, like a real app.</div>
+    </div>
+  </div>
+  <div class="ios-install-steps">
+    <div class="ios-install-step">
+      <span class="ios-install-step-num">1</span>
+      <span>Tap the Share button
+        <span class="ios-share-glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="M8 7l4-4 4 4"/><path d="M20 14v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-6"/></svg></span>
+        in Safari&rsquo;s toolbar.</span>
+    </div>
+    <div class="ios-install-step">
+      <span class="ios-install-step-num">2</span>
+      <span>Scroll down and choose <strong>Add to Home Screen</strong>.</span>
+    </div>
+    <div class="ios-install-step">
+      <span class="ios-install-step-num">3</span>
+      <span>Tap <strong>Add</strong> &mdash; then open it from your home screen.</span>
+    </div>
+  </div>
+</div>
+
+<!-- Service-worker update notice. -->
+<div class="pwa-toast" id="pwaToast"></div>
+
+
+<!-- ===== Scripts — order matters =====
+     These are plain (non-module) scripts so they share one global scope,
+     which is what lets the inline onclick="..." handlers above find them.
+     Rough dependency order: config -> state -> helpers -> pages -> boot. -->
+
+<!-- Foundation -->
+<script src="js/config.js"></script>
+<script src="js/state.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/api.js"></script>
+
+<!-- Shell + shared UI -->
+<script src="js/auth.js"></script>
+<script src="js/nav.js"></script>
+<script src="js/modals.js"></script>
+
+<!-- Reusable form widgets -->
+<script src="js/links.js"></script>
+<script src="js/location.js"></script>
+<script src="js/photos.js"></script>
+
+<!-- Pages and features -->
+<script src="js/home.js"></script>
+<script src="js/collections.js"></script>
+<script src="js/detail.js"></script>
+<script src="js/activities.js"></script>
+<script src="js/bulk.js"></script>
+<script src="js/map.js"></script>
+
+<!-- PWA: service worker, install prompts, offline state -->
+<script src="js/pwa.js"></script>
+
+<!-- Start the app -->
+<script src="js/main.js"></script>
+</body>
+</html>

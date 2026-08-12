@@ -1,0 +1,46 @@
+/* ============================================================
+   AUTH PAGE — the signed-out shell (sign in / create account).
+   Its own file because it is the one screen with no top nav, no
+   page system, and its own vertical centering.
+   ============================================================ */
+
+    .auth-page {
+      display: none;               /* auth.js flips this to flex */
+      align-items: center; justify-content: center;
+      min-height: 100vh; min-height: 100dvh;
+      background: var(--bg);
+      padding: calc(24px + var(--safe-top)) var(--gutter) calc(24px + var(--safe-bottom));
+    }
+    .auth-inner { width: 100%; max-width: 420px; }
+
+    .auth-brand { text-align: center; margin-bottom: 36px; }
+    .auth-eyebrow {
+      font-family: var(--mono); font-size: .74rem; font-weight: 600;
+      letter-spacing: 4px; text-transform: uppercase; color: var(--text);
+      margin-bottom: 14px;
+    }
+    .auth-title {
+      font-family: var(--serif); font-size: clamp(2rem, 8vw, 2.4rem);
+      font-weight: 300; letter-spacing: -1px; color: var(--text);
+      line-height: 1.1;
+    }
+
+    .auth-card {
+      background: var(--white); border: 1px solid var(--border);
+      padding: 32px;
+    }
+    .auth-error {
+      color: var(--danger); font-size: .82rem; line-height: 1.5;
+      margin-bottom: 12px; min-height: 20px;
+    }
+    .auth-submit { width: 100%; justify-content: center; padding: 16px; font-size: .78rem; }
+    .auth-toggle {
+      text-align: center; margin-top: 20px;
+      font-size: .84rem; color: var(--text3); line-height: 1.6;
+    }
+    .auth-toggle a { color: var(--olive); font-weight: 600; }
+
+    @media (max-width: 480px) {
+      .auth-brand { margin-bottom: 28px; }
+      .auth-card { padding: 24px 20px; }
+    }

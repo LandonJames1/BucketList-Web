@@ -1,0 +1,102 @@
+/* ============================================================
+   RESPONSIVE — the layout is phone-first, so this file only
+   handles the two directions away from that: very narrow phones,
+   and screens wide enough that a full-bleed phone UI would look
+   stretched.
+
+   **Must load last** so its media queries win.
+   ============================================================ */
+
+/*  ============================================================
+    SMALL PHONE (iPhone SE, 320–374px)
+    ============================================================ */
+    @media (max-width: 374px) {
+      /* 16px is Apple's standard margin and it holds even on an SE —
+         going narrower buys a few pixels of content width at the cost
+         of text sitting visibly close to the glass. */
+      :root { --gutter: 16px; }
+      /* Three photo tiles across a 320px screen leaves each ~88px, which
+         is too small to read the caption under. */
+      .shelf-3 { grid-template-columns: repeat(2, 1fr); }
+      .large-title h1 { font-size: 30px; }
+      .coll-grid { gap: 11px; }
+      .stat-num { font-size: 28px; }
+      .det-banner-title { font-size: 21px; }
+      .tab span { font-size: 9px; }
+      .seg button { font-size: 12px; }
+    }
+
+/*  ============================================================
+    LARGE PHONE (430px+) — a touch more breathing room.
+    ============================================================ */
+    @media (min-width: 415px) {
+      :root { --gutter: 20px; }
+    }
+
+/*  ============================================================
+    TABLET / DESKTOP
+    The app keeps its phone proportions and centres in a column,
+    the way an iPhone-only app looks when run on an iPad. Content
+    is capped rather than stretched so line lengths stay readable
+    and the cards keep their intended size.
+    ============================================================ */
+    @media (min-width: 700px) {
+      :root { --gutter: 24px; }
+
+      /* Centre the chrome's contents on the same column as the pages. */
+      .navbar, .tabbar { justify-content: center; }
+      .navbar { padding-left: 0; padding-right: 0; }
+      .navbar-side { max-width: 300px; }
+      .navbar-side:first-of-type { padding-left: 16px; }
+      .navbar-side.right { padding-right: 16px; }
+      .tabbar { gap: 40px; }
+      .tab { flex: 0 0 90px; }
+
+      .page > * { max-width: 640px; margin-inline: auto; }
+      /* The map is the one thing that should use the whole width. */
+      #globalMapContainer { max-width: none; }
+
+      .coll-grid { grid-template-columns: repeat(3, 1fr); }
+      .acts-grid { grid-template-columns: repeat(3, 1fr); }
+      .shelf-2 { grid-template-columns: repeat(3, 1fr); }
+      .modal { border-radius: var(--r-sheet); max-height: min(720px, calc(100dvh - 88px)); }
+      .modal-overlay { align-items: center; padding: 20px; }
+      .modal-overlay .modal { transform: translateY(24px) scale(.98); }
+      .modal-overlay.open .modal { transform: none; }
+      /* A centred dialog is not a bottom sheet, so drop the grabber. */
+      .sheet-grabber { display: none; }
+      .sheet-bar { padding-top: 0; height: 52px; }
+      .sheet-title { top: 0; height: 52px; }
+    }
+
+    @media (min-width: 1000px) {
+      .coll-grid { grid-template-columns: repeat(4, 1fr); }
+      .page > * { max-width: 720px; }
+    }
+
+/*  ============================================================
+    LANDSCAPE PHONE — very little vertical room; shrink the
+    banner and the map so the list is still usable.
+    ============================================================ */
+    @media (max-height: 500px) and (orientation: landscape) {
+      .det-banner { height: 104px; }
+      .det-banner-title { font-size: 19px; }
+      .det-banner-desc, .det-progress { display: none; }
+      #mapContainer { height: 56vh; min-height: 200px; }
+      #globalMapContainer { min-height: 200px; }
+      .modal { max-height: calc(100dvh - 12px); }
+      .large-title { padding-top: 0; padding-bottom: 4px; }
+      .large-title h1 { font-size: 26px; }
+    }
+
+/*  ============================================================
+    POINTER — hover affordances only where a mouse exists.
+    ============================================================ */
+    @media (hover: hover) {
+      .row.tappable:hover,
+      .act-row:hover,
+      .as-item:hover,
+      .loc-item:hover { background: var(--fill-4); }
+      .coll-card:hover, .act-card:hover { transform: translateY(-2px); }
+      .btn:hover { opacity: .85; }
+    }

@@ -1,0 +1,180 @@
+/* ============================================================
+   LAYOUT — the app shell: the translucent navigation bar, the
+   large title that collapses into it on scroll, the bottom tab
+   bar, and the page show/hide system.
+
+   The document itself scrolls. Both bars are fixed and blur what
+   passes under them, which is what makes the chrome read as
+   native rather than as a website header.
+   ============================================================ */
+
+/*  ============================================================
+    NAVIGATION BAR
+    ============================================================ */
+    .navbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      height: var(--chrome-top);
+      padding: var(--safe-top) calc(14px + var(--safe-right)) 0 calc(14px + var(--safe-left));
+      display: flex; align-items: center; gap: 4px;
+      background: transparent;
+      -webkit-backdrop-filter: none; backdrop-filter: none;
+      transition: background .25s linear, -webkit-backdrop-filter .25s linear, backdrop-filter .25s linear;
+    }
+    /* nav.js adds .condensed once the large title has scrolled away.
+       Only then does the bar get its material and hairline. */
+    .navbar::after {
+      content: ''; position: absolute; left: 0; right: 0; bottom: 0;
+      height: .5px; background: var(--separator);
+      opacity: 0; transition: opacity .25s linear;
+    }
+    .navbar.condensed {
+      background: var(--nav-bg);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+      backdrop-filter: saturate(180%) blur(20px);
+    }
+    .navbar.condensed::after { opacity: 1; }
+
+    .navbar-side {
+      display: flex; align-items: center; gap: 2px;
+      flex: 1 1 0; min-width: 0;
+    }
+    .navbar-side.right { justify-content: flex-end; }
+
+    /* The compact centred title. Hidden until the bar condenses. */
+    .navbar-title {
+      position: absolute; left: 50%; transform: translateX(-50%);
+      top: var(--safe-top); height: var(--nav-h);
+      display: flex; align-items: center;
+      max-width: 55%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      font-family: var(--serif); font-size: 20px; font-weight: 600;
+      letter-spacing: -.008em; color: var(--label);
+      opacity: 0; transition: opacity .2s linear;
+      pointer-events: none;
+    }
+    .navbar.condensed .navbar-title { opacity: 1; }
+
+    /* Bar buttons — 44px targets. Text buttons stay plain; icon actions
+       use the .disc treatment below. */
+    .navbtn {
+      min-width: 44px; height: 44px; padding: 0 6px;
+      display: inline-flex; align-items: center; justify-content: center; gap: 2px;
+      color: var(--tint); font-size: 17px; letter-spacing: -.011em;
+      border-radius: 8px;
+      transition: opacity .15s;
+    }
+    .navbtn:active { opacity: .35; }
+    .navbtn.strong { font-weight: 600; }
+
+    /* Round tinted disc — the app's own bar-button treatment, matching
+       the floating buttons on the map so all controls read as a family.
+       Sized 34px inside a 44px tap target. */
+    .navbtn.disc { padding: 0; }
+    .navbtn.disc .ic {
+      width: 34px; height: 34px; padding: 7px; box-sizing: border-box;
+      border-radius: 50%; background: var(--tint); color: #fff;
+      box-shadow: var(--shadow-sm);
+      transition: transform .2s var(--ease);
+    }
+    .navbtn.disc:active .ic { transform: scale(.88); }
+    /* Secondary disc: same shape, quieter fill. */
+    .navbtn.disc.ghost .ic {
+      background: var(--fill-2); color: var(--label-2); box-shadow: none;
+    }
+    /* Back button: chevron hugs the label the way UIKit draws it. */
+    .navbtn.back { padding-left: 0; gap: 0; }
+    .navbtn.back .ic { margin-right: -1px; }
+    .navbtn.back span {
+      max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+
+/*  ============================================================
+    LARGE TITLE — lives in the page flow, scrolls away normally.
+    ============================================================ */
+    /* A mono eyebrow sits above the serif title — the app's signature
+       pairing, and what stops a big title reading as a bare heading. */
+    .large-title {
+      padding: 10px var(--gx-r) 10px var(--gx-l);
+    }
+    .large-title .eyebrow {
+      font-family: var(--mono); font-size: 11px; font-weight: 500;
+      letter-spacing: .14em; text-transform: uppercase;
+      color: var(--tint); margin-bottom: 5px;
+    }
+    .large-title h1 {
+      font-family: var(--serif); font-size: 40px; line-height: 1.04;
+      font-weight: 600; letter-spacing: -.018em; color: var(--label);
+    }
+    .large-title h1 em { font-style: italic; font-weight: 500; }
+    .large-title-sub {
+      padding: 0 var(--gx-r) 10px var(--gx-l);
+      font-size: 15px; color: var(--label-2); letter-spacing: -.002em;
+    }
+
+/*  ============================================================
+    PAGE SYSTEM — one .page visible at a time, padded clear of
+    both fixed bars.
+    ============================================================ */
+    .page {
+      display: none;
+      min-height: 100vh; min-height: 100dvh;
+      padding-top: var(--chrome-top);
+      /* Clearance for the floating action button, which hovers over
+         the end of the content rather than pushing it. */
+      padding-bottom: calc(var(--chrome-bottom) + 88px);
+    }
+    .page.active { display: block; }
+    /* Root tabs cross-fade; pushed screens slide in from the right the
+       way a UINavigationController does. */
+    .page.active.anim-fade { animation: riseIn .26s var(--ease); }
+    .page.active.anim-push { animation: pushIn .3s var(--ease); }
+    /* The map page manages its own height and must not be padded twice. */
+    .page.page-flush { padding-bottom: var(--chrome-bottom); }
+
+/*  ============================================================
+    TAB BAR
+    ============================================================ */
+    .tabbar {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 100;
+      height: var(--chrome-bottom);
+      padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
+      display: flex; align-items: stretch;
+      background: var(--nav-bg);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+      backdrop-filter: saturate(180%) blur(20px);
+    }
+    .tabbar::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0;
+      height: .5px; background: var(--separator);
+    }
+    .tab {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 2px;
+      color: var(--label-2); padding-top: 5px;
+      transition: color .15s;
+    }
+    .tab .ic { width: 26px; height: 26px; }
+    .tab span {
+      font-family: var(--mono); font-size: 9px; line-height: 1.2;
+      font-weight: 500; letter-spacing: .09em; text-transform: uppercase;
+    }
+    .tab.active { color: var(--tint); }
+    .tab:active { opacity: .5; }
+    /* Each tab ships both a stroked and a filled glyph; show the filled
+       one only while selected, as iOS does. */
+    .tab .ic-on  { display: none; }
+    .tab.active .ic-on  { display: block; }
+    .tab.active .ic-off { display: none; }
+
+/*  ============================================================
+    SCROLL CONTAINER HELPERS
+    ============================================================ */
+    .section-header {
+      padding: 26px var(--gx-r) 9px calc(var(--gx-l) + 4px);
+      font-family: var(--mono); font-size: 11px; font-weight: 500;
+      letter-spacing: .14em; text-transform: uppercase;
+      color: var(--label-3);
+    }
+    .section-footer {
+      padding: 9px var(--gx-r) 0 calc(var(--gx-l) + 4px);
+      font-size: 13px; color: var(--label-3);
+    }

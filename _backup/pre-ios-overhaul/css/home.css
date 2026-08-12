@@ -1,0 +1,149 @@
+/* ============================================================
+   HOME PAGE — hero, featured collections strip, mid-page banner,
+   and the stats row.
+   ============================================================ */
+
+    /* Hero with background image + overlay */
+    .hero {
+      position: relative; width: 100%;
+      /* svh = the viewport height with mobile browser chrome *showing*, so
+         the hero always fits and never resizes as the URL bar hides. */
+      height: calc(100vh - var(--nav-h));
+      height: calc(100svh - var(--nav-h) - var(--safe-top));
+      min-height: 480px;
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1;
+    }
+    .hero-bg {
+      position: fixed; inset: 0;
+      background: url('https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1920&q=80') center/cover;
+      filter: brightness(.75); z-index: -1;
+    }
+    .hero-overlay { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,.15) 0%, rgba(0,0,0,.45) 100%); }
+    .hero-content {
+      position: relative; z-index: 2; text-align: center; color: #fff;
+      max-width: 800px;
+      padding: 0 calc(28px + var(--safe-right)) 0 calc(28px + var(--safe-left));
+    }
+    .hero-eyebrow {
+      font-family: var(--mono); font-size: .72rem; letter-spacing: 4px;
+      text-transform: uppercase; opacity: .85; margin-bottom: 28px;
+      font-weight: 500;
+    }
+    .hero-title {
+      font-family: var(--serif); font-size: clamp(3rem, 7vw, 6rem);
+      font-weight: 300; line-height: 1.05; letter-spacing: -2px;
+    }
+    .hero-title em { font-style: italic; font-weight: 400; }
+    .hero-subtitle {
+      font-size: 1rem; font-weight: 400; opacity: .85;
+      margin-top: 24px; line-height: 1.7; max-width: 480px; margin-inline: auto;
+    }
+    .hero-btn {
+      display: inline-block; margin-top: 44px; padding: 16px 52px;
+      font-family: var(--mono); font-size: .74rem; letter-spacing: 3px;
+      text-transform: uppercase; background: #fff; color: #111;
+      border: none; transition: all .4s var(--ease); font-weight: 600;
+      max-width: 100%;
+    }
+    .hero-btn:hover { background: var(--black); color: #fff; }
+
+    /* Featured collections strip */
+    .home-section {
+      padding: 100px var(--gx-r) 100px var(--gx-l);
+      position: relative; z-index: 2; background: var(--bg);
+    }
+    .home-section-header {
+      display: flex; align-items: flex-end; justify-content: space-between;
+      gap: 20px; flex-wrap: wrap;
+      margin-bottom: 56px;
+    }
+    .section-eyebrow {
+      font-family: var(--mono); font-size: .72rem; letter-spacing: 3px;
+      text-transform: uppercase; color: var(--text2); margin-bottom: 14px;
+      font-weight: 600;
+    }
+    .section-title {
+      font-family: var(--serif); font-size: clamp(2rem, 6vw, 2.8rem);
+      font-weight: 400; letter-spacing: -1px; line-height: 1.1;
+    }
+    .section-link {
+      font-family: var(--mono); font-size: .72rem; letter-spacing: 2px;
+      text-transform: uppercase; color: var(--text); border-bottom: 1.5px solid var(--text);
+      padding-bottom: 2px; transition: color .3s; white-space: nowrap;
+      font-weight: 600;
+    }
+    .section-link:hover { color: var(--text); border-color: var(--text); }
+    .featured-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px;
+    }
+    .featured-card {
+      position: relative; overflow: hidden; cursor: pointer;
+      aspect-ratio: 3/4; background: var(--bg2);
+    }
+    .featured-card img {
+      width: 100%; height: 100%; object-fit: cover;
+      transition: transform .8s var(--ease); filter: brightness(.78);
+    }
+    .featured-card:hover img { transform: scale(1.05); filter: brightness(.85); }
+    .featured-card-overlay {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      justify-content: flex-end; padding: 32px;
+      background: linear-gradient(0deg, rgba(0,0,0,.8) 0%, rgba(0,0,0,.3) 40%, transparent 65%);
+    }
+    .featured-card-title {
+      font-family: var(--serif); font-size: 1.5rem; color: #fff;
+      font-weight: 500; letter-spacing: -0.3px;
+      text-shadow: 0 2px 10px rgba(0,0,0,.5);
+    }
+    .featured-card-count {
+      font-family: var(--mono); font-size: .58rem; color: rgba(255,255,255,.8);
+      letter-spacing: 2px; text-transform: uppercase; margin-top: 6px;
+      text-shadow: 0 1px 4px rgba(0,0,0,.4);
+    }
+
+    /* Banner */
+    .banner {
+      position: relative; height: 500px; overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
+      padding: 40px calc(28px + var(--safe-right)) 40px calc(28px + var(--safe-left));
+      z-index: 2;
+    }
+    .banner-bg {
+      position: absolute; inset: 0;
+      background: url('https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=1920&q=80') center/cover;
+      filter: brightness(.6);
+    }
+    .banner-content {
+      position: relative; z-index: 2; text-align: center; color: #fff;
+    }
+    .banner-title {
+      font-family: var(--serif); font-size: clamp(2.1rem, 8vw, 3rem);
+      font-weight: 300; letter-spacing: -1px; line-height: 1.1;
+    }
+    .banner-title em { font-style: italic; }
+    .banner-sub {
+      font-size: .95rem; font-weight: 400; opacity: .8; margin-top: 16px;
+      max-width: 400px; margin-inline: auto; line-height: 1.7;
+    }
+
+    /* Stats row */
+    .stats-strip {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+      position: relative; z-index: 2; background: var(--bg);
+    }
+    .stats-strip-item {
+      padding: 48px 40px; text-align: center;
+      border-right: 1px solid var(--border);
+    }
+    .stats-strip-item:last-child { border: none; }
+    .stats-strip-number {
+      font-family: var(--serif); font-size: 3rem; font-weight: 400;
+      letter-spacing: -1px; color: var(--text);
+    }
+    .stats-strip-label {
+      font-family: var(--mono); font-size: .68rem; letter-spacing: 2px;
+      text-transform: uppercase; color: var(--text2); margin-top: 8px;
+      font-weight: 500;
+    }

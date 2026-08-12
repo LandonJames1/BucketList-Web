@@ -1,0 +1,202 @@
+/* ==============================================================
+   COLLECTION DETAIL — banner, filter, and the activity list.
+
+   Rendering is split in two on purpose:
+     renderDetail()        builds the banner and the controls, and is
+                           called on entry and after a mutation.
+     renderActivitiesList() rebuilds only the list.
+   Search and filter call the second one, so the search field never
+   loses focus mid-typing.
+   ============================================================== */
+
+async function renderDetail(){
+  const list=await fetchCollection(curListId);
+  if(!list){nav('lists');return;}
+
+  const acts=await fetchActivitiesFor(curListId);
+  const total=acts.length,done=acts.filter(a=>a.completed).length;
+  const pct=total?Math.round(done/total*100):0;
+  const cover=list.cover||randCover();
+
+  $('detBanner').innerHTML=`
+    <img class="det-banner-img" src="${esc(cover)}" alt=""/>
+    <div class="det-banner-scrim"></div>
+    <div class="det-banner-body">
+      <div class="det-banner-eyebrow">${total} ${total===1?'activity':'activities'} &middot; ${pct}% done</div>
+      <div class="det-banner-title">${esc(list.name)}</div>
+      ${list.description?`<div class="det-banner-desc">${esc(list.description)}</div>`:''}
+      <div class="det-progress">
+        <div class="progress"><div class="progress-fill" style="width:${pct}%"></div></div>
+        <span class="det-progress-label">${done} of ${total}</span>
+      </div>
+    </div>`;
+
+  /* The compact nav-bar title on this screen is the collection name. */
+  $('navTitle').textContent=list.name;
+
+  /* Controls are rebuilt here (not on every keystroke) so the search
+     field keeps focus while typing. */
+  $('detControls').innerHTML=`
+    <div class="searchbar">
+      <div class="searchfield" id="detSearchField">
+        ${icon('search')}
+        <input id="detSearch" type="search" placeholder="Search" autocomplete="off"
+               inputmode="search" oninput="onDetailSearch()"/>
+        <button class="search-clear" onclick="clearDetailSearch()" aria-label="Clear search">${icon('x','ic-xs')}</button>
+      </div>
+    </div>
+    <div class="seg" id="detFilter">
+      <button class="${curFilter==='all'?'active':''}" onclick="setFilter('all')">All</button>
+      <button class="${curFilter==='pending'?'active':''}" onclick="setFilter('pending')">To Do</button>
+      <button class="${curFilter==='completed'?'active':''}" onclick="setFilter('completed')">Done</button>
+    </div>`;
+
+  renderActivitiesList();
+}
+
+function onDetailSearch(){
+  const f=$('detSearchField');
+  if(f) f.classList.toggle('has-value',!!$('detSearch').value);
+  renderActivitiesList();
+}
+function clearDetailSearch(){
+  $('detSearch').value='';
+  $('detSearchField').classList.remove('has-value');
+  renderActivitiesList();
+  $('detSearch').focus();
+}
+
+async function renderActivitiesList(){
+  const searchEl=$('detSearch');
+  const search=searchEl?searchEl.value.trim().toLowerCase():'';
+  let acts=await fetchActivitiesFor(curListId);
+  const totalAll=acts.length;
+
+  if(curFilter==='pending')   acts=acts.filter(a=>!a.completed);
+  if(curFilter==='completed') acts=acts.filter(a=>a.completed);
+  if(search) acts=acts.filter(a=>
+    a.name.toLowerCase().includes(search)||
+    (a.description||'').toLowerCase().includes(search)||
+    (a.location||'').toLowerCase().includes(search));
+  acts.sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+
+  const listEl=$('actsWrap'),mapEl=$('mapContainer');
+
+  /* ---- Map view ---- */
+  if(curView==='map'){
+    listEl.style.display='none';
+    mapEl.classList.add('active');
+    renderMap(acts);
+    return;
+  }
+  listEl.style.display='';
+  mapEl.classList.remove('active');
+
+  /* ---- Nothing to show ---- */
+  if(!acts.length){
+    if(search){
+      listEl.innerHTML=`<div class="empty">${icon('search')}
+        <div class="empty-title">No results</div>
+        <div class="empty-sub">Nothing in this list matches “${esc(search)}”.</div></div>`;
+      return;
+    }
+    if(curFilter!=='all'){
+      listEl.innerHTML=`<div class="empty">${icon(curFilter==='completed'?'check-circle':'circle')}
+        <div class="empty-title">${curFilter==='completed'?'Nothing finished yet':'All done'}</div>
+        <div class="empty-sub">${curFilter==='completed'
+          ? 'Tap the circle beside an activity to mark it accomplished.'
+          : 'Every activity in this list is complete.'}</div></div>`;
+      return;
+    }
+    /* Empty list: lead with the composer so the first idea goes
+       straight in. */
+    listEl.innerHTML=`<div class="empty" style="padding-bottom:24px">${icon('sparkle')}
+        <div class="empty-title">Nothing here yet</div>
+        <div class="empty-sub">Add your first activity below — a name is all you need.</div>
+      </div>
+      <div class="act-group">${composerHTML()}</div>`;
+    focusComposer();
+    return;
+  }
+
+  /* ---- Grid view (no composer; it belongs with the list) ---- */
+  if(curView==='grid'){
+    listEl.innerHTML=`<div class="acts-grid">${acts.map(a=>activityCardHTML(a)).join('')}</div>`;
+    return;
+  }
+
+  /* ---- List view ---- */
+  listEl.innerHTML=`<div class="act-group">
+      ${acts.map(a=>activityRowHTML(a)).join('')}
+      ${curFilter==='all'&&!search?composerHTML():''}
+    </div>`;
+  if(totalAll===0) focusComposer();
+}
+
+/* ==============================================================
+   ROW / CARD MARKUP
+   ============================================================== */
+function activityRowHTML(a){
+  const di=dateInfo(a);
+  const thumb=a.photos&&a.photos.length
+    ? `<img class="act-thumb" src="${a.photos[0]}" alt="" loading="lazy"/>` : '';
+  const bits=[];
+  if(di.label) bits.push(`<span class="badge b-${di.cls}">${esc(di.label)}</span>`);
+  if(a.location) bits.push(`<span class="act-loc">${icon('pin','ic-xs')}${esc(a.location)}</span>`);
+  return `<div class="act-row${a.completed?' done':''}">
+    <button class="act-check" onclick="event.stopPropagation();toggleComplete('${a.id}',${a.completed})"
+            aria-label="${a.completed?'Mark as not done':'Mark as done'}">
+      ${icon(a.completed?'check-circle':'circle')}
+    </button>
+    <button class="act-main" onclick="openActDetail('${a.id}')">
+      <span class="act-name">${esc(a.name)}</span>
+      ${bits.length?`<span class="act-meta">${bits.join('<span class="dot">·</span>')}</span>`:''}
+    </button>
+    ${thumb}
+    <span class="act-chevron">${icon('chevron-right')}</span>
+  </div>`;
+}
+
+function activityCardHTML(a){
+  const photo=a.photos&&a.photos.length
+    ? `<img src="${a.photos[0]}" alt="" loading="lazy"/>`
+    : icon('photo');
+  const di=dateInfo(a);
+  return `<button class="act-card${a.completed?' done':''}" onclick="openActDetail('${a.id}')">
+    <span class="act-card-check" onclick="event.stopPropagation();toggleComplete('${a.id}',${a.completed})">
+      ${icon('check')}
+    </span>
+    <span class="act-card-photo">${photo}</span>
+    <span class="act-card-body">
+      <span class="act-card-name">${esc(a.name)}</span>
+      ${di.label?`<span class="badge b-${di.cls}">${esc(di.label)}</span>`:''}
+    </span>
+  </button>`;
+}
+
+/* ==============================================================
+   QUICK-ADD COMPOSER
+   Always the last row of the list. Return files the activity and
+   keeps the caret in place, so a run of ideas goes in without
+   opening anything.
+   ============================================================== */
+function composerHTML(){
+  return `<div class="composer" id="composer">
+    <span class="composer-icon">${icon('plus')}</span>
+    <input id="composerInput" type="text" placeholder="Add an activity" maxlength="100"
+           autocomplete="off" autocapitalize="sentences" enterkeyhint="done"
+           oninput="onComposerInput()" onkeydown="onComposerKey(event)"/>
+    <button class="composer-more" onclick="openNewActivityFromComposer()">Details</button>
+  </div>`;
+}
+function onComposerInput(){
+  const c=$('composer');
+  if(c) c.classList.toggle('has-text',!!$('composerInput').value.trim());
+}
+function onComposerKey(e){
+  if(e.key==='Enter'){ e.preventDefault(); quickAddActivity(); }
+}
+function focusComposer(){
+  const el=$('composerInput');
+  if(el) el.focus();
+}

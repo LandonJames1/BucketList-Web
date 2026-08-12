@@ -1,0 +1,98 @@
+/* ============================================================
+   COLLECTIONS PAGE — shared page header, the collection card grid,
+   and the "new collection" placeholder card.
+   ============================================================ */
+
+    .page-header {
+      padding: 80px var(--gx-r) 60px var(--gx-l);
+      border-bottom: 1px solid var(--border);
+    }
+    .page-header-eyebrow {
+      font-family: var(--mono); font-size: .72rem; letter-spacing: 3px;
+      text-transform: uppercase; color: var(--text2); margin-bottom: 16px;
+      font-weight: 600;
+    }
+    .page-header-title {
+      font-family: var(--serif); font-size: clamp(2.2rem, 7vw, 3.5rem);
+      font-weight: 500; letter-spacing: -1.5px; line-height: 1.1; color: var(--text);
+    }
+    .page-header-sub {
+      font-size: .95rem; font-weight: 400; color: var(--text2);
+      margin-top: 12px; max-width: 500px; line-height: 1.7;
+    }
+    .page-header-actions { margin-top: 32px; display: flex; flex-wrap: wrap; gap: 10px; }
+
+    .collections-grid {
+      display: grid;
+      /* min() keeps the auto-fill track from forcing a horizontal scroll on a
+         narrow phone — below ~340px the track just becomes the column width. */
+      grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr));
+      gap: 32px;
+      padding: 56px var(--gx-r) 100px var(--gx-l);
+    }
+    .collection-card {
+      position: relative; aspect-ratio: 4/5; overflow: hidden;
+      background: var(--bg2); cursor: pointer;
+      border: 1px solid var(--border);
+      box-shadow: 0 4px 24px rgba(0,0,0,.08);
+      transition: box-shadow .4s var(--ease);
+    }
+    .collection-card:hover {
+      box-shadow: 0 8px 40px rgba(0,0,0,.15);
+    }
+    .collection-card-img {
+      width: 100%; height: 100%; object-fit: cover;
+      transition: transform .8s var(--ease); filter: brightness(.78) grayscale(.05);
+    }
+    .collection-card:hover .collection-card-img { transform: scale(1.05); filter: brightness(.85) grayscale(0); }
+    .collection-card-overlay {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      justify-content: flex-end; padding: 36px;
+      background: linear-gradient(0deg, rgba(0,0,0,.82) 0%, rgba(0,0,0,.35) 40%, transparent 65%);
+    }
+
+    .collection-card-title {
+      font-family: var(--serif); font-size: clamp(1.35rem, 4.5vw, 1.7rem);
+      color: #fff; font-weight: 500; letter-spacing: -0.3px; line-height: 1.2;
+      text-shadow: 0 2px 12px rgba(0,0,0,.5);
+    }
+    .collection-card-desc {
+      font-size: .8rem; color: rgba(255,255,255,.85); font-weight: 300;
+      margin-top: 8px; line-height: 1.5;
+      text-shadow: 0 1px 6px rgba(0,0,0,.4);
+    }
+    .collection-card-meta {
+      font-family: var(--mono); font-size: .58rem; color: rgba(255,255,255,.75);
+      letter-spacing: 2px; text-transform: uppercase; margin-top: 14px;
+      text-shadow: 0 1px 4px rgba(0,0,0,.4);
+    }
+    /* New collection card */
+    .collection-card-new {
+      position: relative; aspect-ratio: 4/5; overflow: hidden;
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 14px;
+      background: linear-gradient(145deg, var(--bg2) 0%, var(--white) 100%);
+      border: 2px dashed var(--border2);
+      cursor: pointer; transition: all .4s var(--ease);
+    }
+    .collection-card-new:hover {
+      border-color: var(--olive); border-style: solid;
+      background: linear-gradient(145deg, var(--olive-light) 0%, var(--white) 100%);
+      box-shadow: 0 8px 40px rgba(0,0,0,.1);
+    }
+    .collection-card-new .plus {
+      width: 56px; height: 56px; display: flex; align-items: center;
+      justify-content: center; font-size: 1.6rem; font-weight: 300;
+      color: var(--text3); border: 2px solid var(--border2);
+      border-radius: 50%; transition: all .4s var(--ease);
+    }
+    .collection-card-new:hover .plus {
+      color: var(--olive); border-color: var(--olive);
+      background: var(--white); transform: scale(1.1);
+    }
+    .collection-card-new span {
+      font-family: var(--mono); font-size: .68rem; letter-spacing: 2px;
+      text-transform: uppercase; color: var(--text3); font-weight: 600;
+      transition: color .3s;
+    }
+    .collection-card-new:hover span { color: var(--olive); }

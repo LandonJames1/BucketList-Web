@@ -1,0 +1,214 @@
+/* ============================================================
+   MAP — the Leaflet container on both the Map tab and the
+   collection detail's map view, plus the Nominatim autocomplete.
+   ============================================================ */
+
+/*  ============================================================
+    LOCATION AUTOCOMPLETE
+    ============================================================ */
+    .loc-wrap { position: relative; }
+    .loc-wrap input { width: 100%; }
+    .loc-results {
+      position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 1000;
+      background: var(--bg-raised); border-radius: var(--r-row);
+      max-height: 232px; overflow-y: auto; display: none;
+      box-shadow: 0 8px 30px rgba(0,0,0,.22), 0 0 0 .5px var(--separator);
+      -webkit-overflow-scrolling: touch;
+    }
+    .loc-results.open { display: block; }
+    .loc-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px; min-height: 48px; width: 100%; text-align: left;
+      color: var(--label);
+    }
+    .loc-item:not(:last-child) { border-bottom: .5px solid var(--separator); }
+    .loc-item:active { background: var(--fill-4); }
+    .loc-item .ic { width: 17px; height: 17px; color: var(--label-2); flex-shrink: 0; }
+    .loc-item-body { min-width: 0; }
+    .loc-item-main {
+      font-size: 16px; letter-spacing: -.007em; color: var(--label);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .loc-item-sub {
+      font-size: 13px; color: var(--label-2); margin-top: 1px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .loc-empty { padding: 14px; text-align: center; font-size: 15px; color: var(--label-2); }
+
+/*  ============================================================
+    MAP CONTAINER
+
+    The Map tab is deliberately immersive: the map fills the entire
+    viewport, edge to edge and *behind* the translucent nav and tab
+    bars, the way Google Earth or Snap's map do. Nothing is boxed —
+    the controls float on top of it instead.
+    ============================================================ */
+    .map-box {
+      width: 100%; background: var(--fill-3); display: none; position: relative; z-index: 1;
+    }
+    .map-box.active { display: block; }
+
+    /* --- Map tab: full bleed --- */
+    .page-map {
+      padding: 0 !important;      /* the map goes under both bars */
+      min-height: 100dvh;
+      position: relative;
+    }
+    #globalMapContainer {
+      position: absolute; inset: 0;
+      height: auto; width: 100%;
+      display: block;
+      /* In globe projection MapLibre paints nothing outside the sphere,
+         so this shows through as the sky around the planet. */
+      background: radial-gradient(120% 90% at 50% 42%,
+        #b9d2e6 0%, #93b3cf 42%, #6d8daa 72%, #56728c 100%);
+    }
+    @media (prefers-color-scheme: dark) {
+      #globalMapContainer {
+        background: radial-gradient(120% 90% at 50% 42%,
+          #24303d 0%, #18222c 45%, #0e141b 78%, #080c11 100%);
+      }
+    }
+
+    /* Floating chrome over the map. Sits below the nav bar's z-index
+       so the bar's blur still passes over it when scrolled. */
+    .map-overlay {
+      position: absolute; left: 0; right: 0;
+      top: calc(var(--chrome-top) + 8px);
+      z-index: 20; pointer-events: none;
+      padding: 0 calc(12px + var(--safe-right)) 0 calc(12px + var(--safe-left));
+      display: flex; flex-direction: column; gap: 10px; align-items: flex-start;
+    }
+    .map-overlay > * { pointer-events: auto; }
+
+    /* A floating glass pill replaces the inset segmented control. */
+    .map-filter {
+      display: inline-flex; padding: 4px; border-radius: 22px;
+      background: var(--nav-bg);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+      backdrop-filter: saturate(180%) blur(20px);
+      box-shadow: var(--shadow-md), 0 0 0 .5px var(--separator);
+    }
+    .map-filter button {
+      padding: 0 16px; height: 36px; border-radius: 18px;
+      font-family: var(--mono); font-size: 10.5px; font-weight: 500;
+      letter-spacing: .1em; text-transform: uppercase;
+      color: var(--label-2); white-space: nowrap;
+      transition: background .2s, color .2s;
+    }
+    .map-filter button.active { background: var(--tint); color: #fff; }
+
+    .map-count {
+      display: inline-flex; align-items: center; gap: 6px;
+      height: 30px; padding: 0 12px; border-radius: 15px;
+      background: var(--nav-bg);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+      backdrop-filter: saturate(180%) blur(20px);
+      box-shadow: var(--shadow-sm), 0 0 0 .5px var(--separator);
+      font-family: var(--mono); font-size: 9.5px; font-weight: 500;
+      letter-spacing: .1em; text-transform: uppercase; color: var(--label-2);
+    }
+    .map-count .ic { width: 13px; height: 13px; color: var(--tint); }
+
+    /* Round glass buttons stacked above the tab bar, thumb-reachable. */
+    .map-actions {
+      position: absolute; right: calc(12px + var(--safe-right));
+      bottom: calc(var(--chrome-bottom) + 14px);
+      z-index: 20; display: flex; flex-direction: column; gap: 10px;
+    }
+    .map-fab {
+      width: 46px; height: 46px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--nav-bg); color: var(--tint);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+      backdrop-filter: saturate(180%) blur(20px);
+      box-shadow: var(--shadow-md), 0 0 0 .5px var(--separator);
+      transition: transform .2s var(--ease);
+    }
+    .map-fab:active { transform: scale(.9); }
+    .map-fab .ic { width: 21px; height: 21px; }
+
+    /* --- Detail view: an inset rounded card, since it shares the
+           screen with the activity list. --- */
+    #mapContainer {
+      height: 62vh; min-height: 320px;
+      margin: 0 var(--gx-r) 0 var(--gx-l);
+      border-radius: var(--r-card); overflow: hidden;
+      box-shadow: var(--shadow-md);
+    }
+
+    /* MapLibre's own controls are hidden on the immersive Map tab —
+       pinch to zoom, and the app's floating buttons do the rest. */
+    .page-map .maplibregl-ctrl-top-right,
+    .page-map .maplibregl-ctrl-top-left { display: none; }
+
+    /* Keep the attribution clear of the tab bar, and out from under the
+       floating buttons in the bottom-right corner. */
+    .page-map .maplibregl-ctrl-bottom-left { bottom: calc(var(--chrome-bottom) - 4px); }
+    .page-map .maplibregl-ctrl-bottom-right { display: none; }
+
+    .maplibregl-map { font: inherit; }
+    .maplibregl-canvas { outline: none; }
+    .maplibregl-ctrl-attrib {
+      background: var(--nav-bg) !important; color: var(--label-3) !important;
+      font-size: 10px !important; border-radius: 8px 0 0 0 !important;
+      -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    }
+    .maplibregl-ctrl-attrib a { color: var(--label-3) !important; }
+    .maplibregl-ctrl-attrib-button { filter: none; }
+    .maplibregl-ctrl-group {
+      background: var(--nav-bg) !important;
+      border-radius: 12px !important; overflow: hidden;
+      box-shadow: var(--shadow-md), 0 0 0 .5px var(--separator) !important;
+      -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+    }
+    .maplibregl-ctrl-group button {
+      width: 42px !important; height: 42px !important;
+      background: transparent !important;
+    }
+    .maplibregl-ctrl-group button + button { border-top: .5px solid var(--separator) !important; }
+
+    .map-empty {
+      display: flex; align-items: center; justify-content: center;
+      height: 100%; padding: 24px;
+    }
+    .page-map .map-empty {
+      position: absolute; inset: 0;
+      background: var(--bg); z-index: 10;
+    }
+
+/*  ============================================================
+    MARKERS + POPUP
+    ============================================================ */
+    /* Pins are real buttons so they are tappable and focusable; only
+       unclustered points get one, clusters are drawn on the GPU. */
+    .map-pin {
+      width: 36px; height: 36px; border-radius: 50%; padding: 0;
+      border: 2.5px solid #fff; overflow: hidden;
+      box-shadow: 0 2px 10px rgba(0,0,0,.4);
+      background: var(--gray); cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: transform .18s var(--ease);
+    }
+    .map-pin:active { transform: scale(.88); }
+    .map-pin img { width: 100%; height: 100%; object-fit: cover; }
+    .map-pin.done    { background: var(--green); }
+    .map-pin.pending { background: var(--orange); }
+    .map-pin-dot { width: 9px; height: 9px; border-radius: 50%; background: #fff; }
+
+/*  ============================================================
+    CLUSTERS — computed in MapLibre's worker, drawn as DOM so they can
+    use the app's own mono type. Sized inline by makeClusterEl().
+    ============================================================ */
+    .map-cluster {
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 50%; padding: 0;
+      background: var(--tint); color: #fff;
+      border: 2.5px solid #fff;
+      box-shadow: 0 2px 10px rgba(0,0,0,.4);
+      font-family: var(--mono); font-size: 13px; font-weight: 600;
+      letter-spacing: .02em; cursor: pointer;
+      transition: transform .18s var(--ease);
+    }
+    .map-cluster.done { background: var(--green); }
+    .map-cluster:active { transform: scale(.9); }

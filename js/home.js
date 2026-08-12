@@ -1,0 +1,213 @@
+/* ==============================================================
+   HOME TAB — the dashboard.
+
+   The app's answer to "what should I do next?". Everything here is
+   derived from data the other screens already fetch; Home owns no
+   state of its own.
+
+   Sections, in order of usefulness:
+     1. Progress ring — the whole list, at a glance
+     2. Quick add    — file an idea without picking a list first
+     3. Up Next      — the most urgent unfinished activities
+     4. Recently done
+     5. Your lists   — an inset grid, four at most
+   ============================================================== */
+
+async function renderHome(){
+  const lists=await fetchCollections();
+  const acts=await fetchAllActivities(lists);
+
+  renderHomeGreeting();
+  renderHomeProgress(lists,acts);
+  renderHomeUpNext(acts,lists);
+  renderHomeRecent(acts,lists);
+  renderHomeLists(lists,acts);
+}
+
+/* ---- Greeting ---- */
+function renderHomeGreeting(){
+  const h=new Date().getHours();
+  const part=h<5?'Still up':h<12?'Good morning':h<18?'Good afternoon':'Good evening';
+  const name=(userProfile&&userProfile.display_name||'').split(' ')[0];
+  $('homeEyebrow').textContent=new Date().toLocaleDateString('en-US',
+    {weekday:'long',month:'long',day:'numeric'});
+  $('homeGreeting').innerHTML=name?`${part},<br><em>${esc(name)}</em>`:`${part}`;
+}
+
+/* ---- Progress ring ----
+   An SVG ring rather than a bar: it is the one number worth showing
+   large, and a ring reads at a glance from across the room. */
+function renderHomeProgress(lists,acts){
+  const total=acts.length;
+  const done=acts.filter(a=>a.completed).length;
+  const pct=total?Math.round(done/total*100):0;
+  const R=52, C=2*Math.PI*R;
+  const offset=C*(1-pct/100);
+
+  $('homeProgress').innerHTML=`
+    <div class="hp-ring">
+      <svg viewBox="0 0 128 128" aria-hidden="true">
+        <circle class="hp-track" cx="64" cy="64" r="${R}"/>
+        <circle class="hp-fill"  cx="64" cy="64" r="${R}"
+                stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${offset.toFixed(1)}"/>
+      </svg>
+      <div class="hp-ring-label">
+        <div class="hp-pct">${pct}<span>%</span></div>
+        <div class="hp-cap">Complete</div>
+      </div>
+    </div>
+    <div class="hp-stats">
+      <div class="hp-stat"><div class="hp-num">${done}</div><div class="hp-lab">Accomplished</div></div>
+      <div class="hp-stat"><div class="hp-num">${total-done}</div><div class="hp-lab">To go</div></div>
+      <div class="hp-stat"><div class="hp-num">${lists.length}</div><div class="hp-lab">${lists.length===1?'List':'Lists'}</div></div>
+    </div>`;
+}
+
+/* ---- Up Next ----
+   Unfinished activities ranked by how soon their target date lands.
+   Anything with no date sinks to the bottom. */
+function renderHomeUpNext(acts,lists){
+  const listName=id=>{const l=lists.find(c=>c.id===id);return l?l.name:'';};
+  const next=acts.filter(a=>!a.completed)
+    .sort((a,b)=>targetRank(a)-targetRank(b)||new Date(b.createdAt)-new Date(a.createdAt))
+    .slice(0,4);
+
+  if(!next.length){
+    $('homeUpNext').innerHTML=`<div class="home-empty">${icon('sparkle')}
+      <div class="home-empty-text">Nothing pending. Add something you want to do.</div></div>`;
+    return;
+  }
+  $('homeUpNext').innerHTML=next.map(a=>{
+    const di=dateInfo(a);
+    return `<div class="up-row">
+      <button class="act-check" onclick="event.stopPropagation();toggleCompleteFrom('home','${a.id}')"
+              aria-label="Mark as done">${icon('circle')}</button>
+      <button class="up-main" onclick="openActDetail('${a.id}')">
+        <span class="up-name">${esc(a.name)}</span>
+        <span class="up-meta">
+          <span class="up-list">${esc(listName(a.listId))}</span>
+          ${di.label?`<span class="dot">·</span><span class="badge b-${di.cls}">${esc(di.label)}</span>`:''}
+        </span>
+      </button>
+      <span class="act-chevron">${icon('chevron-right')}</span>
+    </div>`;
+  }).join('');
+}
+
+/* ---- Recently accomplished ---- */
+function renderHomeRecent(acts,lists){
+  /* Two rows of three at most — enough to feel like a record without
+     pushing the lists shelf off the screen. */
+  const done=acts.filter(a=>a.completed&&a.completedDate)
+    .sort((a,b)=>new Date(b.completedDate)-new Date(a.completedDate))
+    .slice(0,6);
+  const sec=$('homeRecentSection');
+  if(!done.length){sec.style.display='none';return;}
+  sec.style.display='';
+  $('homeRecent').innerHTML=done.map(a=>{
+    const photo=a.photos&&a.photos.length?a.photos[0]:null;
+    return `<button class="rec-card" onclick="openActDetail('${a.id}')">
+      <span class="rec-photo">${photo
+        ? `<img src="${photo}" alt="" loading="lazy"/>`
+        : `<span class="rec-photo-empty">${icon('check')}</span>`}</span>
+      <span class="rec-name">${esc(a.name)}</span>
+      <span class="rec-date">${esc(fmtDate(a.completedDate))}</span>
+    </button>`;
+  }).join('');
+}
+
+/* ---- Lists shelf ---- */
+function renderHomeLists(lists,acts){
+  const sec=$('homeListsSection');
+  if(!lists.length){sec.style.display='none';return;}
+  sec.style.display='';
+  /* Four is two tidy rows; "See all" covers the rest. */
+  $('homeLists').innerHTML=lists.slice(0,4).map(l=>{
+    const mine=acts.filter(a=>a.listId===l.id);
+    const done=mine.filter(a=>a.completed).length;
+    const pct=mine.length?Math.round(done/mine.length*100):0;
+    return `<button class="mini-card" onclick="nav('detail','${l.id}')">
+      <img class="mini-img" src="${esc(l.cover||randCover())}" alt="" loading="lazy"/>
+      <span class="mini-scrim"></span>
+      <span class="mini-body">
+        <span class="mini-title">${esc(l.name)}</span>
+        <span class="mini-meta">${done}/${mine.length}</span>
+      </span>
+      <span class="mini-bar"><span style="width:${pct}%"></span></span>
+    </button>`;
+  }).join('');
+}
+
+/* ==============================================================
+   HOME QUICK ADD
+   The composer here has no collection context, so on submit it asks
+   which list the idea belongs to — unless there is only one, in
+   which case it just files it.
+   ============================================================== */
+function onHomeComposerKey(e){
+  if(e.key==='Enter'){ e.preventDefault(); homeQuickAdd(); }
+}
+function onHomeComposerInput(){
+  const c=$('homeComposer');
+  if(c) c.classList.toggle('has-text',!!$('homeComposerInput').value.trim());
+}
+
+async function homeQuickAdd(){
+  const input=$('homeComposerInput');
+  const name=input.value.trim();
+  if(!name){shakeEl(input);return;}
+
+  const lists=await fetchCollections();
+  if(!lists.length){
+    /* Nowhere to put it yet — open the list sheet and keep the text. */
+    showToast('Create a list first');
+    openNewList();
+    $('lName').value=name;
+    input.value='';onHomeComposerInput();
+    return;
+  }
+  if(lists.length===1){
+    await addActivityToList(lists[0].id,name);
+    return;
+  }
+  showActionSheet({
+    title:'Add to which list?',
+    message:esc(name),
+    items:lists.map(l=>({label:l.name,icon:'stack',onSelect:()=>addActivityToList(l.id,name)}))
+      .concat([{label:'New List…',icon:'plus',onSelect:()=>{openNewList();$('lName').value='';}}]),
+  });
+}
+
+async function addActivityToList(listId,name){
+  const input=$('homeComposerInput');
+  if(input){input.disabled=true;}
+  const{error}=await sb.from('Activities').insert({name,collection_id:listId});
+  if(input){input.disabled=false;}
+  if(error){
+    console.error('addActivityToList:',error);
+    showToast(error.message||'Couldn’t add that.');
+    return;
+  }
+  await updateCollectionStats(listId);
+  if(input){input.value='';onHomeComposerInput();input.focus();}
+  showToast('Added');
+  renderHome();
+}
+
+/* Completing from Home has no curListId, so the stats update needs the
+   activity's own collection. */
+async function toggleCompleteFrom(source,id){
+  const a=await fetchActivity(id);
+  if(!a)return;
+  const nowDone=!a.completed;
+  const{error}=await sb.from('Activities')
+    .update({date_completed: nowDone ? todayISO() : null}).eq('id',id);
+  if(error){
+    console.error('toggleCompleteFrom:',error);
+    showToast(error.message||'Couldn’t update that.');
+    return;
+  }
+  await updateCollectionStats(a.listId);
+  if(nowDone){ confetti(); showToast('Accomplished'); }
+  if(source==='home') renderHome(); else renderDetail();
+}

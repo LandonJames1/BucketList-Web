@@ -1,0 +1,120 @@
+/* ============================================================
+   PWA — install prompts, the iOS "Add to Home Screen" sheet,
+   the offline banner, and the update toast.
+   All of these are fixed-position overlays that sit above the app
+   but below the modals (z-index 200) and the lightbox (300).
+   ============================================================ */
+
+    /*  ============================================================
+        OFFLINE BANNER — pinned under the top nav
+        ============================================================ */
+    .offline-bar {
+      position: fixed; left: 0; right: 0;
+      top: calc(var(--nav-h) + var(--safe-top));
+      z-index: 120; background: var(--terra); color: #fff;
+      font-family: var(--mono); font-size: .66rem; font-weight: 600;
+      letter-spacing: 1.5px; text-transform: uppercase;
+      text-align: center; padding: 8px 16px;
+      transform: translateY(-100%); opacity: 0;
+      pointer-events: none; transition: transform .3s var(--ease), opacity .3s;
+    }
+    .offline-bar.show { transform: none; opacity: 1; }
+
+    /*  ============================================================
+        INSTALL BAR — Chrome/Edge/Android, driven by beforeinstallprompt
+        ============================================================ */
+    .install-bar {
+      position: fixed; left: 16px; right: 16px;
+      bottom: calc(16px + var(--safe-bottom));
+      z-index: 130; background: var(--white);
+      border: 1px solid var(--border2);
+      box-shadow: 0 12px 40px rgba(0,0,0,.18);
+      display: none; align-items: center; gap: 14px;
+      padding: 14px 16px; max-width: 480px; margin-inline: auto;
+    }
+    .install-bar.show { display: flex; }
+    .install-bar img { width: 40px; height: 40px; flex-shrink: 0; }
+    .install-bar-text { flex: 1; min-width: 0; }
+    .install-bar-title {
+      font-family: var(--serif); font-size: 1.05rem; font-weight: 600;
+      color: var(--text); line-height: 1.2;
+    }
+    .install-bar-sub {
+      font-size: .78rem; color: var(--text3); margin-top: 2px; line-height: 1.4;
+    }
+    .install-bar-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+    .install-bar .btn { padding: 10px 18px; font-size: .66rem; }
+    .install-bar-close {
+      width: 32px; height: 32px; display: flex; align-items: center;
+      justify-content: center; background: none; border: none;
+      color: var(--text4); font-size: .85rem; flex-shrink: 0;
+    }
+
+    /*  ============================================================
+        iOS ADD-TO-HOME-SCREEN SHEET
+        iOS has no install API, so this explains the Share-sheet route.
+        ============================================================ */
+    .ios-install {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 130;
+      background: var(--white); border-top: 1px solid var(--border2);
+      box-shadow: 0 -12px 40px rgba(0,0,0,.16);
+      padding: 24px 24px calc(24px + var(--safe-bottom));
+      transform: translateY(110%); transition: transform .45s var(--ease);
+      max-width: 520px; margin-inline: auto;
+    }
+    .ios-install.show { transform: none; }
+    .ios-install-close {
+      position: absolute; top: 8px; right: 8px;
+      width: 44px; height: 44px; display: flex; align-items: center;
+      justify-content: center; background: none; border: none;
+      color: var(--text4); font-size: .9rem;
+    }
+    .ios-install-head { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+    .ios-install-head img { width: 48px; height: 48px; flex-shrink: 0; }
+    .ios-install-title {
+      font-family: var(--serif); font-size: 1.35rem; font-weight: 600;
+      color: var(--text); line-height: 1.2; padding-right: 32px;
+    }
+    .ios-install-sub { font-size: .8rem; color: var(--text3); margin-top: 2px; line-height: 1.4; }
+    .ios-install-steps { display: flex; flex-direction: column; gap: 12px; }
+    .ios-install-step {
+      display: flex; align-items: center; gap: 12px;
+      font-size: .88rem; color: var(--text2); line-height: 1.5;
+    }
+    .ios-install-step-num {
+      width: 24px; height: 24px; flex-shrink: 0; border-radius: 50%;
+      background: var(--olive); color: #fff; display: flex;
+      align-items: center; justify-content: center;
+      font-family: var(--mono); font-size: .68rem; font-weight: 600;
+    }
+    .ios-share-glyph {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 22px; height: 22px; vertical-align: -6px; margin: 0 2px;
+      color: #0a84ff;
+    }
+    .ios-share-glyph svg { width: 100%; height: 100%; }
+
+    /*  ============================================================
+        TOAST — service-worker update notice
+        ============================================================ */
+    .pwa-toast {
+      position: fixed; left: 16px; right: 16px;
+      bottom: calc(16px + var(--safe-bottom));
+      z-index: 140; background: var(--black); color: var(--bg);
+      padding: 14px 16px; display: none; align-items: center; gap: 12px;
+      font-size: .85rem; max-width: 420px; margin-inline: auto;
+      box-shadow: 0 12px 40px rgba(0,0,0,.3);
+    }
+    .pwa-toast.show { display: flex; }
+    .pwa-toast span { flex: 1; min-width: 0; }
+    .pwa-toast-btn {
+      background: none; border: 1px solid rgba(255,255,255,.4); color: var(--bg);
+      font-family: var(--mono); font-size: .66rem; font-weight: 600;
+      letter-spacing: 1.5px; text-transform: uppercase;
+      padding: 8px 14px; flex-shrink: 0;
+    }
+    .pwa-toast-btn:hover { background: rgba(255,255,255,.12); }
+
+    /* Hide every install affordance once the app is actually installed. */
+    html.standalone .install-bar,
+    html.standalone .ios-install { display: none !important; }

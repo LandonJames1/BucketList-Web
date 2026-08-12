@@ -1,0 +1,233 @@
+/* ============================================================
+   BULK ADD — the wide spreadsheet-style modal for adding many
+   activities at once.
+   ============================================================ */
+
+    .bulk-modal .modal { width: 100%; max-width: 1320px; }
+    .bulk-modal .modal-body { padding: 24px 28px 28px; }
+    .bulk-top-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .bulk-hint {
+      font-size: .82rem; color: var(--text3); line-height: 1.6;
+      margin: 0;
+    }
+    .bulk-count {
+      font-family: var(--mono); font-size: .72rem; letter-spacing: 1px;
+      color: var(--text3); white-space: nowrap; margin-left: 16px;
+    }
+    .bulk-table-wrap {
+      overflow-x: auto; border: 1px solid var(--border); background: var(--white);
+    }
+    .bulk-table {
+      width: 100%; min-width: 1050px; border-collapse: collapse;
+    }
+    .bulk-table th {
+      font-family: var(--mono); font-size: .62rem; font-weight: 600;
+      letter-spacing: 1.5px; text-transform: uppercase; color: var(--text4);
+      padding: 10px 8px 10px; text-align: left; background: var(--bg);
+      border-bottom: 1.5px solid var(--border); white-space: nowrap;
+      position: sticky; top: 0; z-index: 2;
+    }
+    .bulk-table th:first-child { width: 40px; text-align: center; }
+    .bulk-table th .bulk-apply-btn {
+      display: inline-block; margin-left: 6px; font-size: .58rem;
+      font-family: var(--mono); font-weight: 500; letter-spacing: .8px;
+      color: var(--terra); cursor: pointer; background: none; border: none;
+      text-transform: uppercase; opacity: .7; transition: opacity .2s;
+      vertical-align: middle;
+    }
+    .bulk-table th .bulk-apply-btn:hover { opacity: 1; text-decoration: underline; }
+    .bulk-table td {
+      padding: 6px 6px; vertical-align: top;
+      border-bottom: 1px solid var(--bg2);
+    }
+    .bulk-table tr:last-child td { border-bottom: none; }
+    .bulk-table tr:hover td { background: rgba(0,0,0,.012); }
+    .bulk-table td:first-child { text-align: center; vertical-align: middle; }
+    .bulk-row-num {
+      font-family: var(--mono); font-size: .72rem; font-weight: 600;
+      color: var(--text4); display: flex; flex-direction: column;
+      align-items: center; gap: 2px;
+    }
+    .bulk-row-remove {
+      background: none; border: none; font-size: .6rem; color: var(--text4);
+      cursor: pointer; padding: 1px 4px; transition: color .2s;
+      line-height: 1;
+    }
+    .bulk-row-remove:hover { color: var(--danger); }
+    /* Compact inputs for bulk table */
+    .bulk-table input, .bulk-table textarea, .bulk-table select {
+      width: 100%; font-size: .8rem; padding: 7px 10px;
+      border: 1.5px solid var(--border); background: var(--white);
+      color: var(--text); font-family: var(--sans); outline: none;
+      transition: border-color .3s;
+    }
+    .bulk-table input:focus, .bulk-table textarea:focus, .bulk-table select:focus {
+      border-color: var(--black); box-shadow: 0 0 0 2px rgba(17,17,17,.06);
+    }
+    .bulk-table input::placeholder, .bulk-table textarea::placeholder {
+      color: var(--text4); font-weight: 400;
+    }
+    .bulk-table textarea { resize: none; height: 34px; line-height: 1.4; }
+    .bulk-table select {
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%233a3a36'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 8px center;
+      padding-right: 24px;
+    }
+    .bulk-table td { position: relative; }
+    .bulk-table .loc-wrap { position: relative; }
+    .bulk-table .loc-results {
+      position: fixed; z-index: 10000;
+      max-height: 220px; overflow-y: auto;
+      box-shadow: 0 8px 24px rgba(0,0,0,.18);
+    }
+    .bulk-table .tag-input-wrap {
+      padding: 4px 6px; min-height: 34px; border: 1.5px solid var(--border);
+      background: var(--white); display: flex; flex-wrap: wrap; gap: 3px;
+      align-items: center; transition: border-color .3s; cursor: text;
+    }
+    .bulk-table .tag-input-wrap:focus-within {
+      border-color: var(--black); box-shadow: 0 0 0 2px rgba(17,17,17,.06);
+    }
+    .bulk-table .tag-input-field {
+      border: none !important; padding: 2px 4px !important;
+      min-width: 50px; flex: 1; font-size: .75rem !important;
+      box-shadow: none !important; outline: none;
+    }
+    .bulk-table .tag-chip {
+      font-size: .62rem; padding: 1px 6px; white-space: nowrap;
+    }
+    .bulk-add-row {
+      display: flex; align-items: center; justify-content: center;
+      gap: 8px; padding: 16px 12px; min-height: 52px;
+      border: 2px dashed var(--border);
+      cursor: pointer; color: var(--text3); transition: all .3s;
+      font-family: var(--mono); font-size: .7rem; letter-spacing: 2px;
+      text-transform: uppercase; font-weight: 500; margin-top: 12px;
+      text-align: center;
+    }
+    .bulk-add-row:hover { color: var(--text); border-color: var(--text3); }
+    .bulk-add-multi {
+      display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+      margin-top: 12px;
+    }
+    .bulk-add-multi label {
+      font-family: var(--mono); font-size: .68rem; font-weight: 500;
+      letter-spacing: 1px; text-transform: uppercase; color: var(--text3);
+    }
+    .bulk-add-multi input {
+      width: 72px; padding: 10px; font-size: max(16px, .82rem); text-align: center;
+      border: 1.5px solid var(--border); background: var(--white);
+      font-family: var(--mono); outline: none;
+      border-radius: 0; -webkit-appearance: none; appearance: none;
+    }
+    .bulk-add-multi button {
+      padding: 10px 16px; min-height: 44px;
+      font-family: var(--mono); font-size: .68rem;
+      font-weight: 600; letter-spacing: 1px; text-transform: uppercase;
+      border: 1px solid var(--border2); background: var(--bg);
+      color: var(--text2); cursor: pointer; transition: all .2s;
+    }
+    .bulk-add-multi button:hover { border-color: var(--text); color: var(--text); }
+    @media (max-width: 900px) {
+      .bulk-modal .modal { width: 100%; }
+      .bulk-modal .modal-body { padding: 16px; }
+      .bulk-top-bar { flex-direction: column; gap: 8px; align-items: flex-start; }
+      .bulk-count { margin-left: 0; }
+    }
+
+/*  ============================================================
+    MOBILE FILL CONTROLS — the "▼ Fill" buttons live in the table
+    header, which the mobile card layout below hides. These chips
+    replace them. Declared before the media query so the query's
+    `display: flex` wins.
+    ============================================================ */
+    .bulk-fill-row {
+      display: none; flex-wrap: wrap; align-items: center; gap: 8px;
+      margin-bottom: 14px;
+    }
+    .bulk-fill-row-label {
+      font-family: var(--mono); font-size: .6rem; font-weight: 600;
+      letter-spacing: 1.5px; text-transform: uppercase; color: var(--text4);
+    }
+    .bulk-fill-row button {
+      padding: 10px 12px; min-height: 44px;
+      font-family: var(--mono); font-size: .62rem;
+      font-weight: 600; letter-spacing: .8px; text-transform: uppercase;
+      border: 1px solid var(--border2); background: var(--bg);
+      color: var(--terra);
+    }
+
+/*  ============================================================
+    MOBILE — a 7-column spreadsheet cannot be used on a phone, so
+    below 720px the same <table> is re-laid-out as one stacked card
+    per row. Every cell becomes a labelled field; the labels come
+    from the data-label attributes that renderBulkEntries() writes,
+    since the <thead> is hidden here.
+    ============================================================ */
+    @media (max-width: 720px), (hover: none) and (max-width: 900px) {
+      .bulk-table-wrap { overflow-x: visible; border: none; background: none; }
+      .bulk-table { min-width: 0; width: 100%; display: block; }
+      .bulk-table thead { display: none; }
+      .bulk-table tbody { display: flex; flex-direction: column; gap: 14px; }
+
+      .bulk-table tr {
+        display: block; position: relative;
+        border: 1px solid var(--border); background: var(--white);
+        padding: 14px 14px 14px 46px;
+      }
+      .bulk-table tr:hover td { background: none; }
+      .bulk-table td {
+        display: block; width: auto; padding: 0; border: none;
+        margin-bottom: 12px;
+      }
+      .bulk-table td:last-child { margin-bottom: 0; }
+
+      /* Row number + remove button move into the card's left rail. */
+      .bulk-table td:first-child {
+        position: absolute; top: 0; left: 0; bottom: 0; width: 34px;
+        margin: 0; display: flex; align-items: flex-start;
+        justify-content: center; padding-top: 16px;
+        background: var(--bg); border-right: 1px solid var(--border);
+      }
+      .bulk-table .bulk-row-num { gap: 8px; }
+      .bulk-table .bulk-row-remove {
+        width: 26px; height: 26px; display: flex; align-items: center;
+        justify-content: center; font-size: .7rem;
+      }
+
+      /* Field labels, drawn from data-label. */
+      .bulk-table td[data-label]::before {
+        content: attr(data-label);
+        display: block; margin-bottom: 6px;
+        font-family: var(--mono); font-size: .6rem; font-weight: 600;
+        letter-spacing: 1.5px; text-transform: uppercase; color: var(--text4);
+      }
+
+      /* 16px minimum again — these fields are 12.8px on desktop, which
+         would make iOS zoom the modal on every focus. */
+      .bulk-table input, .bulk-table textarea, .bulk-table select {
+        font-size: 16px; padding: 12px 12px; border-radius: 0;
+        -webkit-appearance: none; appearance: none;
+      }
+      .bulk-table select { background-position: right 12px center; padding-right: 32px; }
+      .bulk-table textarea { height: 68px; }
+      .bulk-table .tag-input-wrap { min-height: 46px; padding: 6px 8px; }
+      /* Fill the chip wrapper so tapping anywhere in the box lands on the
+         field rather than on 24px of text in the middle of it. */
+      .bulk-table .tag-input-field { font-size: 16px !important; min-height: 34px; }
+      .bulk-table .tag-chip { font-size: .68rem; padding: 3px 8px; }
+
+      /* The ▼ Fill buttons live in the hidden <thead>; surface the chip row
+         declared above instead. */
+      .bulk-fill-row { display: flex; }
+    }
+
+    /* Any touch device: the header's ▼ Fill buttons are 13px tall. */
+    @media (hover: none) {
+      .bulk-table th .bulk-apply-btn { padding: 8px 4px; font-size: .62rem; }
+      .bulk-row-remove { padding: 6px 8px; font-size: .7rem; }
+    }

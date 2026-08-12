@@ -1,0 +1,86 @@
+/* ============================================================
+   PWA — the offline banner, install prompts, and the iOS
+   "Add to Home Screen" sheet. Fixed overlays that sit above the
+   app chrome but below modals (200) and the lightbox (300).
+   ============================================================ */
+
+    /* Offline notice, tucked under the nav bar. */
+    .offline-bar {
+      position: fixed; left: 0; right: 0; top: var(--chrome-top);
+      z-index: 120;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 7px 16px;
+      background: var(--orange); color: #fff;
+      font-size: 13px; font-weight: 600; letter-spacing: -.002em;
+      transform: translateY(-100%); opacity: 0; pointer-events: none;
+      transition: transform .3s var(--ease), opacity .3s;
+    }
+    .offline-bar.show { transform: none; opacity: 1; }
+
+    /* Android/desktop install bar. */
+    .install-bar {
+      position: fixed; left: 12px; right: 12px;
+      bottom: calc(var(--chrome-bottom) + 12px);
+      z-index: 130; max-width: 480px; margin-inline: auto;
+      display: none; align-items: center; gap: 12px;
+      padding: 12px; border-radius: 14px;
+      background: var(--bg-raised);
+      box-shadow: 0 10px 34px rgba(0,0,0,.26), 0 0 0 .5px var(--separator);
+    }
+    .install-bar.show { display: flex; }
+    .install-bar img { width: 42px; height: 42px; border-radius: 9px; flex-shrink: 0; }
+    .install-bar-text { flex: 1; min-width: 0; }
+    .install-bar-title { font-size: 15px; font-weight: 600; letter-spacing: -.006em; color: var(--label); }
+    .install-bar-sub { font-size: 13px; color: var(--label-2); margin-top: 1px; line-height: 1.3; }
+    .install-bar .btn { min-height: 36px; padding: 0 15px; font-size: 15px; border-radius: 18px; }
+    .install-bar-close {
+      width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center; color: var(--label-3);
+    }
+    .install-bar-close .ic { width: 14px; height: 14px; }
+
+    /* iOS has no install API, so Safari gets the manual walkthrough. */
+    .ios-install {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 130;
+      max-width: 520px; margin-inline: auto;
+      background: var(--sheet-bg);
+      border-radius: var(--r-sheet) var(--r-sheet) 0 0;
+      box-shadow: 0 -8px 40px rgba(0,0,0,.24), 0 0 0 .5px var(--separator);
+      padding: 22px var(--gutter) calc(22px + var(--safe-bottom));
+      transform: translateY(110%); transition: transform .42s var(--ease);
+    }
+    .ios-install.show { transform: none; }
+    .ios-install-close {
+      position: absolute; top: 8px; right: 8px;
+      width: 44px; height: 44px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center; color: var(--label-3);
+    }
+    .ios-install-head { display: flex; align-items: center; gap: 13px; margin-bottom: 18px; }
+    .ios-install-head img { width: 52px; height: 52px; border-radius: 12px; flex-shrink: 0; }
+    .ios-install-title {
+      font-size: 20px; font-weight: 700; letter-spacing: -.015em; color: var(--label);
+      padding-right: 36px;
+    }
+    .ios-install-sub { font-size: 14px; color: var(--label-2); margin-top: 2px; line-height: 1.3; }
+    .ios-install-steps { display: flex; flex-direction: column; gap: 14px; }
+    .ios-install-step {
+      display: flex; align-items: center; gap: 12px;
+      font-size: 15px; color: var(--label); line-height: 1.4;
+    }
+    .ios-install-step strong { font-weight: 600; }
+    .ios-install-step-num {
+      width: 24px; height: 24px; flex-shrink: 0; border-radius: 50%;
+      background: var(--tint); color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 600;
+    }
+    .ios-share-glyph {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 19px; height: 19px; vertical-align: -4px; margin: 0 1px;
+      color: var(--tint);
+    }
+    .ios-share-glyph .ic { width: 19px; height: 19px; }
+
+    /* Nothing to install once it is installed. */
+    html.standalone .install-bar,
+    html.standalone .ios-install { display: none !important; }

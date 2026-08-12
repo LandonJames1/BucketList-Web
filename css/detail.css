@@ -1,0 +1,263 @@
+/* ============================================================
+   COLLECTION DETAIL — one collection's activities.
+
+   The old design opened with a 400px photo hero and five buttons.
+   This one puts a compact banner up top, then gets straight to the
+   list: a checkable row per activity and a permanent composer at
+   the bottom so adding one never leaves the screen.
+   ============================================================ */
+
+/*  ============================================================
+    BANNER — cover photo, title, progress
+    ============================================================ */
+    .det-banner {
+      position: relative; height: 208px; overflow: hidden;
+      margin: 0 var(--gx-r) 0 var(--gx-l);
+      border-radius: var(--r-card);
+      background: var(--fill-3);
+      box-shadow: var(--shadow-md);
+    }
+    .det-banner-img {
+      position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+      filter: brightness(.8) saturate(.92);
+    }
+    .det-banner-scrim {
+      position: absolute; inset: 0;
+      background:
+        linear-gradient(to top, rgba(20,16,10,.88) 0%, rgba(20,16,10,.4) 44%,
+                        rgba(20,16,10,.05) 76%, transparent 100%),
+        linear-gradient(to bottom, rgba(156,90,46,.10), rgba(74,83,64,.16));
+    }
+    .det-banner-body {
+      position: absolute; left: 0; right: 0; bottom: 0; padding: 16px 18px 15px;
+      color: #fff;
+    }
+    .det-banner-eyebrow {
+      font-family: var(--mono); font-size: 10px; font-weight: 500;
+      letter-spacing: .14em; text-transform: uppercase;
+      color: rgba(255,255,255,.72); margin-bottom: 6px;
+    }
+    .det-banner-title {
+      font-family: var(--serif); font-size: 32px; font-weight: 600;
+      letter-spacing: -.014em; line-height: 1.06;
+      text-shadow: 0 2px 18px rgba(0,0,0,.4);
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .det-banner-desc {
+      font-size: 14px; color: rgba(255,255,255,.82); margin-top: 5px; line-height: 1.35;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .det-progress {
+      display: flex; align-items: center; gap: 10px; margin-top: 13px;
+    }
+    .det-progress .progress { background: rgba(255,255,255,.26); height: 4px; }
+    .det-progress .progress-fill { background: #fff; }
+    .det-progress-label {
+      font-family: var(--mono); font-size: 10px; font-weight: 500;
+      letter-spacing: .1em; text-transform: uppercase;
+      color: rgba(255,255,255,.92); white-space: nowrap; flex-shrink: 0;
+    }
+
+    .det-controls { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
+
+/*  ============================================================
+    ACTIVITY ROWS (list view)
+    ============================================================ */
+    .acts { margin-top: 14px; }
+    .act-group {
+      background: var(--bg-elevated); border-radius: var(--r-row);
+      margin: 0 var(--gx-r) 0 var(--gx-l); overflow: hidden;
+      box-shadow: var(--shadow-sm), 0 0 0 .5px var(--separator);
+    }
+
+    .act-row {
+      position: relative; display: flex; align-items: center; gap: 12px;
+      padding: 10px 14px 10px 12px; min-height: 56px;
+      background: var(--bg-elevated);
+      transition: background .12s;
+    }
+    .act-row:not(:last-child)::after {
+      content: ''; position: absolute; left: 50px; right: 0; bottom: 0;
+      height: .5px; background: var(--separator);
+    }
+    .act-row:active { background: var(--fill-4); }
+
+    /* The check control is its own 44px target so tapping it completes
+       the activity without opening anything. */
+    .act-check {
+      width: 38px; height: 44px; margin: -4px 0 -4px -6px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--label-3);
+    }
+    .act-check .ic { width: 25px; height: 25px; transition: transform .25s var(--ease); }
+    .act-row.done .act-check { color: var(--green); }
+    .act-row.done .act-check .ic { transform: scale(1.06); }
+    .act-check:active .ic { transform: scale(.82); }
+
+    /* A <button>, so it needs the text alignment reset explicitly. */
+    .act-main {
+      flex: 1; min-width: 0;
+      display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+      text-align: left; padding: 0; background: none;
+    }
+    /* Activity names are the app's content, so they get the serif —
+       this is the single biggest reason a list of them reads as a
+       curated collection rather than a to-do list. */
+    .act-name {
+      font-family: var(--serif); font-size: 20px; font-weight: 600;
+      letter-spacing: -.008em; color: var(--label); line-height: 1.16;
+    }
+    .act-row.done .act-name {
+      color: var(--label-3);
+      /* Struck through rather than merely dimmed — a finished line
+         should look finished. */
+      text-decoration: line-through;
+      text-decoration-color: var(--label-4);
+      text-decoration-thickness: 1px;
+    }
+    .act-meta {
+      display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+      font-family: var(--mono); font-size: 10.5px; font-weight: 500;
+      letter-spacing: .07em; text-transform: uppercase;
+      color: var(--label-3); margin-top: 3px;
+    }
+    .act-meta .dot { color: var(--label-3); }
+    .act-loc {
+      display: inline-flex; align-items: center; gap: 3px;
+      max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .act-loc .ic { width: 12px; height: 12px; }
+
+    .act-thumb {
+      width: 46px; height: 46px; border-radius: 10px; flex-shrink: 0;
+      object-fit: cover; background: var(--fill-3);
+      box-shadow: 0 0 0 .5px var(--separator);
+    }
+    .act-chevron { color: var(--label-4); flex-shrink: 0; }
+    .act-chevron .ic { width: 16px; height: 16px; stroke-width: 2.6; }
+
+/*  ============================================================
+    QUICK-ADD COMPOSER
+    Always present at the end of the list. Typing a name and
+    pressing return files it and keeps focus, so a burst of ideas
+    goes in without a single modal.
+    ============================================================ */
+    .composer {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 14px 10px 12px; min-height: 56px;
+      background: var(--bg-elevated);
+      border-top: .5px solid var(--separator);
+    }
+    .act-group > .composer:only-child { border-top: none; }
+    .composer-icon {
+      width: 38px; height: 44px; margin: -4px 0 -4px -6px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--tint);
+    }
+    .composer input {
+      flex: 1; min-width: 0; border: none; outline: none; background: none;
+      font-size: max(16px, 17px); letter-spacing: -.011em; color: var(--label);
+      -webkit-appearance: none; appearance: none;
+      /* Fill the row so a tap anywhere along it lands on the field. */
+      align-self: stretch; padding: 12px 0;
+    }
+    .composer input::placeholder { color: var(--label-3); font-family: var(--sans); }
+    .composer input { font-family: var(--serif); font-size: max(16px, 20px); font-weight: 600; }
+    /* "Details" escape hatch — opens the full form pre-filled with
+       whatever has been typed. */
+    .composer-more {
+      flex-shrink: 0; display: none; align-items: center;
+      height: 32px; padding: 0 12px; border-radius: 16px;
+      background: var(--tint-soft); color: var(--tint);
+      font-family: var(--mono); font-size: 10px; font-weight: 600;
+      letter-spacing: .1em; text-transform: uppercase;
+    }
+    .composer.has-text .composer-more { display: flex; }
+
+/*  ============================================================
+    GRID VIEW
+    ============================================================ */
+    .acts-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+      padding: 0 var(--gx-r) 0 var(--gx-l);
+    }
+    .act-card {
+      position: relative; text-align: left;
+      background: var(--bg-elevated); border-radius: var(--r-card);
+      overflow: hidden; box-shadow: var(--shadow-md);
+      transition: transform .3s var(--ease);
+    }
+    .act-card:active { transform: scale(.965); }
+    .act-card-photo {
+      width: 100%; aspect-ratio: 1; background: var(--fill-3);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--label-4);
+    }
+    .act-card-photo img { width: 100%; height: 100%; object-fit: cover; }
+    .act-card-photo .ic { width: 30px; height: 30px; }
+    .act-card-body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 4px; }
+    .act-card-name {
+      font-family: var(--serif); font-size: 18px; font-weight: 600;
+      letter-spacing: -.006em; line-height: 1.14; color: var(--label);
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .act-card.done .act-card-name { color: var(--label-3); }
+    .act-card-check {
+      position: absolute; top: 8px; left: 8px;
+      width: 26px; height: 26px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0,0,0,.4); color: #fff;
+      -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    }
+    .act-card.done .act-card-check { background: var(--green); }
+    .act-card-check .ic { width: 15px; height: 15px; stroke-width: 2.6; }
+
+/*  ============================================================
+    ACTIVITY DETAIL SHEET
+    ============================================================ */
+    .ad-head { padding: 0 var(--gx-r) 0 var(--gx-l); }
+    .ad-title {
+      font-family: var(--serif); font-size: 32px; font-weight: 600;
+      letter-spacing: -.014em; line-height: 1.06; color: var(--label);
+    }
+    .ad-badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
+    .ad-hero {
+      width: 100%; max-height: 240px; object-fit: cover;
+      margin-top: 18px; border-radius: var(--r-card);
+      box-shadow: var(--shadow-md);
+    }
+    .ad-photos {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
+      margin: 16px 0 0;
+    }
+    .ad-photos img {
+      width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px;
+      background: var(--fill-3);
+    }
+    .ad-section { margin: 22px var(--gx-r) 0 var(--gx-l); }
+    .ad-section-label {
+      font-family: var(--mono); font-size: 10px; font-weight: 500;
+      color: var(--tint); letter-spacing: .14em;
+      text-transform: uppercase; margin: 0 0 8px 17px;
+    }
+    .ad-note {
+      background: var(--bg-elevated); border-radius: var(--r-row);
+      padding: 15px 17px; font-size: 17px; line-height: 1.5;
+      letter-spacing: -.011em; color: var(--label); white-space: pre-wrap;
+      box-shadow: var(--shadow-sm), 0 0 0 .5px var(--separator);
+    }
+    /* Long-form completion notes are the one place body copy is worth
+       setting in the serif — it is prose, not UI. */
+    .ad-note.prose {
+      font-family: var(--serif); font-size: 20px; line-height: 1.46;
+      letter-spacing: 0;
+    }
+    .ad-links { display: flex; flex-direction: column; gap: 0; }
+    .ad-link {
+      display: flex; align-items: center; gap: 10px; min-height: 46px;
+      padding: 10px 16px; background: var(--bg-elevated); color: var(--tint);
+      font-size: 16px; letter-spacing: -.007em;
+      overflow: hidden;
+    }
+    .ad-link span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ad-link:not(:last-child) { border-bottom: .5px solid var(--separator); }

@@ -1,0 +1,119 @@
+/* ============================================================
+   BASE — CSS reset, design tokens (colors/fonts), base elements,
+   and shared keyframe animations used across the app.
+   Load this FIRST: every other stylesheet depends on its variables.
+   ============================================================ */
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #efece6;
+      --bg2: #e4e0d8;
+      --white: #ffffff;
+      --black: #111;
+      --text: #1a1a18;
+      --text2: #3a3a36;
+      --text3: #5e5c55;
+      --text4: #8a877e;
+      --border: #ccc8be;
+      --border2: #b0ab9f;
+      --olive: #4a5340;
+      --olive-light: #dce3d4;
+      --terra: #a0603a;
+      --terra-light: #f0e0d2;
+      --sand: #b5a688;
+      --danger: #b84e4e;
+      --serif: 'Cormorant Garamond', Georgia, serif;
+      --sans: 'Inter', -apple-system, sans-serif;
+      --mono: 'IBM Plex Mono', monospace;
+      --ease: cubic-bezier(.22,1,.36,1);
+
+      /* ---- Layout metrics ----
+         --gutter is the single horizontal page inset. Every page and bar
+         reads it through --gx-l / --gx-r, so responsive.css only has to
+         change this one number per breakpoint.
+         --nav-h is the fixed top nav height, which the page system, the
+         sticky detail bar, and the offline banner all offset against. */
+      --gutter: 64px;
+      --nav-h: 64px;
+
+      /* ---- iOS safe areas ----
+         Zero in a browser tab; non-zero when installed to the home screen
+         with viewport-fit=cover (notch on top, home indicator at the
+         bottom, rounded corners on the sides in landscape). */
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-left: env(safe-area-inset-left, 0px);
+      --safe-right: env(safe-area-inset-right, 0px);
+      --gx-l: calc(var(--gutter) + var(--safe-left));
+      --gx-r: calc(var(--gutter) + var(--safe-right));
+    }
+    html {
+      scroll-behavior: smooth;
+      /* Stop iOS from inflating body copy when the phone is rotated. */
+      -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
+      background: var(--bg);
+    }
+    body {
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+      font-size: 15px;
+      /* Kill the grey flash iOS paints over every tapped element. */
+      -webkit-tap-highlight-color: transparent;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after {
+        animation-duration: .01ms !important; animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important; scroll-behavior: auto !important;
+      }
+    }
+    ::selection  { background: var(--black); color: var(--bg); }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+    img { display: block; max-width: 100%; }
+    a { color: inherit; text-decoration: none; }
+    button {
+      font-family: inherit; cursor: pointer;
+      /* touch-action: manipulation removes the 300ms double-tap-to-zoom
+         delay Safari otherwise adds to every button press. */
+      touch-action: manipulation;
+    }
+    /* Long unbroken strings (pasted URLs, place names) must never widen the
+       page on a 375px screen. */
+    h1, h2, h3, p, span, div, a, label { overflow-wrap: break-word; }
+
+/*  ============================================================
+    TOUCH DEVICES — anything revealed by :hover is unreachable on a
+    phone, so on hover-less pointers those controls are always shown.
+    ============================================================ */
+    @media (hover: none) {
+      .row-action,
+      .photo-th .rm-photo { opacity: 1 !important; }
+
+      /* Small inline text links ("View All →", the footer row) are only
+         ~15px tall. An invisible overlay grows the hit area to 44px
+         without shifting the text or its underline. */
+      .section-link, .footer-link { position: relative; }
+      .section-link::after, .footer-link::after {
+        content: ''; position: absolute;
+        left: -8px; right: -8px; top: 50%;
+        transform: translateY(-50%); height: 44px;
+      }
+    }
+
+/*  ============================================================
+    SHARED ANIMATIONS (confetti burst + invalid-field shake)
+    ============================================================ */
+    .confetti-c { position: fixed; inset: 0; pointer-events: none; z-index: 400; }
+    @keyframes confettiFall {
+      0%   { transform: translateY(0) rotate(0) scale(1); opacity: 1; }
+      100% { transform: translateY(100vh) rotate(720deg) scale(.4); opacity: 0; }
+    }
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      25% { transform: translateX(-5px); }
+      75% { transform: translateX(5px); }
+    }

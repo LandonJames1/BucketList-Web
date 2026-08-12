@@ -1,0 +1,99 @@
+/* ============================================================
+   MAP — Leaflet map container, marker clustering, map popups,
+   and the Nominatim location autocomplete dropdown.
+   ============================================================ */
+
+    .loc-wrap { position: relative; }
+    .loc-wrap input { width: 100%; }
+    .loc-results {
+      position: absolute; top: 100%; left: 0; right: 0; z-index: 1000;
+      background: var(--white); border: 1px solid var(--border); border-top: none;
+      max-height: 220px; overflow-y: auto; display: none;
+      box-shadow: 0 8px 24px rgba(0,0,0,.12);
+    }
+    .loc-results.open { display: block; }
+    .loc-item {
+      padding: 12px 14px; cursor: pointer; font-size: .85rem;
+      min-height: 44px; /* thumb-sized rows in the autocomplete list */
+      border-bottom: 1px solid var(--bg2); transition: background .15s;
+    }
+    .loc-item:hover, .loc-item.active { background: var(--olive-light); }
+    .loc-item-main { font-weight: 500; color: var(--text); }
+    .loc-item-sub { font-size: .75rem; color: var(--text3); margin-top: 2px; }
+
+    /* Map view */
+    .map-box {
+      width: 100%; height: 600px; background: var(--bg2);
+      border: 1px solid var(--border); display: none;
+      position: relative; z-index: 1;
+    }
+    .map-box.active { display: block; }
+    /* The global-map page gives its map the rest of the viewport. Sized in
+       CSS (not inline) so the breakpoints in responsive.css can adjust it. */
+    #globalMapContainer {
+      height: calc(100vh - 300px);
+      height: calc(100svh - 300px);
+      min-height: 420px;
+    }
+    .map-home-btn {
+      position: absolute; top: 80px; left: 10px; z-index: 1000;
+      width: 38px; height: 38px; background: #fff; border: 2px solid rgba(0,0,0,.2);
+      border-radius: 4px; cursor: pointer; display: flex; align-items: center;
+      justify-content: center; font-size: 16px; color: var(--text2);
+      box-shadow: 0 1px 5px rgba(0,0,0,.15); transition: background .2s;
+    }
+    .map-home-btn:hover { background: var(--bg2); }
+    /* Leaflet's own zoom buttons are 26px by default — too small to hit
+       reliably with a thumb. */
+    .leaflet-touch .leaflet-bar a {
+      width: 38px; height: 38px; line-height: 38px; font-size: 1.1rem;
+    }
+    .leaflet-popup-content { margin: 12px 14px; }
+    @media (hover: none) {
+      .leaflet-touch .leaflet-bar a { width: 44px; height: 44px; line-height: 44px; }
+      .map-home-btn { width: 44px; height: 44px; }
+    }
+    .map-popup { text-align: center; min-width: 180px; }
+    .map-popup img { width: 100%; height: 100px; object-fit: cover; margin-bottom: 6px; }
+    .map-popup-name { font-family: var(--serif); font-size: 1.1rem; font-weight: 600; margin-bottom: 2px; }
+    .map-popup-loc { font-family: var(--mono); font-size: .68rem; color: var(--text3); letter-spacing: .5px; }
+    .map-popup-status { font-family: var(--mono); font-size: .65rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; margin-top: 4px; }
+    .map-popup-status.done { color: var(--olive); }
+    .map-popup-status.pending { color: var(--terra); }
+    .map-popup-btn { display:inline-block; margin-top:6px; padding:4px 12px; font-size:.7rem; font-family:var(--mono); letter-spacing:.8px; background:var(--black); color:#fff; border:none; cursor:pointer; text-transform:uppercase; }
+
+
+    /* Cluster styling */
+    .marker-cluster {
+      background: transparent !important;
+    }
+    .marker-cluster div {
+      width: 42px !important; height: 42px !important;
+      margin-left: -5px !important; margin-top: -5px !important;
+      border-radius: 50% !important;
+      background: var(--black) !important;
+      color: #fff !important;
+      font-family: var(--mono) !important;
+      font-size: .82rem !important;
+      font-weight: 600 !important;
+      letter-spacing: 1px !important;
+      display: flex !important; align-items: center !important; justify-content: center !important;
+      border: 3px solid var(--bg) !important;
+      box-shadow: 0 3px 14px rgba(0,0,0,.35) !important;
+      transition: transform .2s var(--ease) !important;
+    }
+    .marker-cluster:hover div {
+      transform: scale(1.12);
+    }
+    .marker-cluster-small div,
+    .marker-cluster-medium div,
+    .marker-cluster-large div { background: #5a6478 !important; }
+
+    /* Spider leg lines */
+    .leaflet-cluster-anim .leaflet-marker-icon,
+    .leaflet-cluster-anim .leaflet-marker-shadow { transition: all .3s var(--ease) !important; }
+    svg.leaflet-cluster-spider-leg {
+      stroke: var(--olive) !important;
+      stroke-opacity: .5 !important;
+      stroke-width: 2 !important;
+    }

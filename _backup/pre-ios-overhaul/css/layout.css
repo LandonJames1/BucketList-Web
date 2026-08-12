@@ -1,0 +1,113 @@
+/* ============================================================
+   LAYOUT — the app shell that is present on every page:
+   top navigation, mobile menu, the show/hide page system,
+   and the site footer.
+   ============================================================ */
+
+    /*  ============================================================
+        TOP NAV — fixed, full-width, transparent → white on scroll
+        ============================================================ */
+    .topnav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px;
+      /* The bar grows by the notch inset so its contents stay clear of the
+         status bar when the app runs from the home screen. */
+      padding: var(--safe-top) calc(52px + var(--safe-right)) 0 calc(52px + var(--safe-left));
+      height: calc(var(--nav-h) + var(--safe-top));
+      background: rgba(245,243,239,.85);
+      backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+      border-bottom: 1px solid transparent;
+      transition: border-color .4s, background .4s;
+    }
+    .topnav.scrolled { border-color: var(--border); background: rgba(245,243,239,.97); }
+    .topnav-logo {
+      font-family: var(--mono); font-size: .78rem; font-weight: 600;
+      letter-spacing: 4px; text-transform: uppercase; color: var(--text);
+    }
+    .topnav-links { display: flex; gap: 6px; }
+    .topnav-link {
+      padding: 8px 20px; font-size: .72rem; font-weight: 600;
+      letter-spacing: 2px; text-transform: uppercase; font-family: var(--mono);
+      background: none; border: 1px solid transparent; color: var(--text);
+      transition: all .3s var(--ease); white-space: nowrap;
+    }
+    .topnav-link:hover { color: var(--text); }
+    .topnav-link.active { color: var(--text); border-color: var(--text); }
+    .topnav-right { display: flex; align-items: center; gap: 16px; }
+    .topnav-cta {
+      padding: 10px 26px; font-size: .72rem; font-weight: 600;
+      letter-spacing: 2px; text-transform: uppercase; font-family: var(--mono);
+      background: var(--black); color: var(--white); border: 1px solid var(--black);
+      transition: all .3s var(--ease);
+    }
+    .topnav-cta:hover { background: transparent; color: var(--black); }
+
+    /* Mobile hamburger — 44px square so it clears the iOS tap-target floor. */
+    .hamburger {
+      display: none; background: none; border: none;
+      flex-direction: column; align-items: center; justify-content: center;
+      gap: 5px; width: 44px; height: 44px; margin-right: -10px;
+    }
+    .hamburger span { display: block; width: 22px; height: 1.5px; background: var(--text); transition: .3s; }
+
+    /*  ============================================================
+        PAGE SYSTEM — each .page is full viewport, shown/hidden
+        ============================================================ */
+    .page {
+      display: none;
+      min-height: 100vh; min-height: 100dvh;
+      padding-top: calc(var(--nav-h) + var(--safe-top));
+    }
+    .page.active { display: block; animation: pageFade .5s var(--ease); }
+    @keyframes pageFade { from { opacity: 0; } to { opacity: 1; } }
+
+/*  ============================================================
+    SITE FOOTER
+    ============================================================ */
+    .site-footer {
+      padding: 64px var(--gx-r) calc(64px + var(--safe-bottom)) var(--gx-l);
+      border-top: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: flex-end;
+      gap: 24px; flex-wrap: wrap;
+      position: relative; z-index: 2; background: var(--bg);
+    }
+    .footer-brand {
+      font-family: var(--mono); font-size: .72rem; letter-spacing: 3px;
+      text-transform: uppercase; color: var(--text2); font-weight: 500;
+    }
+    .footer-links { display: flex; gap: 24px; }
+    .footer-link {
+      font-family: var(--mono); font-size: .68rem; letter-spacing: 2px;
+      text-transform: uppercase; color: var(--text2); transition: color .3s; font-weight: 500;
+    }
+    .footer-link:hover { color: var(--text); }
+
+/*  ============================================================
+    MOBILE MENU (full-screen overlay, toggled by the hamburger)
+    ============================================================ */
+    .mobile-menu {
+      position: fixed; inset: 0; z-index: 150; background: var(--bg);
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 8px;
+      padding: calc(72px + var(--safe-top)) 24px calc(32px + var(--safe-bottom));
+      opacity: 0; pointer-events: none; transition: opacity .3s;
+      overflow-y: auto; -webkit-overflow-scrolling: touch;
+    }
+    .mobile-menu.open { opacity: 1; pointer-events: all; }
+    .mobile-menu-close {
+      position: absolute; top: calc(10px + var(--safe-top)); right: calc(14px + var(--safe-right));
+      width: 44px; height: 44px; display: flex; align-items: center;
+      justify-content: center;
+      background: none; border: none; font-size: 1.2rem; color: var(--text);
+    }
+    .mobile-menu a {
+      font-family: var(--serif); font-size: clamp(1.6rem, 8vw, 2rem);
+      font-weight: 400; letter-spacing: -1px; color: var(--text);
+      transition: opacity .3s;
+      /* Full-width targets so the whole row is tappable, not just the glyphs. */
+      width: 100%; max-width: 320px; text-align: center;
+      padding: 14px 8px;
+    }
+    .mobile-menu a:active { opacity: .5; }
+    .mobile-menu a:hover { opacity: .5; }

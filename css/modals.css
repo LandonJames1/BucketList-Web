@@ -1,0 +1,314 @@
+/* ============================================================
+   MODALS — iOS presentation styles:
+     .sheet        a card that slides up from the bottom, with its
+                   own Cancel / Title / Done bar (UIKit "page sheet")
+     .action-sheet the stacked option list used for destructive
+                   confirms and overflow menus
+     .lightbox     full-screen photo viewer
+   Plus the form controls that live inside a sheet.
+   ============================================================ */
+
+/*  ============================================================
+    SHEET SHELL
+    ============================================================ */
+    .modal-overlay {
+      position: fixed; inset: 0; z-index: 200;
+      background: var(--scrim);
+      display: flex; align-items: flex-end; justify-content: center;
+      opacity: 0; pointer-events: none;
+      transition: opacity .3s var(--ease);
+    }
+    .modal-overlay.open { opacity: 1; pointer-events: auto; }
+
+    .modal {
+      position: relative;
+      width: 100%; max-width: 560px;
+      /* Stops just short of the top edge, the way a UIKit page sheet
+         leaves the previous screen peeking behind it. */
+      max-height: calc(100dvh - 44px - var(--safe-top));
+      display: flex; flex-direction: column;
+      background: var(--sheet-bg);
+      border-radius: var(--r-sheet) var(--r-sheet) 0 0;
+      box-shadow: var(--shadow-xl), 0 -.5px 0 var(--separator);
+      transform: translateY(100%);
+      transition: transform .38s var(--ease);
+      overflow: hidden;
+    }
+    .modal-overlay.open .modal { transform: none; }
+
+    /* Grab handle. Decorative — Escape, the Cancel button, and a tap on
+       the scrim all dismiss; there is no drag gesture to advertise. */
+    .sheet-grabber {
+      position: absolute; top: 5px; left: 50%; transform: translateX(-50%);
+      width: 36px; height: 5px; border-radius: 3px;
+      background: var(--label-4); z-index: 2; pointer-events: none;
+    }
+
+    /* Sheet nav bar: Cancel on the left, title centred, Done on the right. */
+    .sheet-bar {
+      position: relative; flex-shrink: 0;
+      height: 56px; padding: 8px 14px 0;
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      border-bottom: .5px solid var(--separator);
+      background: var(--sheet-bg);
+    }
+    .sheet-bar .navbtn { min-width: 60px; }
+    .sheet-bar .navbtn:first-child { justify-content: flex-start; margin-left: -6px; }
+    .sheet-bar .navbtn:last-child  { justify-content: flex-end; margin-right: -6px; }
+    .sheet-title {
+      position: absolute; left: 50%; top: 8px; transform: translateX(-50%);
+      height: 48px; display: flex; align-items: center;
+      max-width: 50%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      font-family: var(--serif); font-size: 22px; font-weight: 600;
+      letter-spacing: -.01em; color: var(--label);
+    }
+
+    .sheet-body {
+      flex: 1; min-height: 0; overflow-y: auto;
+      -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+      padding: 18px 0 calc(28px + var(--safe-bottom));
+    }
+    /* A sheet with no bar (the activity detail card) still needs top room
+       for the grabber. */
+    .modal.barless .sheet-body { padding-top: 26px; }
+
+/*  ============================================================
+    FORM CONTROLS
+    Fields are grouped-list rows, as in Settings, rather than the
+    boxed inputs a web form would use.
+    ============================================================ */
+    .fg { margin: 0 var(--gx-r) 18px var(--gx-l); }
+    .fg > label {
+      display: block; margin: 0 0 8px 17px;
+      font-family: var(--mono); font-size: 10px; font-weight: 500;
+      color: var(--tint); letter-spacing: .14em; text-transform: uppercase;
+    }
+    .fg .req { color: var(--red); }
+    .fg .opt { text-transform: none; letter-spacing: -.002em; color: var(--label-3); }
+
+    .field {
+      background: var(--bg-elevated); border-radius: var(--r-row);
+      overflow: hidden; box-shadow: var(--shadow-sm), 0 0 0 .5px var(--separator);
+    }
+    .field + .field { margin-top: 18px; }
+
+    .fg input, .fg textarea, .fg select {
+      display: block; width: 100%;
+      padding: 12px 16px; min-height: 46px;
+      border: none; outline: none; background: var(--bg-elevated);
+      color: var(--label);
+      /* 16px floor: Safari zooms the page when a focused field is smaller. */
+      font-size: max(16px, 17px); letter-spacing: -.011em;
+      border-radius: var(--r-row);
+      -webkit-appearance: none; appearance: none;
+    }
+    .fg textarea { min-height: 92px; resize: none; line-height: 1.38; padding-top: 13px; }
+    .fg input::placeholder, .fg textarea::placeholder { color: var(--label-3); }
+    .fg select {
+      /* Native chevron stripped so the control matches the other rows;
+         the caret below replaces it. */
+      padding-right: 40px; cursor: pointer;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='8' viewBox='0 0 13 8'%3E%3Cpath d='M1 1.5 6.5 6.5 12 1.5' fill='none' stroke='%238e8e93' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 16px center;
+    }
+    .fg input[type="date"] { min-height: 46px; }
+
+    /* Two fields sharing one rounded card, split by a hairline. */
+    .fg-stack {
+      background: var(--bg-elevated); border-radius: var(--r-row); overflow: hidden;
+      box-shadow: var(--shadow-sm), 0 0 0 .5px var(--separator);
+    }
+    .fg-stack > * { border-radius: 0; }
+    .fg-stack > *:not(:last-child) { border-bottom: .5px solid var(--separator); }
+
+    /* Inline label + control on one row (Settings style). */
+    .fg-inline {
+      display: flex; align-items: center; gap: 12px;
+      background: var(--bg-elevated); padding: 0 16px; min-height: 46px;
+    }
+    .fg-inline > span { font-size: 17px; letter-spacing: -.011em; flex-shrink: 0; }
+    .fg-inline select, .fg-inline input {
+      flex: 1; text-align: right; padding-left: 0; padding-right: 22px;
+      color: var(--label-2); background: none;
+      background-position: right 0 center;
+    }
+
+    /* Disclosure for the optional half of a form. */
+    .more-toggle {
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      width: 100%; padding: 14px; color: var(--tint);
+      font-family: var(--mono); font-size: 10px; font-weight: 500;
+      letter-spacing: .12em; text-transform: uppercase;
+    }
+    .more-toggle .ic { width: 15px; height: 15px; transition: transform .25s var(--ease); }
+    .more-toggle[aria-expanded="true"] .ic { transform: rotate(180deg); }
+    .more-fields { display: none; }
+    .more-fields.open { display: block; animation: fadeIn .2s linear; }
+
+    .sheet-actions {
+      margin: 26px var(--gx-r) 0 var(--gx-l);
+      display: flex; flex-direction: column; gap: 10px;
+    }
+
+    /* URL chip field (js/links.js). Behaves like a token field: the
+       whole box focuses the trailing input. */
+    .chip-field {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+      min-height: 46px; padding: 8px 12px;
+      background: var(--bg-elevated); border-radius: var(--r-row);
+      cursor: text;
+    }
+    .chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      max-width: 100%; height: 26px; padding: 0 4px 0 10px;
+      border-radius: 13px; background: var(--tint-soft); color: var(--tint);
+      font-size: 14px; letter-spacing: -.006em;
+    }
+    .chip > :first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .chip button {
+      width: 20px; height: 20px; flex-shrink: 0; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center; color: var(--tint);
+    }
+    .chip-input {
+      flex: 1; min-width: 110px; border: none; outline: none; background: none;
+      font-size: max(16px, 17px); letter-spacing: -.011em; color: var(--label);
+      padding: 4px 0; -webkit-appearance: none; appearance: none;
+    }
+    .chip-input::placeholder { color: var(--label-3); }
+
+/*  ============================================================
+    ACTION SHEET
+    Built by showActionSheet() in js/modals.js.
+    ============================================================ */
+    .action-sheet {
+      position: fixed; inset: 0; z-index: 260;
+      background: var(--scrim);
+      display: flex; flex-direction: column; justify-content: flex-end;
+      padding: 12px calc(12px + var(--safe-right)) calc(12px + var(--safe-bottom)) calc(12px + var(--safe-left));
+      opacity: 0; pointer-events: none; transition: opacity .25s var(--ease);
+    }
+    .action-sheet.open { opacity: 1; pointer-events: auto; }
+    .as-panel {
+      transform: translateY(16px); transition: transform .32s var(--ease);
+      max-width: 560px; width: 100%; margin: 0 auto;
+    }
+    .action-sheet.open .as-panel { transform: none; }
+    .as-group {
+      background: var(--sheet-bg); border-radius: var(--r-card); overflow: hidden;
+      box-shadow: var(--shadow-lg);
+      -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+    }
+    .as-group + .as-group { margin-top: 8px; }
+    .as-heading {
+      padding: 16px 16px 14px; text-align: center;
+      font-size: 13px; color: var(--label-2); line-height: 1.4;
+      border-bottom: .5px solid var(--separator);
+    }
+    .as-heading strong {
+      display: block; color: var(--label); margin-bottom: 5px;
+      font-family: var(--serif); font-size: 20px; font-weight: 600; letter-spacing: -.008em;
+    }
+    .as-item {
+      display: flex; align-items: center; justify-content: center; gap: 9px;
+      width: 100%; min-height: 57px; padding: 0 16px;
+      font-size: 18px; letter-spacing: -.011em; color: var(--tint);
+      background: var(--sheet-bg);
+    }
+    .as-item:not(:last-child) { border-bottom: .5px solid var(--separator); }
+    .as-item:active { background: var(--fill-4); }
+    .as-item.destructive { color: var(--red); }
+    .as-item.cancel { font-weight: 600; }
+    .as-item[aria-checked="true"] { font-weight: 600; }
+    .as-item .ic { width: 20px; height: 20px; }
+    .as-check { width: 20px; opacity: 0; color: var(--tint); }
+    .as-item[aria-checked="true"] .as-check { opacity: 1; }
+
+/*  ============================================================
+    PHOTOS — upload zone and thumbnails inside a sheet.
+    ============================================================ */
+    .photo-zone {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 9px; padding: 26px; border-radius: var(--r-row);
+      background: var(--bg-elevated); color: var(--tint);
+      font-family: var(--mono); font-size: 10px; font-weight: 500;
+      letter-spacing: .12em; text-transform: uppercase;
+      border: 1.5px dashed var(--label-4);
+    }
+    .photo-zone:active { background: var(--fill-4); }
+    .photo-previews { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .photo-th {
+      position: relative; width: 76px; height: 76px; border-radius: 8px;
+      overflow: hidden; background: var(--fill-3);
+    }
+    .photo-th img { width: 100%; height: 100%; object-fit: cover; }
+    .photo-th .rm-photo {
+      position: absolute; top: 2px; right: 2px;
+      width: 22px; height: 22px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0,0,0,.6); color: #fff;
+      -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+    }
+    .photo-th .rm-photo .ic { width: 12px; height: 12px; stroke-width: 2.6; }
+
+/*  ============================================================
+    LIGHTBOX
+    ============================================================ */
+    .lightbox {
+      position: fixed; inset: 0; z-index: 300; background: #000;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: calc(60px + var(--safe-top)) calc(8px + var(--safe-right))
+               calc(40px + var(--safe-bottom)) calc(8px + var(--safe-left));
+      opacity: 0; pointer-events: none; transition: opacity .25s;
+      touch-action: none;
+    }
+    .lightbox.open { opacity: 1; pointer-events: auto; }
+    .lb-close {
+      position: absolute; top: calc(12px + var(--safe-top)); right: calc(12px + var(--safe-right));
+      width: 44px; height: 44px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(120,120,128,.4); color: #fff; z-index: 2;
+      -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    }
+    .lb-img-wrap {
+      position: relative; flex: 1; min-height: 0; width: 100%;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .lb-img-wrap img {
+      max-width: 100%; max-height: 100%; width: auto; height: auto;
+      object-fit: contain;
+    }
+    .lb-nav {
+      position: absolute; top: 50%; transform: translateY(-50%);
+      width: 44px; height: 44px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(120,120,128,.4); color: #fff;
+      -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    }
+    .lb-prev { left: 6px; }
+    .lb-next { right: 6px; }
+    .lb-counter {
+      margin-top: 14px; flex-shrink: 0;
+      font-size: 13px; color: rgba(235,235,245,.6);
+    }
+
+/*  ============================================================
+    TOAST — brief confirmation, and the service-worker update notice.
+    ============================================================ */
+    .toast {
+      font-family: var(--mono); letter-spacing: .06em; text-transform: uppercase;
+      position: fixed; left: 50%; transform: translate(-50%, 20px);
+      bottom: calc(var(--chrome-bottom) + 14px); z-index: 280;
+      display: none; align-items: center; gap: 10px;
+      max-width: calc(100vw - 32px);
+      padding: 12px 18px; border-radius: 22px;
+      background: var(--label); color: var(--bg);
+      font-size: 11px; font-weight: 500;
+      box-shadow: var(--shadow-lg);
+      opacity: 0; transition: opacity .25s var(--ease), transform .25s var(--ease);
+    }
+    .toast.show { display: flex; opacity: 1; transform: translate(-50%, 0); }
+    .toast-btn {
+      color: var(--tint); font-weight: 600; font-size: 15px;
+      padding: 2px 2px 2px 4px; flex-shrink: 0;
+    }

@@ -1,0 +1,66 @@
+/* ============================================================
+   AUTH — the signed-out screen. No nav bar, no tab bar, no page
+   system; it swaps against #appWrap.
+   ============================================================ */
+
+    .auth-page {
+      display: none;                       /* auth.js flips this to flex */
+      flex-direction: column; justify-content: center;
+      min-height: 100vh; min-height: 100dvh;
+      background: var(--bg);
+      padding: calc(32px + var(--safe-top)) var(--gx-r)
+               calc(32px + var(--safe-bottom)) var(--gx-l);
+    }
+    .auth-inner { width: 100%; max-width: 400px; margin: 0 auto; }
+
+    .auth-brand { text-align: center; margin-bottom: 32px; }
+    .auth-mark {
+      width: 76px; height: 76px; border-radius: 18px; margin: 0 auto 20px;
+      display: block; box-shadow: var(--shadow-lg);
+    }
+    .auth-eyebrow {
+      font-family: var(--mono); font-size: 10px; font-weight: 500;
+      letter-spacing: .22em; text-transform: uppercase;
+      color: var(--tint); margin-bottom: 8px;
+    }
+    .auth-title {
+      font-family: var(--serif); font-size: 38px; font-weight: 600;
+      letter-spacing: -.016em; color: var(--label); line-height: 1.05;
+    }
+    .auth-sub {
+      font-size: 15px; color: var(--label-2); margin-top: 8px; line-height: 1.4;
+    }
+
+    /* Fields share one rounded card, split by hairlines — the iOS
+       sign-in pattern. */
+    .auth-fields {
+      background: var(--bg-elevated); border-radius: var(--r-row); overflow: hidden;
+      box-shadow: var(--shadow-sm), 0 0 0 .5px var(--separator);
+    }
+    .auth-fields input {
+      display: block; width: 100%;
+      padding: 14px 16px; min-height: 50px;
+      border: none; outline: none; background: var(--bg-elevated);
+      color: var(--label);
+      font-size: max(16px, 17px); letter-spacing: -.011em;
+      -webkit-appearance: none; appearance: none; border-radius: 0;
+    }
+    .auth-fields input::placeholder { color: var(--label-3); }
+    .auth-fields input:not(:last-child) { border-bottom: .5px solid var(--separator); }
+
+    .auth-error {
+      color: var(--red); font-size: 13px; line-height: 1.35;
+      min-height: 18px; margin: 10px 4px 0; text-align: center;
+    }
+    .auth-error.ok { color: var(--green); }
+
+    .auth-submit { width: 100%; margin-top: 16px; }
+    .auth-toggle {
+      text-align: center; margin-top: 10px;
+      font-size: 15px; color: var(--label-2); letter-spacing: -.002em;
+    }
+    /* Padded to a 44px target rather than the ~19px the text alone gives. */
+    .auth-toggle button {
+      color: var(--tint); font-weight: 600; font-size: 15px;
+      min-height: 44px; padding: 0 8px;
+    }
