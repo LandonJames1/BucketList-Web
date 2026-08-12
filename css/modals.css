@@ -312,3 +312,69 @@
       color: var(--tint); font-weight: 600; font-size: 15px;
       padding: 2px 2px 2px 4px; flex-shrink: 0;
     }
+
+/*  ============================================================
+    LIST PICKER
+
+    Replaces an action sheet that laid out one 57px full-width row per
+    collection: fine for three, a scrolling tower for twenty. This is a
+    normal sheet with a compact scrollable list, a cover thumbnail per
+    row so lists are recognisable at a glance, and a search field that
+    appears only once there are enough lists to need it.
+    ============================================================ */
+    .lp-sub {
+      padding: 12px var(--gx-r) 0 var(--gx-l);
+      font-size: 15px; color: var(--label-2); text-align: center;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    #listPickerSearchWrap { padding-top: 14px; }
+    .lp-body { padding-top: 14px; }
+
+    .lp-rows {
+      margin: 0 var(--gx-r) 0 var(--gx-l);
+      background: var(--bg-elevated); border-radius: var(--r-row);
+      overflow: hidden;
+      box-shadow: var(--shadow-sm), 0 0 0 .5px var(--separator);
+    }
+    .lp-row {
+      position: relative; width: 100%;
+      display: flex; align-items: center; gap: 12px;
+      padding: 9px 14px; min-height: 56px; text-align: left;
+      background: var(--bg-elevated); color: var(--label);
+    }
+    .lp-row:not(:last-child)::after {
+      content: ''; position: absolute; left: 60px; right: 0; bottom: 0;
+      height: .5px; background: var(--separator);
+    }
+    .lp-row:active { background: var(--fill-4); }
+    .lp-cover {
+      width: 38px; height: 38px; border-radius: 9px; flex-shrink: 0;
+      object-fit: cover; background: var(--fill-3);
+      box-shadow: 0 0 0 .5px var(--separator);
+    }
+    .lp-name {
+      flex: 1; min-width: 0;
+      font-family: var(--serif); font-size: 18px; font-weight: 600;
+      letter-spacing: -.008em;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .lp-check { flex-shrink: 0; color: var(--tint); display: none; }
+    .lp-row.current .lp-check { display: block; }
+    .lp-check .ic { width: 20px; height: 20px; stroke-width: 2.6; }
+
+    .lp-empty {
+      padding: 26px 16px; text-align: center;
+      font-size: 15px; color: var(--label-2);
+    }
+
+    .lp-new {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      width: calc(100% - var(--gx-l) - var(--gx-r));
+      margin: 14px var(--gx-r) 0 var(--gx-l);
+      min-height: 52px; border-radius: var(--r-row);
+      background: var(--tint-soft); color: var(--tint);
+      font-family: var(--mono); font-size: 11px; font-weight: 600;
+      letter-spacing: .11em; text-transform: uppercase;
+    }
+    .lp-new:active { opacity: .7; }
+    .lp-new .ic { width: 17px; height: 17px; }

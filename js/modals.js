@@ -114,6 +114,76 @@ function confirmDeleteActivity(id,name){
 }
 
 /* ==============================================================
+   LIST PICKER
+
+   One sheet, used everywhere an activity needs to be assigned to a
+   collection: the Home composer and the activity sheet's List row.
+
+   Both used showActionSheet(), which stacks a 57px full-width button
+   per list — readable at three lists, an unusable tower at twenty. This
+   scrolls, shows a cover thumbnail per row so lists are recognisable at
+   a glance, and only shows a search field once there are enough lists
+   for scanning to be slower than typing.
+   ============================================================== */
+let _lpLists=[],_lpOnPick=null,_lpCurrentId=null;
+
+/* openListPicker({subtitle, currentId, onPick}) */
+async function openListPicker(opts){
+  opts=opts||{};
+  _lpOnPick=opts.onPick||null;
+  _lpCurrentId=opts.currentId||null;
+
+  const sub=$('listPickerSub');
+  if(opts.subtitle){sub.textContent=opts.subtitle;sub.style.display='';}
+  else sub.style.display='none';
+
+  $('listPickerRows').innerHTML='<div class="spinner"></div>';
+  openModal('listPickerSheet');
+
+  _lpLists=await fetchCollections();
+
+  /* Search earns its place only when there is enough to search. */
+  const needsSearch=_lpLists.length>7;
+  $('listPickerSearchWrap').style.display=needsSearch?'':'none';
+  $('listPickerSearch').value='';
+  renderListPickerRows();
+  if(needsSearch) setTimeout(()=>$('listPickerSearch').focus(),340);
+}
+
+function renderListPickerRows(){
+  const box=$('listPickerRows');
+  const el=$('listPickerSearch');
+  const term=(el&&$('listPickerSearchWrap').style.display!=='none'?el.value:'').trim().toLowerCase();
+  const rows=term?_lpLists.filter(l=>l.name.toLowerCase().includes(term)):_lpLists;
+
+  if(!rows.length){
+    box.innerHTML=`<div class="lp-empty">${term?'No lists match that.':'No lists yet.'}</div>`;
+    return;
+  }
+  box.innerHTML=rows.map(l=>
+    `<button class="lp-row${l.id===_lpCurrentId?' current':''}" onclick="listPickerPick('${l.id}')">
+       <img class="lp-cover" src="${esc(l.cover||randCover())}" alt="" loading="lazy"/>
+       <span class="lp-name">${esc(l.name)}</span>
+       <span class="lp-check">${icon('check')}</span>
+     </button>`).join('');
+}
+
+function listPickerPick(id){
+  const fn=_lpOnPick;
+  closeModal('listPickerSheet');
+  if(fn) setTimeout(()=>fn(id),160);
+}
+
+/* "New List" just opens the list sheet. The Home composer deliberately
+   does not clear its input until an activity is actually filed, so the
+   typed name is still sitting there afterwards and one more return
+   files it into the list that was just created. */
+function listPickerCreateNew(){
+  closeModal('listPickerSheet');
+  setTimeout(()=>{ openNewList(); },160);
+}
+
+/* ==============================================================
    LIGHTBOX
    ============================================================== */
 let lbPhotos=[],lbIdx=0;

@@ -69,8 +69,10 @@ function updateNavbar(){
      people press most. The bar keeps only Back and the overflow menu. */
   let fabFn=null,fabLabel='';
   if(curPage==='home'){
+    /* No floating button here: the composer near the top of the page is
+       already the add affordance, and two of them competing on one
+       screen is one too many. */
     title.textContent='Bucket List';
-    fabFn=openNewActivity;fabLabel='New activity';
   } else if(curPage==='lists'){
     title.textContent='Your Lists';
     fabFn=openNewList;fabLabel='New list';

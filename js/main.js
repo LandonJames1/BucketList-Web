@@ -35,6 +35,8 @@ function paintStaticIcons(){
   set('homeComposerIcon',icon('plus'));
   set('homeComposerGo',icon('chevron-right'));
   set('actListChevron',icon('chevron-right'));
+  set('listPickerSearchIcon',icon('search'));
+  set('listPickerNewIcon',icon('plus'));
   set('meInstallChevron',icon('chevron-right'));
   const lead=document.querySelector('#page-me .li-blue');
   if(lead) lead.innerHTML=icon('share');

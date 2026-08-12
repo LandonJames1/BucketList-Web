@@ -83,7 +83,8 @@ async function openNewActivity(prefillName){
   await renderActListPicker();
   $('aName').value=prefillName||'';
   $('aDesc').value='';$('aLoc').value='';$('aLocLat').value='';$('aLocLng').value='';
-  $('aDate').value='Before I Die';$('aPri').value='medium';
+  resetDateOptions();
+  $('aDate').value=DEFAULT_TARGET_DATE;$('aPri').value='medium';
   renderTagChips('aLinks');
   setMoreFields(false);
   $('actSheetTitle').textContent='New Activity';
@@ -98,7 +99,14 @@ async function openEditAct(id){
   await renderActListPicker();
   $('aName').value=a.name;$('aDesc').value=a.description||'';
   $('aLoc').value=a.location||'';$('aLocLat').value=a.locationLat||'';$('aLocLng').value=a.locationLng||'';
-  $('aDate').value=a.targetDate||'';$('aPri').value=a.priority||'medium';
+  /* An activity saved before "Someday"/"No date" were retired still
+     carries that value. Put it back as an option for this one row, so
+     opening the sheet and hitting Save cannot silently change the
+     user's data — but keep it off the menu for everything else. */
+  resetDateOptions();
+  if(a.targetDate&&!dateOptionExists(a.targetDate)) addLegacyDateOption(a.targetDate);
+  $('aDate').value=a.targetDate||DEFAULT_TARGET_DATE;
+  $('aPri').value=a.priority||'medium';
   aLinks=[...(a.links||[])];
   renderTagChips('aLinks');
   /* Open the extra fields straight away when any of them are in use. */
@@ -119,13 +127,34 @@ async function renderActListPicker(){
   const cur=lists.find(l=>l.id===targetListId)||lists[0];
   targetListId=cur.id;
   $('actListName').textContent=cur.name;
-  row.onclick=()=>showActionSheet({
-    title:'Add to which list?',
-    items:lists.map(l=>({
-      label:l.name, icon:'stack', checked:l.id===targetListId,
-      onSelect:()=>{targetListId=l.id;$('actListName').textContent=l.name;},
-    })),
+  row.onclick=()=>openListPicker({
+    currentId:targetListId,
+    onPick:id=>{
+      const picked=lists.find(l=>l.id===id);
+      if(!picked)return;
+      targetListId=picked.id;
+      $('actListName').textContent=picked.name;
+    },
   });
+}
+
+/* Target dates offered to new activities. Retired values live only in
+   existing rows — see addLegacyDateOption. */
+const DEFAULT_TARGET_DATE='This Year';
+const LEGACY_DATE_LABELS={'Before I Die':'Someday','':'No date'};
+
+function dateOptionExists(v){
+  return [...$('aDate').options].some(o=>o.value===v);
+}
+function resetDateOptions(){
+  [...$('aDate').options].forEach(o=>{ if(o.dataset.legacy) o.remove(); });
+}
+function addLegacyDateOption(v){
+  const o=document.createElement('option');
+  o.value=v;
+  o.textContent=LEGACY_DATE_LABELS[v]||v;
+  o.dataset.legacy='1';
+  $('aDate').appendChild(o);
 }
 
 function setMoreFields(open){

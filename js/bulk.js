@@ -81,8 +81,10 @@ function bulkApplyDown(field){
 function renderBulkEntries(){
   if(!_skipSaveBulk) saveBulkFieldValues();
 
-  const dateOpts=['Before I Die','This Month','This Year','Next Year','In 2-3 Years','In 5+ Years',''];
-  const dateLabels=['Someday','This month','This year','Next year','2–3 years','5+ years','No date'];
+  /* Same reduced set as the activity sheet. Bulk only ever creates new
+     rows, so there is no legacy value to preserve here. */
+  const dateOpts=['This Month','This Year','Next Year','In 2-3 Years','In 5+ Years'];
+  const dateLabels=['This month','This year','Next year','2–3 years','5+ years'];
 
   $('bulkRows').innerHTML=bulkEntries.map((entry,i)=>{
     const sel=(v,cur,def)=>((cur||def)===v?' selected':'');
@@ -113,7 +115,7 @@ function renderBulkEntries(){
       <div class="bulk-field">
         <label for="bDate_${i}">Target</label>
         <select id="bDate_${i}">
-          ${dateOpts.map((v,k)=>`<option value="${esc(v)}"${sel(v,entry._date,'Before I Die')}>${dateLabels[k]}</option>`).join('')}
+          ${dateOpts.map((v,k)=>`<option value="${esc(v)}"${sel(v,entry._date,DEFAULT_TARGET_DATE)}>${dateLabels[k]}</option>`).join('')}
         </select>
       </div>
       <div class="bulk-field">

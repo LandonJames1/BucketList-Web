@@ -65,7 +65,6 @@
 
       .coll-grid { grid-template-columns: repeat(3, 1fr); }
       .acts-grid { grid-template-columns: repeat(3, 1fr); }
-      .shelf-2 { grid-template-columns: repeat(3, 1fr); }
       .modal { border-radius: var(--r-sheet); max-height: min(720px, calc(100dvh - 88px)); }
       .modal-overlay { align-items: center; padding: 20px; }
       .modal-overlay .modal { transform: translateY(24px) scale(.98); }

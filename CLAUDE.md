@@ -152,8 +152,11 @@ There is also a screen outside this system: the signed-out `#authPage`, which
   cannot move. `targetRank()` reads the same class `dateInfo()` hands the
   badges, so the ordering can never disagree with what is displayed;
 - Recently accomplished, by `completedDate` descending, **capped at six** —
-  two rows of three, so it cannot push the lists shelf off the screen;
-- the lists shelf.
+  two rows of three.
+
+Home has no floating action button: the composer near the top is already the
+add affordance, and two competing ones on a single screen is one too many. It
+also has no lists shelf — that duplicated the Lists tab sitting in the tab bar.
 
 Because Home has no collection context, it has its own copies of two flows:
 `addActivityToList()` (rather than `quickAddActivity()`, which assumes
@@ -236,6 +239,30 @@ someone who is already signed in.
 Worth knowing: **an installed PWA has its own storage partition on iOS**, so
 signing in inside Safari and then installing to the home screen means signing
 in once more. That is the platform, not a bug.
+
+#### Target dates
+
+New activities choose from **This month / This year / Next year / 2–3 years /
+5+ years**, defaulting to `DEFAULT_TARGET_DATE` ("This Year"). "Someday"
+(`Before I Die`) and "No date" (`''`) were retired: both were reachable, one
+was the default, and anything holding them never surfaced in Up Next.
+
+They are retired from the *picker*, not from the data. `dateInfo()` still
+renders both, because existing rows carry them. And `openEditAct()` calls
+`addLegacyDateOption()` to put the retired value back as an option **for that
+one activity** if it has one — otherwise opening an old activity and pressing
+Save would silently rewrite its target date. Keep that behaviour if you touch
+the date field.
+
+#### The list picker
+
+`openListPicker({subtitle, currentId, onPick})` in `modals.js` is the one way
+to assign an activity to a collection, used by both the Home composer and the
+activity sheet's List row. Both previously called `showActionSheet()`, which
+lays out a 57px full-width button per list — fine at three, an unusable tower
+at twenty. The picker is a normal sheet with a compact scrollable list, a cover
+thumbnail per row, and a search field that appears only past seven lists.
+**Don't route this back through an action sheet.**
 
 #### The floating action button
 

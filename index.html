@@ -140,13 +140,6 @@
     <div class="shelf shelf-3" id="homeRecent"></div>
   </div>
 
-  <div id="homeListsSection" style="display:none">
-    <div class="home-sec-head">
-      <h2>Your lists</h2>
-      <button onclick="selectTab('lists')">See all</button>
-    </div>
-    <div class="shelf shelf-2" id="homeLists"></div>
-  </div>
 </div>
 
 <!-- ===== LISTS TAB (root) ===== -->
@@ -287,14 +280,18 @@
         <div class="fg-stack">
           <div class="fg-inline">
             <span>Target</span>
+            <!-- Every activity gets a real horizon. "Someday" and "No date"
+                 are gone: they were the default, so most things landed in a
+                 bucket that never came up in Up Next.
+                 openEditAct() re-adds a legacy value as an option when an
+                 existing activity still carries one, so editing an old row
+                 cannot silently rewrite its date. -->
             <select id="aDate">
-              <option value="Before I Die">Someday</option>
               <option value="This Month">This month</option>
               <option value="This Year">This year</option>
               <option value="Next Year">Next year</option>
               <option value="In 2-3 Years">2&ndash;3 years</option>
               <option value="In 5+ Years">5+ years</option>
-              <option value="">No date</option>
             </select>
           </div>
           <div class="fg-inline">
@@ -397,6 +394,34 @@
       </div>
       <div class="bulk-rows" id="bulkRows"></div>
       <button class="bulk-add-more" onclick="addBulkEntry()"><span id="bulkAddIcon"></span>Add another</button>
+    </div>
+  </div>
+</div>
+
+<!-- List picker — used anywhere an activity needs a home. An action
+     sheet was here first; it stacks one full-width row per list and
+     becomes an unusable tower once you have more than a handful. -->
+<div class="modal-overlay" id="listPickerSheet">
+  <div class="modal">
+    <div class="sheet-grabber"></div>
+    <div class="sheet-bar">
+      <button class="navbtn" onclick="closeModal('listPickerSheet')">Cancel</button>
+      <div class="sheet-title" id="listPickerTitle">Add to List</div>
+      <span class="navbtn" style="pointer-events:none;opacity:0">Cancel</span>
+    </div>
+    <div class="lp-sub" id="listPickerSub"></div>
+    <div class="searchbar" id="listPickerSearchWrap" style="display:none">
+      <div class="searchfield">
+        <span id="listPickerSearchIcon"></span>
+        <input id="listPickerSearch" type="search" placeholder="Search lists"
+               autocomplete="off" oninput="renderListPickerRows()" />
+      </div>
+    </div>
+    <div class="sheet-body lp-body">
+      <div class="lp-rows" id="listPickerRows"></div>
+      <button class="lp-new" onclick="listPickerCreateNew()">
+        <span id="listPickerNewIcon"></span><span>New List</span>
+      </button>
     </div>
   </div>
 </div>

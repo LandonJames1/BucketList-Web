@@ -183,7 +183,6 @@
       padding: 2px var(--gx-r) 4px var(--gx-l);
     }
     .shelf-3 { grid-template-columns: repeat(3, 1fr); }
-    .shelf-2 { grid-template-columns: repeat(2, 1fr); }
 
     .rec-card {
       display: flex; flex-direction: column; gap: 7px;
@@ -210,37 +209,6 @@
       font-family: var(--mono); font-size: 9px; font-weight: 500;
       letter-spacing: .1em; text-transform: uppercase; color: var(--green);
     }
-
-    .mini-card {
-      position: relative; width: 100%; height: 104px; min-width: 0;
-      border-radius: var(--r-row); overflow: hidden; text-align: left;
-      box-shadow: var(--shadow-md); background: var(--fill-3);
-      transition: transform .22s var(--ease);
-    }
-    .mini-card:active { transform: scale(.97); }
-    .mini-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
-                filter: brightness(.82) saturate(.92); }
-    .mini-scrim {
-      position: absolute; inset: 0;
-      background: linear-gradient(to top, rgba(20,16,10,.84), rgba(20,16,10,.18) 68%, transparent);
-    }
-    .mini-body {
-      position: absolute; left: 0; right: 0; bottom: 0; padding: 10px 11px 13px;
-      display: flex; flex-direction: column; gap: 3px;
-    }
-    .mini-title {
-      font-family: var(--serif); font-size: 15.5px; font-weight: 600; color: #fff;
-      line-height: 1.12; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
-    .mini-meta {
-      font-family: var(--mono); font-size: 9px; font-weight: 500;
-      letter-spacing: .1em; color: rgba(255,255,255,.8);
-    }
-    .mini-bar {
-      position: absolute; left: 0; right: 0; bottom: 0; height: 3px;
-      background: rgba(255,255,255,.22);
-    }
-    .mini-bar span { display: block; height: 100%; background: #fff; }
 
 /*  ============================================================
     SECTION HEADING WITH A TRAILING ACTION

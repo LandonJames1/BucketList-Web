@@ -10,7 +10,9 @@
      2. Quick add    — file an idea without picking a list first
      3. Up Next      — the most urgent unfinished activities
      4. Recently done
-     5. Your lists   — an inset grid, four at most
+
+   The lists shelf that used to close the page is gone: it duplicated
+   the Lists tab sitting right there in the tab bar.
    ============================================================== */
 
 async function renderHome(){
@@ -21,7 +23,6 @@ async function renderHome(){
   renderHomeProgress(lists,acts);
   renderHomeUpNext(acts,lists);
   renderHomeRecent(acts,lists);
-  renderHomeLists(lists,acts);
 }
 
 /* ---- Greeting ---- */
@@ -124,28 +125,6 @@ function renderHomeRecent(acts,lists){
   }).join('');
 }
 
-/* ---- Lists shelf ---- */
-function renderHomeLists(lists,acts){
-  const sec=$('homeListsSection');
-  if(!lists.length){sec.style.display='none';return;}
-  sec.style.display='';
-  /* Four is two tidy rows; "See all" covers the rest. */
-  $('homeLists').innerHTML=lists.slice(0,4).map(l=>{
-    const mine=acts.filter(a=>a.listId===l.id);
-    const done=mine.filter(a=>a.completed).length;
-    const pct=mine.length?Math.round(done/mine.length*100):0;
-    return `<button class="mini-card" onclick="nav('detail','${l.id}')">
-      <img class="mini-img" src="${esc(l.cover||randCover())}" alt="" loading="lazy"/>
-      <span class="mini-scrim"></span>
-      <span class="mini-body">
-        <span class="mini-title">${esc(l.name)}</span>
-        <span class="mini-meta">${done}/${mine.length}</span>
-      </span>
-      <span class="mini-bar"><span style="width:${pct}%"></span></span>
-    </button>`;
-  }).join('');
-}
-
 /* ==============================================================
    HOME QUICK ADD
    The composer here has no collection context, so on submit it asks
@@ -178,11 +157,9 @@ async function homeQuickAdd(){
     await addActivityToList(lists[0].id,name);
     return;
   }
-  showActionSheet({
-    title:'Add to which list?',
-    message:esc(name),
-    items:lists.map(l=>({label:l.name,icon:'stack',onSelect:()=>addActivityToList(l.id,name)}))
-      .concat([{label:'New List…',icon:'plus',onSelect:()=>{openNewList();$('lName').value='';}}]),
+  openListPicker({
+    subtitle:name,
+    onPick:id=>addActivityToList(id,name),
   });
 }
 
