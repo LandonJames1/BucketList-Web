@@ -75,11 +75,14 @@
          which is the point — it has to read as the bottom of a scale
          whose top is terracotta, and a warm grey just looked disabled. */
       --slate:           #4d5a6b;
+      /* Priority's middle step. Its own token rather than --purple,
+         which the You tab uses at icon size and wants darker. */
+      --violet:          #8a72b5;
 
       --tint-soft:       rgba(156,90,46,.13);
       --green-soft:      rgba(74,83,64,.14);
       --red-soft:        rgba(168,68,60,.12);
-      --purple-soft:     rgba(107,91,138,.14);
+      --violet-soft:     rgba(138,114,181,.16);
       --slate-soft:      rgba(77,90,107,.13);
 
       /* ---- Depth ----
@@ -155,11 +158,12 @@
         --gray:            #8a8375;
         --sand:            #c7b795;
         --slate:           #93a4ba;
+        --violet:          #bda9e0;
 
         --tint-soft:       rgba(217,143,92,.18);
         --green-soft:      rgba(157,177,132,.18);
         --red-soft:        rgba(224,115,106,.16);
-        --purple-soft:     rgba(166,149,201,.20);
+        --violet-soft:     rgba(189,169,224,.22);
         --slate-soft:      rgba(147,164,186,.18);
 
         --shadow-sm: 0 1px 2px rgba(0,0,0,.4);

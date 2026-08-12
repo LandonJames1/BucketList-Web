@@ -177,7 +177,7 @@
        above, and an overdue activity and an important one are different
        claims on your attention. */
     .tag-high   { background: var(--tint-soft);   color: var(--tint-strong); }
-    .tag-medium { background: var(--purple-soft); color: var(--purple); }
+    .tag-medium { background: var(--violet-soft); color: var(--violet); }
     .tag-low    { background: var(--slate-soft);  color: var(--slate); }
     .tag-done   { background: var(--green-soft);  color: var(--green); }
 
@@ -201,7 +201,7 @@
       width: 3.5px; z-index: 2; border-radius: 0 3px 3px 0;
     }
     .pri-high::before   { background: var(--tint); }
-    .pri-medium::before { background: var(--purple); }
+    .pri-medium::before { background: var(--violet); }
     .pri-low::before    { background: var(--slate); }
 
 /*  ============================================================

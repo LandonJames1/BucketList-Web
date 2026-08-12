@@ -393,6 +393,28 @@
   </div>
 </div>
 
+<!-- Just the completion date. One-tap completing assumes today, which
+     is right nearly always and wrong sometimes; this is the way back. -->
+<div class="modal-overlay" id="compDateSheet">
+  <div class="modal">
+    <div class="sheet-grabber"></div>
+    <div class="sheet-bar">
+      <button class="navbtn" onclick="closeModal('compDateSheet')">Cancel</button>
+      <div class="sheet-title">Completed</div>
+      <button class="navbtn strong" id="compDateSaveBtn" onclick="saveCompletedDate()">Save</button>
+    </div>
+    <div class="sheet-body">
+      <div class="fg">
+        <label>When did you do it?</label>
+        <div class="fg-stack">
+          <div class="fg-inline"><span id="compDateName" style="color:var(--label-2);font-size:15px"></span></div>
+          <input type="date" id="compDateOnly" />
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Completion details (photos / notes / place) -->
 <div class="modal-overlay" id="compSheet">
   <div class="modal">

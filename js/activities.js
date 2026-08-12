@@ -64,7 +64,61 @@ async function toggleComplete(id,isDone){
   }
   await updateCollectionStats(curListId);
   await renderDetail();
-  if(nowDone){ confetti(); showToast('Accomplished'); }
+  if(nowDone){
+    confetti();
+    /* One tap files it as today, which is right nearly always. The
+       toast is the way back for the times it is not — an offer, so the
+       fast path stays one tap. */
+    showToast('Accomplished','Set date',()=>openCompletedDate(id));
+  }
+}
+
+/* ==============================================================
+   COMPLETION DATE
+
+   Completing writes today. This is the only place that is editable
+   on its own, without going through the photos-and-notes sheet — the
+   common correction is "I did this on Saturday", not "let me write
+   about it".
+   ============================================================== */
+let compDateId=null;
+
+async function openCompletedDate(id){
+  const a=await fetchActivity(id);
+  if(!a)return;
+  compDateId=id;
+  $('compDateName').textContent=a.name;
+  /* Defaults to the stored date, or today for anything completed
+     before the app recorded one. */
+  $('compDateOnly').value=a.completedDate||todayISO();
+  $('compDateOnly').max=todayISO();     /* you cannot have done it yet */
+  openModal('compDateSheet');
+}
+
+async function saveCompletedDate(){
+  if(!compDateId)return;
+  const val=$('compDateOnly').value||todayISO();
+  const btn=$('compDateSaveBtn');btn.disabled=true;
+  const{error}=await sb.from('Activities')
+    .update({date_completed:val}).eq('id',compDateId);
+  btn.disabled=false;
+  if(error){
+    console.error('saveCompletedDate:',error);
+    showToast(error.message||'Couldn\u2019t save that.');
+    return;
+  }
+  closeModal('compDateSheet');
+  compDateId=null;
+  showToast('Date updated');
+  refreshAfterChange();
+}
+
+/* Whichever screen is showing owns the rows that just changed. */
+function refreshAfterChange(){
+  if(curPage==='home') renderHome();
+  else if(curPage==='upnext') renderUpNext();
+  else if(curPage==='done') renderDone();
+  else if(curPage==='detail') renderDetail();
 }
 
 /* ==============================================================
@@ -330,7 +384,10 @@ async function openActDetail(id){
       <span class="tag ${a.completed?'tag-done':'tag-'+(a.priority||'medium')}">
         ${a.completed?'Accomplished':cap(a.priority||'medium')}
       </span>
-      ${a.completed&&a.completedDate?`<span class="badge b-done">${esc(fmtDate(a.completedDate))}</span>`:''}
+      ${a.completed?`<button class="badge b-done ad-datebtn"
+        onclick="closeModal('actDetailSheet');openCompletedDate('${a.id}')">
+        ${icon('calendar','ic-xs')}${esc(a.completedDate?fmtDate(a.completedDate):'Set date')}
+      </button>`:''}
       ${!a.completed&&di.label?`<span class="badge b-${di.cls}">${esc(di.label)}</span>`:''}
     </div>`;
 

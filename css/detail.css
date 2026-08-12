@@ -245,6 +245,14 @@
 /*  ============================================================
     ACTIVITY DETAIL SHEET
     ============================================================ */
+    /* The completion date is a control, not a label — it is the only
+       way to correct a date that one-tap completing guessed. */
+    .ad-datebtn {
+      gap: 4px; padding: 3px 8px; margin: -3px 0;
+      border-radius: 9px; background: var(--green-soft);
+    }
+    .ad-datebtn:active { opacity: .6; }
+    .ad-datebtn .ic { width: 12px; height: 12px; }
     .ad-head { padding: 0 var(--gx-r) 0 var(--gx-l); }
     .ad-title {
       font-family: var(--serif); font-size: 29px; font-weight: 600;

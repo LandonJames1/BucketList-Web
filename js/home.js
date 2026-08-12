@@ -221,7 +221,7 @@ async function toggleCompleteFrom(source,id){
     return;
   }
   await updateCollectionStats(a.listId);
-  if(nowDone){ confetti(); showToast('Accomplished'); }
+  if(nowDone){ confetti(); showToast('Accomplished','Set date',()=>openCompletedDate(id)); }
   if(source==='home') renderHome();
   else if(source==='upnext') renderUpNext();
   else if(source==='done') renderDone();

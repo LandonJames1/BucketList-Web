@@ -111,8 +111,8 @@ const PIN_R_HI=23;           /* high priority: same pin, more of it */
 const PIN_RING=2.5;
 /* The same three tokens the priority rails and capsules use, so a pin
    and a row agree about what a colour means. */
-const PRI_VAR={high:'--tint',medium:'--purple',low:'--slate'};
-function priColor(pri){ return cssVar(PRI_VAR[pri]||'--purple'); }
+const PRI_VAR={high:'--tint',medium:'--violet',low:'--slate'};
+function priColor(pri){ return cssVar(PRI_VAR[pri]||'--violet'); }
 const iconsAdded=new WeakMap();   /* map -> Set of image ids already added */
 
 function iconSet(map){

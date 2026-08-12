@@ -308,7 +308,7 @@ treatment — a rail down the row's leading edge and a capsule in the meta line
 | Priority | Token | Colour |
 | --- | --- | --- |
 | High | `--tint` | terracotta |
-| Medium | `--purple` | violet |
+| Medium | `--violet` | violet |
 | Low | `--slate` | slate blue |
 
 They are three steps of one scale, so they have to look like it. An earlier
@@ -421,7 +421,7 @@ Other rules:
   completed; `--red` is destructive only. The token is named for its role, so
   the component CSS reads correctly whatever hue it holds.
 - **Priority has its own three-colour scale, and red is not on it.**
-  `--tint` (high), `--purple` (medium) and `--slate` (low). Red, orange and
+  `--tint` (high), `--violet` (medium) and `--slate` (low). Medium has its own token rather than reusing `--purple`, which the You tab uses at icon size and wants darker. Red, orange and
   yellow belong to the deadline badge sitting right beside it — an overdue
   activity and an important one are different claims on your attention, and
   sharing a colour made them argue. `--slate` is the one cool colour in a warm
@@ -459,7 +459,7 @@ Loaded in this order; **order matters**.
 
 | File | Domain |
 | --- | --- |
-| `base.css` | The design system: `color-scheme`, the three type tokens (`--serif`/`--sans`/`--mono`), the warm palette with a full `prefers-color-scheme: dark` variant, the `--shadow-*` depth scale, the priority scale (`--tint`/`--purple`/`--slate` and their `-soft` fills), layout metrics (`--gutter`, `--nav-h`, `--tab-h`), the iOS safe-area tokens (`--safe-*`, plus the `--gx-l`/`--gx-r` gutter+inset shorthands every screen uses for horizontal padding), the type scale (`.t-*`, including `.t-eyebrow` for the mono small-caps label), the reset, and the shared keyframes. Everything depends on it. |
+| `base.css` | The design system: `color-scheme`, the three type tokens (`--serif`/`--sans`/`--mono`), the warm palette with a full `prefers-color-scheme: dark` variant, the `--shadow-*` depth scale, the priority scale (`--tint`/`--violet`/`--slate` and their `-soft` fills), layout metrics (`--gutter`, `--nav-h`, `--tab-h`), the iOS safe-area tokens (`--safe-*`, plus the `--gx-l`/`--gx-r` gutter+inset shorthands every screen uses for horizontal padding), the type scale (`.t-*`, including `.t-eyebrow` for the mono small-caps label), the reset, and the shared keyframes. Everything depends on it. |
 | `layout.css` | The app shell: the translucent `.navbar` and its `.condensed` state, `.large-title`, the `.tabbar`, and the `.page` show/hide system with its push/fade animations. |
 | `components.css` | The reusable iOS primitives every screen builds from: `.group`/`.row` inset grouped lists, `.seg` segmented controls, `.btn` styles, `.searchfield`, `.badge`/`.tag`, the `.pri-*` priority marks, `.empty`, `.progress`, `.spinner`. Look here before inventing a new component. |
 | `auth.css` | The signed-out screen — no nav bar, no tab bar, its own centring. |
@@ -527,7 +527,17 @@ functions look redundant:
   name, and keeps focus for the next one. `openNewActivity(prefillName)` is the
   full sheet; the composer's "Details" button hands whatever was typed over to
   it rather than making the user retype.
-- **Completing.** `toggleComplete()` writes **only `date_completed`**. That is
+- **Completing.** `toggleComplete()` writes **only `date_completed`**, set to
+  today. Today is right nearly always and wrong sometimes, so the success toast
+  carries a *Set date* action that opens `openCompletedDate()` — a sheet holding
+  nothing but a date picker, defaulting to the stored date (or today) and capped
+  at today, since you cannot have done it yet. The same sheet is reachable
+  permanently from the completion date pill in the activity sheet
+  (`.ad-datebtn`), which is a button rather than a label for exactly this
+  reason. It is deliberately separate from `openComp()`: the common correction
+  is "I did this on Saturday", not "let me write about it", and routing the
+  first through the photos-and-notes sheet made a one-field edit feel like a
+  chore. That is
   deliberate: un-completing therefore never destroys the notes and photos
   attached to a past completion, and re-completing brings them straight back.
   The old destructive "undo" that also nulled `experience_notes`/`photos` is
