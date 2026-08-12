@@ -19,6 +19,11 @@ alter table "Activities" add column if not exists remind_at date;
 -- reminder twice. Cleared automatically whenever remind_at changes.
 alter table "Activities" add column if not exists reminder_sent_at timestamptz;
 
+-- What the reminder should actually say. Without it a notification can
+-- only repeat the activity's name, which is rarely the useful part —
+-- "Book the permit, they sell out in an hour" is.
+alter table "Activities" add column if not exists reminder_note text;
+
 
 -- ------------------------------------------------------------
 -- 2. Retire "Someday" and "No date"

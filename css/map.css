@@ -129,9 +129,22 @@
     .map-fab .ic { width: 21px; height: 21px; }
 
     /* --- Detail view: an inset rounded card, since it shares the
-           screen with the activity list. --- */
+           screen with the activity list. ---
+
+       width:auto is load-bearing. .map-box sets width:100%, which
+       combined with these margins made the container 100% + 32px and
+       pushed the page into horizontal scroll — which on iOS drags
+       position:fixed elements sideways with it, so the tab bar and any
+       open sheet ended up visibly offset too. The symptom looked like a
+       broken modal; the cause was here.
+
+       The height is sized to what is actually left below the banner and
+       the filter controls, so the map lands fully on screen rather than
+       running under the tab bar. */
     #mapContainer {
-      height: 62vh; min-height: 320px;
+      width: auto;
+      height: calc(100dvh - 430px);
+      min-height: 300px; max-height: 60vh;
       margin: 0 var(--gx-r) 0 var(--gx-l);
       border-radius: var(--r-card); overflow: hidden;
       box-shadow: var(--shadow-md);

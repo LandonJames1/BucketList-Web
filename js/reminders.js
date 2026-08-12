@@ -66,6 +66,7 @@ function renderHomeReminders(acts,lists){
       <span class="rem-icon">${icon('clock')}</span>
       <button class="rem-main" onclick="openActDetail('${a.id}')">
         <span class="rem-name">${esc(a.name)}</span>
+        ${a.remindNote?`<span class="rem-note">${esc(a.remindNote)}</span>`:''}
         <span class="rem-meta">${esc(when)}${l?' · '+esc(l.name):''}</span>
       </button>
       <button class="rem-dismiss" onclick="event.stopPropagation();clearReminder('${a.id}')"
@@ -207,8 +208,9 @@ async function checkDueReminders(){
        separate banners after a week away is hostile. */
     if(fresh.length===1){
       const a=fresh[0];
-      await reg.showNotification('Reminder',{
-        body:a.name, tag:'bl-reminder-'+a.id,
+      await reg.showNotification(a.name,{
+        /* The note is the actionable part; the name is the title. */
+        body:a.remindNote||'Reminder', tag:'bl-reminder-'+a.id,
         icon:'icons/icon-192.png', badge:'icons/favicon-32.png',
         data:{url:'./index.html'},
       });

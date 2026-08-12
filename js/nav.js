@@ -15,6 +15,12 @@ const PAGE_TAB={home:'home',lists:'lists',globalmap:'map',me:'me',detail:'lists'
 function nav(page,listId){
   const prev=curPage;
   if(page==='detail'&&listId) curListId=listId;
+  /* Opening a collection always starts in list view — including
+     re-opening the one you were just in. The view mode is a per-visit
+     choice, not a preference; leaving the map up because that is where
+     you were last is never what was meant. Keyed on *entering* detail,
+     not on the list id, or coming back to the same list would keep it. */
+  if(page==='detail'&&prev!=='detail') curView='list';
 
   /* Pushed screens slide in from the right; switching tabs cross-fades. */
   const PUSHED=['detail','upnext','done'];

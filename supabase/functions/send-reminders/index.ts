@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
      Activities has no user_id of its own. */
   const { data: due, error } = await supabase
     .from('Activities')
-    .select('id, name, remind_at, collection_id, Collections!inner(user_id)')
+    .select('id, name, remind_at, reminder_note, collection_id, Collections!inner(user_id)')
     .lte('remind_at', today)
     .is('reminder_sent_at', null)
     .is('date_completed', null);
@@ -58,12 +58,12 @@ Deno.serve(async (req) => {
 
   /* Group by owner so somebody with five due reminders gets one
      notification rather than five separate banners. */
-  const byUser = new Map<string, { id: string; name: string }[]>();
+  const byUser = new Map<string, { id: string; name: string; note: string }[]>();
   for (const row of due as any[]) {
     const userId = row.Collections?.user_id;
     if (!userId) continue;
     if (!byUser.has(userId)) byUser.set(userId, []);
-    byUser.get(userId)!.push({ id: row.id, name: row.name });
+    byUser.get(userId)!.push({ id: row.id, name: row.name, note: row.reminder_note ?? '' });
   }
 
   let sent = 0;
@@ -80,7 +80,9 @@ Deno.serve(async (req) => {
 
     const payload = JSON.stringify(
       items.length === 1
-        ? { title: 'Reminder', body: items[0].name, activityId: items[0].id }
+        /* The activity is the headline; the note is what you have to do
+           about it, which is the part worth reading on a lock screen. */
+        ? { title: items[0].name, body: items[0].note || 'Reminder', activityId: items[0].id }
         : {
             title: `${items.length} reminders`,
             body: items.slice(0, 3).map((i) => i.name).join(', ') +

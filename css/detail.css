@@ -188,18 +188,30 @@
       transition: transform .3s var(--ease);
     }
     .act-card:active { transform: scale(.965); }
+    /* The card is a fixed skeleton so every tile in a row lines up:
+       photo, then a name block that always occupies two lines, then the
+       badge. Letting the name size itself put the badges at different
+       heights across the grid and made the whole thing look ragged. */
+    .act-card { display: flex; flex-direction: column; }
     .act-card-photo {
-      width: 100%; aspect-ratio: 1; background: var(--fill-3);
+      width: 100%; aspect-ratio: 1; flex: none;
+      background: linear-gradient(150deg, var(--fill-3), var(--fill-4));
       display: flex; align-items: center; justify-content: center;
       color: var(--label-4);
     }
     .act-card-photo img { width: 100%; height: 100%; object-fit: cover; }
-    .act-card-photo .ic { width: 30px; height: 30px; }
-    .act-card-body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 4px; }
+    .act-card-photo .ic { width: 26px; height: 26px; opacity: .55; }
+    .act-card-body {
+      flex: 1; padding: 10px 12px 12px;
+      display: flex; flex-direction: column; gap: 5px;
+    }
     .act-card-name {
       font-family: var(--serif); font-size: 16.5px; font-weight: 600;
       letter-spacing: -.006em; line-height: 1.22; color: var(--label);
       display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+      /* Always two lines tall, so one-line and two-line names put their
+         badge in the same place. */
+      min-height: 2.44em;
     }
     .act-card.done .act-card-name { color: var(--label-3); }
     .act-card-check {

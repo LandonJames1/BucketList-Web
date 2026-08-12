@@ -155,8 +155,12 @@
     ============================================================ */
     .tabbar {
       position: fixed; left: 0; right: 0; bottom: 0; z-index: 100;
-      height: var(--chrome-bottom);
-      padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
+      height: calc(var(--tab-h) + var(--tab-inset));
+      padding: 0 var(--safe-right) var(--tab-inset) var(--safe-left);
+      /* Promote to its own layer. iOS otherwise repaints fixed elements
+         late during momentum scrolling, which reads as the bar drifting. */
+      transform: translateZ(0);
+      will-change: transform;
       display: flex; align-items: stretch;
       background: var(--nav-bg);
       -webkit-backdrop-filter: saturate(180%) blur(20px);

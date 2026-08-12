@@ -279,6 +279,11 @@
       letter-spacing: -.008em; color: var(--label); line-height: 1.22;
       width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
+    .rem-note {
+      font-size: 15px; line-height: 1.35; color: var(--label);
+      width: 100%; text-align: left;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
     .rem-meta {
       font-family: var(--mono); font-size: 10px; font-weight: 500;
       letter-spacing: .08em; text-transform: uppercase; color: var(--tint);

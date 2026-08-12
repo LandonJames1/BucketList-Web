@@ -101,12 +101,16 @@
          floors it so the bar always has room to breathe. */
       --nav-inset:   max(env(safe-area-inset-top, 0px), 14px);
       --safe-bottom: env(safe-area-inset-bottom, 0px);
+      /* Floored like --nav-inset. On a device with no home indicator the
+         inset is 0 and the tab labels ended up flush against the bottom
+         edge, where a browser toolbar can clip them. */
+      --tab-inset:   max(env(safe-area-inset-bottom, 0px), 6px);
       --safe-left:   env(safe-area-inset-left, 0px);
       --safe-right:  env(safe-area-inset-right, 0px);
       --gx-l: calc(var(--gutter) + var(--safe-left));
       --gx-r: calc(var(--gutter) + var(--safe-right));
       --chrome-top:    calc(var(--nav-h) + var(--safe-top));
-      --chrome-bottom: calc(var(--tab-h) + var(--safe-bottom));
+      --chrome-bottom: calc(var(--tab-h) + var(--tab-inset));
 
       --ease: cubic-bezier(.32,.72,0,1);
     }

@@ -121,6 +121,7 @@
       box-shadow: var(--shadow-sm), 0 0 0 .5px var(--separator);
     }
     .fg-stack > * { border-radius: 0; }
+    .fg-stack textarea { min-height: 62px; padding: 12px 16px; }
     .fg-stack > *:not(:last-child) { border-bottom: .5px solid var(--separator); }
 
     /* Inline label + control on one row (Settings style). */

@@ -20,8 +20,8 @@ function mapActivity(row){
       completed:!!row.date_completed,completedDate:row.date_completed||null,
       completionNotes:row.experience_notes||'',photos,location:row.location||'',
       locationLat:row.location_lat||null,locationLng:row.location_lng||null,
-      remindAt:row.remind_at||null,createdAt:row.created_at};
-  }catch(e){console.error('mapActivity error:',e,row);return{id:row.id,listId:row.collection_id,name:row.name||'',description:'',targetDate:null,priority:'medium',links:[],completed:!!row.date_completed,completedDate:row.date_completed||null,completionNotes:'',photos:[],location:'',locationLat:null,locationLng:null,remindAt:null,createdAt:row.created_at};}
+      remindAt:row.remind_at||null,remindNote:row.reminder_note||'',createdAt:row.created_at};
+  }catch(e){console.error('mapActivity error:',e,row);return{id:row.id,listId:row.collection_id,name:row.name||'',description:'',targetDate:null,priority:'medium',links:[],completed:!!row.date_completed,completedDate:row.date_completed||null,completionNotes:'',photos:[],location:'',locationLat:null,locationLng:null,remindAt:null,remindNote:'',createdAt:row.created_at};}
 }
 
 /* ==============================================================
@@ -41,7 +41,7 @@ let _remindReady=null;
 
 async function probeRemindColumn(){
   try{
-    const{error}=await sb.from('Activities').select('remind_at').limit(1);
+    const{error}=await sb.from('Activities').select('remind_at,reminder_note').limit(1);
     /* 42703 is Postgres "undefined_column". */
     _remindReady=!error;
     if(error) console.info('[reminders] remind_at column not present — reminder UI hidden. '+

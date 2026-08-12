@@ -258,6 +258,11 @@ in once more. That is the platform, not a bug.
 
 #### Target dates
 
+Opening a collection always resets `curView` to `list`. It is keyed on
+*entering* the detail screen rather than on the collection id, so re-opening
+the one you just left resets too — the view mode is a per-visit choice, not a
+saved preference.
+
 `Activities.target_date` is a **text** column holding one of two kinds of
 value, and code that reads it must handle both:
 
@@ -565,6 +570,16 @@ these are the defaults, not overrides.
 - **Inputs must never compute below 16px.** Safari zooms the whole page when a
   focused field's text is smaller, and it stays zoomed. Every field in the app
   uses `font-size: max(16px, 17px)`.
+- **A `width: 100%` element must never also carry horizontal margins.**
+  Together they make it wider than its parent, and the resulting horizontal
+  scroll drags `position: fixed` elements sideways on iOS — so the tab bar and
+  any open sheet end up visibly offset. That happened with `#mapContainer`
+  (`.map-box` sets `width: 100%`, the detail map adds gutters) and presented as
+  three unrelated-looking bugs: a map that ran off screen, a clipped "Add Many"
+  sheet, and a drifting tab bar. `width: auto` is the fix and is load-bearing.
+- **The tab bar is `translateZ(0)`** so iOS gives it its own layer; without it
+  fixed elements repaint late during momentum scrolling and appear to drift.
+  `--tab-inset` is floored at 6px for the same reason `--nav-inset` is.
 - **The nav bar has its own inset, `--nav-inset`,** floored at 14px. In an
   installed PWA the notch inset already provides room; in a browser tab
   `safe-area-inset-top` is 0 and the back button ended up pinned against the

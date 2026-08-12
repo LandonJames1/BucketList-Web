@@ -380,11 +380,14 @@
               <span>On</span>
               <input type="date" id="aRemind" />
             </div>
+            <textarea id="aRemindNote" rows="2" maxlength="200"
+                      placeholder="What do you need to do? e.g. Book the permit &mdash; they sell out in an hour"
+                      autocapitalize="sentences"></textarea>
             <button class="row tappable" id="aRemindClear" onclick="clearRemindField()">
               <span class="row-body"><span class="row-title" style="color:var(--tint)">Clear reminder</span></span>
             </button>
           </div>
-          <div class="fg-hint">Nudges you when you next open the app on or after that day &mdash; useful for things that need booking ahead.</div>
+          <div class="fg-hint">Nudges you on the day &mdash; useful for things that need booking ahead. The note is what the reminder says.</div>
         </div>
       </div>
     </div>

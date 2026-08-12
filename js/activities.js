@@ -87,7 +87,7 @@ async function openNewActivity(prefillName){
   $('aDate').value=DEFAULT_TARGET_DATE;$('aPri').value='medium';
   $('aDateCustom').value='';onTargetDateChange();
   renderTagChips('aLinks');
-  setRemindField(null);
+  setRemindField(null,'');
   setMoreFields(false);
   $('actSheetTitle').textContent='New Activity';
   $('actSaveBtn').textContent='Add';
@@ -118,9 +118,9 @@ async function openEditAct(id){
   $('aPri').value=a.priority||'medium';
   aLinks=[...(a.links||[])];
   renderTagChips('aLinks');
-  setRemindField(a.remindAt);
+  setRemindField(a.remindAt,a.remindNote);
   /* Open the extra fields straight away when any of them are in use. */
-  setMoreFields(!!(a.description||a.location||a.remindAt||(a.links&&a.links.length)));
+  setMoreFields(!!(a.description||a.location||a.remindAt||a.remindNote||(a.links&&a.links.length)));
   $('actSheetTitle').textContent='Edit Activity';
   $('actSaveBtn').textContent='Save';
   openModal('actSheet');
@@ -189,16 +189,18 @@ function addLegacyDateOption(v){
 }
 
 /* The reminder field only exists once the remind_at column does. */
-function setRemindField(value){
+function setRemindField(value,note){
   const row=$('aRemindRow');
   if(!row)return;
   if(!remindersReady()){row.style.display='none';return;}
   row.style.display='';
   $('aRemind').value=value||'';
+  $('aRemindNote').value=note||'';
   $('aRemindClear').style.display=value?'':'none';
 }
 function clearRemindField(){
   $('aRemind').value='';
+  $('aRemindNote').value='';
   $('aRemindClear').style.display='none';
 }
 
@@ -232,7 +234,11 @@ async function saveActivity(){
   };
   /* Only send the column if the database actually has it, or every
      insert fails for people who have not run the migration. */
-  if(remindersReady()) fields.remind_at=$('aRemind').value||null;
+  if(remindersReady()){
+    fields.remind_at=$('aRemind').value||null;
+    /* A note with no date has nothing to fire it, so drop it too. */
+    fields.reminder_note=fields.remind_at?($('aRemindNote').value.trim()||null):null;
+  }
   try{
     if(editingActId){
       const{error}=await sb.from('Activities').update(fields).eq('id',editingActId);
