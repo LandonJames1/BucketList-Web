@@ -85,6 +85,7 @@ async function openNewActivity(prefillName){
   $('aDesc').value='';$('aLoc').value='';$('aLocLat').value='';$('aLocLng').value='';
   resetDateOptions();
   $('aDate').value=DEFAULT_TARGET_DATE;$('aPri').value='medium';
+  $('aDateCustom').value='';onTargetDateChange();
   renderTagChips('aLinks');
   setMoreFields(false);
   $('actSheetTitle').textContent='New Activity';
@@ -104,8 +105,15 @@ async function openEditAct(id){
      opening the sheet and hitting Save cannot silently change the
      user's data — but keep it off the menu for everything else. */
   resetDateOptions();
-  if(a.targetDate&&!dateOptionExists(a.targetDate)) addLegacyDateOption(a.targetDate);
-  $('aDate').value=a.targetDate||DEFAULT_TARGET_DATE;
+  if(isCustomDate(a.targetDate)){
+    $('aDate').value=CUSTOM_DATE;
+    $('aDateCustom').value=a.targetDate;
+  } else {
+    if(a.targetDate&&!dateOptionExists(a.targetDate)) addLegacyDateOption(a.targetDate);
+    $('aDate').value=a.targetDate||DEFAULT_TARGET_DATE;
+    $('aDateCustom').value='';
+  }
+  onTargetDateChange();
   $('aPri').value=a.priority||'medium';
   aLinks=[...(a.links||[])];
   renderTagChips('aLinks');
@@ -141,7 +149,28 @@ async function renderActListPicker(){
 /* Target dates offered to new activities. Retired values live only in
    existing rows — see addLegacyDateOption. */
 const DEFAULT_TARGET_DATE='This Year';
+const CUSTOM_DATE='__custom__';   /* sentinel; never stored */
 const LEGACY_DATE_LABELS={'Before I Die':'Someday','':'No date'};
+
+/* Show the date field only when "on a specific date" is chosen. */
+function onTargetDateChange(){
+  const custom=$('aDate').value===CUSTOM_DATE;
+  $('aDateCustomRow').style.display=custom?'':'none';
+  if(custom&&!$('aDateCustom').value){
+    /* Seed with a month out rather than today: a target you have already
+       reached is not a target. */
+    const d=new Date();d.setMonth(d.getMonth()+1);
+    $('aDateCustom').value=d.toISOString().split('T')[0];
+  }
+}
+
+/* The select holds either a preset band or the CUSTOM_DATE sentinel;
+   this turns that plus the date field into the value actually stored. */
+function readTargetDate(){
+  const v=$('aDate').value;
+  if(v!==CUSTOM_DATE) return v||null;
+  return $('aDateCustom').value||null;
+}
 
 function dateOptionExists(v){
   return [...$('aDate').options].some(o=>o.value===v);
@@ -169,6 +198,11 @@ function toggleMoreFields(){
 async function saveActivity(){
   const name=$('aName').value.trim();
   if(!name){shakeEl($('aName'));$('aName').focus();return;}
+  /* "Specific date" with no date is not a choice. */
+  if($('aDate').value===CUSTOM_DATE&&!$('aDateCustom').value){
+    setMoreFields($('actMore').classList.contains('open'));
+    shakeEl($('aDateCustom'));$('aDateCustom').focus();return;
+  }
   const btn=$('actSaveBtn');btn.disabled=true;
   const fields={
     name,
@@ -176,7 +210,7 @@ async function saveActivity(){
     location:$('aLoc').value.trim()||null,
     location_lat:parseFloat($('aLocLat').value)||null,
     location_lng:parseFloat($('aLocLng').value)||null,
-    target_date:$('aDate').value||null,
+    target_date:readTargetDate(),
     priority:$('aPri').value,
     links:aLinks
   };

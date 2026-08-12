@@ -99,13 +99,14 @@ rest of the app still works — registration failure is caught and logged.
 ### Screens and navigation
 
 The app is modelled on a UIKit tab controller: **four root destinations in a
-bottom tab bar**, plus one screen that pushes on top of the second tab. All are
+bottom tab bar**, plus two screens that push on top of a tab. All are
 `<div class="page">` siblings shown one at a time by `nav()` toggling `.active`.
 There is no router and no URL state — reloading always lands on Home.
 
 | Page id | Route key | Tab | Rendered by |
 | --- | --- | --- | --- |
 | `page-home` | `home` | Home | `renderHome()` — the dashboard |
+| `page-upnext` | `upnext` | (pushed on Home) | `renderUpNext()` — every unfinished activity |
 | `page-lists` | `lists` | Lists | `renderCollections()` — every collection as a photo card |
 | `page-detail` | `detail` | (pushed on Lists) | `renderDetail()` — one collection's activities |
 | `page-globalmap` | `globalmap` | Map | `renderGlobalMap()` — every located activity |
@@ -138,7 +139,10 @@ There is also a screen outside this system: the signed-out `#authPage`, which
 `fetchCollections()` + `fetchAllActivities()`:
 
 - the progress ring, from the completed/total split;
-- **Up Next**, the four most pressing unfinished activities. Its rows are
+- **Up Next**, the four most pressing unfinished activities, with a "See all"
+  that pushes `page-upnext` (`js/upnext.js`) — the same rows grouped into
+  urgency bands. Both share `upNextRowHTML()` and `sortUpNext()` from
+  `home.js`, so the two screens cannot disagree about what "next" means. Its rows are
   deliberately fixed-height: the name is one ellipsised line and the meta line
   is `flex-wrap: nowrap` with the collection name as the only shrinkable
   child. Both matter — letting either wrap made row height depend on how long
@@ -149,8 +153,12 @@ There is also a screen outside this system: the signed-out `#authPage`, which
   `targetRank()` then `priorityRank()` (both in `utils.js`). Deadline comes
   first and priority second, not the reverse: something due this month
   outranks a high-priority "someday", because the deadline is the part you
-  cannot move. `targetRank()` reads the same class `dateInfo()` hands the
-  badges, so the ordering can never disagree with what is displayed;
+  cannot move. Sorting is on `daysToTarget()` — **actual days**, not the
+  urgency band: the band is what colours the badge but is too coarse to order
+  by, since a flight tomorrow and something three weeks out are both `urgent`
+  and priority would otherwise push the flight below it. The grouping on the
+  Up Next screen still uses the band, so a row's group always matches the
+  colour of its label;
 - Recently accomplished, by `completedDate` descending, **capped at six** —
   two rows of three.
 
@@ -242,10 +250,26 @@ in once more. That is the platform, not a bug.
 
 #### Target dates
 
-New activities choose from **This month / This year / Next year / 2–3 years /
-5+ years**, defaulting to `DEFAULT_TARGET_DATE` ("This Year"). "Someday"
-(`Before I Die`) and "No date" (`''`) were retired: both were reachable, one
-was the default, and anything holding them never surfaced in Up Next.
+`Activities.target_date` is a **text** column holding one of two kinds of
+value, and code that reads it must handle both:
+
+- a **preset band** — `This Month`, `This Year`, `Next Year`, `In 2-3 Years`,
+  `In 5+ Years`;
+- an **ISO date** the user picked — `2026-12-25`.
+
+Because the column is text, adding real dates needed no schema change.
+`isCustomDate()` tells them apart and `presetTargetDate()` resolves a band to
+the end of its window, so `dateInfo()` and `daysToTarget()` can treat both
+uniformly. In the sheet the two are one control: a `__custom__` sentinel option
+reveals the date field, and `readTargetDate()` collapses select + field back
+into the single value that gets stored. The sentinel is never written.
+
+A specific date counts down while it is close and then shows the date itself —
+once something is months out, "Dec 25" is more use than "184 days left".
+
+"Someday" (`Before I Die`) and "No date" (`''`) were retired from the picker:
+both were reachable, one was the default, and anything holding them never
+surfaced in Up Next.
 
 They are retired from the *picker*, not from the data. `dateInfo()` still
 renders both, because existing rows carry them. And `openEditAct()` calls
@@ -379,7 +403,8 @@ Loaded in this order; **order matters**.
 
 | File | Domain |
 | --- | --- |
-| `home.js` | The Home tab. `renderHome()` plus one function per section, the context-free composer (`homeQuickAdd` → `addActivityToList`), and `toggleCompleteFrom()` — Home's copy of the completion toggle, which cannot rely on `curListId`. |
+| `upnext.js` | The Up Next screen pushed from Home: every unfinished activity, bucketed into the `UPNEXT_GROUPS` urgency bands. Borrows its rows and sort from `home.js`. |
+| `home.js` | The Home tab. `renderHome()` plus one function per section, the shared `upNextRowHTML()`/`sortUpNext()` the Up Next screen also uses, the context-free composer (`homeQuickAdd` → `addActivityToList`), and `toggleCompleteFrom()` — Home's copy of the completion toggle, which cannot rely on `curListId`. |
 | `collections.js` | `renderCollections()` (the Lists tab) plus the collection CRUD: `openNewList`, `openEditList`, `renderCoverPreview`, `clearCover`, `handleCoverUpload`, `saveList`, `delList`. `delList` deletes the collection's activities first — there is no DB cascade. |
 | `detail.js` | One collection. Rendering is **deliberately split in two**: `renderDetail()` builds the banner and the controls, `renderActivitiesList()` rebuilds only the list. Search and filter call the second, so the search field never loses focus mid-typing. Also `activityRowHTML`/`activityCardHTML` and the quick-add composer helpers (`composerHTML`, `onComposerKey`, `focusComposer`). |
 | `activities.js` | The two speeds of the activity flow. **Quick:** `quickAddActivity()` (composer → insert with just a name, then refocus) and `toggleComplete(id, isDone)` (one tap; see the note below). **Full:** `openNewActivity`, `openEditAct`, `saveActivity`, `delActivity`, plus `renderActListPicker()` and the `targetListId` global — the List row that lets an activity be filed from outside any collection, and which is hidden when there is no choice to make. Also `openComp`/`confirmComplete` for completion details, and `openActDetail` which builds the activity sheet. Plus `openCollectionMenu` (the ⋯ action sheet, which holds the view switcher and everything the old five-button hero row spelled out), `setFilter`, `setView`, `toggleMoreFields`. |

@@ -25,14 +25,14 @@ async function renderHome(){
   renderHomeRecent(acts,lists);
 }
 
-/* ---- Greeting ---- */
+/* ---- Header ----
+   A fixed title rather than a time-of-day greeting: it is the app's
+   name, so it should be the same every time you open it. The date still
+   sits above it as the eyebrow. */
 function renderHomeGreeting(){
-  const h=new Date().getHours();
-  const part=h<5?'Still up':h<12?'Good morning':h<18?'Good afternoon':'Good evening';
-  const name=(userProfile&&userProfile.display_name||'').split(' ')[0];
   $('homeEyebrow').textContent=new Date().toLocaleDateString('en-US',
     {weekday:'long',month:'long',day:'numeric'});
-  $('homeGreeting').innerHTML=name?`${part},<br><em>${esc(name)}</em>`:`${part}`;
+  $('homeGreeting').innerHTML='Do It <em>All</em>';
 }
 
 /* ---- Progress ring ----
@@ -72,35 +72,53 @@ function renderHomeProgress(lists,acts){
    because the deadline is the part you cannot move. Priority breaks ties
    within the same urgency band, which is where it actually helps. */
 function renderHomeUpNext(acts,lists){
-  const listName=id=>{const l=lists.find(c=>c.id===id);return l?l.name:'';};
-  const next=acts.filter(a=>!a.completed)
-    .sort((a,b)=>
-      targetRank(a)-targetRank(b) ||
-      priorityRank(a)-priorityRank(b) ||
-      new Date(b.createdAt)-new Date(a.createdAt))
-    .slice(0,4);
+  const pending=sortUpNext(acts.filter(a=>!a.completed));
+  const next=pending.slice(0,4);
+
+  /* "See all" only earns its place when there is more to see. */
+  const all=$('homeUpNextAll');
+  if(all) all.style.display=pending.length>next.length?'':'none';
 
   if(!next.length){
     $('homeUpNext').innerHTML=`<div class="home-empty">${icon('sparkle')}
       <div class="home-empty-text">Nothing pending. Add something you want to do.</div></div>`;
     return;
   }
-  $('homeUpNext').innerHTML=next.map(a=>{
-    const di=dateInfo(a);
-    return `<div class="up-row">
-      <button class="act-check" onclick="event.stopPropagation();toggleCompleteFrom('home','${a.id}')"
-              aria-label="Mark as done">${icon('circle')}</button>
-      <button class="up-main" onclick="openActDetail('${a.id}')">
-        <span class="up-name">${esc(a.name)}</span>
-        <span class="up-meta">
-          <span class="tag tag-${esc(a.priority||'medium')}">${esc(cap(a.priority||'medium'))}</span>
-          <span class="up-list">${esc(listName(a.listId))}</span>
-          ${di.label?`<span class="badge b-${di.cls}">${esc(di.label)}</span>`:''}
-        </span>
-      </button>
-      <span class="act-chevron">${icon('chevron-right')}</span>
-    </div>`;
-  }).join('');
+  $('homeUpNext').innerHTML=next.map(a=>upNextRowHTML(a,lists,'home')).join('');
+}
+
+/* Shared by Home and the Up Next screen so the two cannot drift.
+   `source` tells toggleCompleteFrom which screen to re-render. */
+function upNextRowHTML(a,lists,source){
+  const l=lists.find(c=>c.id===a.listId);
+  const di=dateInfo(a);
+  return `<div class="up-row">
+    <button class="act-check" onclick="event.stopPropagation();toggleCompleteFrom('${source}','${a.id}')"
+            aria-label="Mark as done">${icon('circle')}</button>
+    <button class="up-main" onclick="openActDetail('${a.id}')">
+      <span class="up-name">${esc(a.name)}</span>
+      <span class="up-meta">
+        <span class="tag tag-${esc(a.priority||'medium')}">${esc(cap(a.priority||'medium'))}</span>
+        <span class="up-list">${esc(l?l.name:'')}</span>
+        ${di.label?`<span class="badge b-${di.cls}">${esc(di.label)}</span>`:''}
+      </span>
+    </button>
+    <span class="act-chevron">${icon('chevron-right')}</span>
+  </div>`;
+}
+
+/* Deadline first, priority second, newest last. Shared so Home's four
+   and the full screen agree on what "next" means.
+
+   Sorted on actual days remaining, not the urgency band: the band is
+   what colours the badge, but it is too coarse to order by — a flight
+   tomorrow and something three weeks out are both "urgent", and ranking
+   by band would let priority push the flight below it. */
+function sortUpNext(acts){
+  return acts.slice().sort((a,b)=>
+    daysToTarget(a)-daysToTarget(b) ||
+    priorityRank(a)-priorityRank(b) ||
+    new Date(b.createdAt)-new Date(a.createdAt));
 }
 
 /* ---- Recently accomplished ---- */
@@ -194,5 +212,7 @@ async function toggleCompleteFrom(source,id){
   }
   await updateCollectionStats(a.listId);
   if(nowDone){ confetti(); showToast('Accomplished'); }
-  if(source==='home') renderHome(); else renderDetail();
+  if(source==='home') renderHome();
+  else if(source==='upnext') renderUpNext();
+  else renderDetail();
 }

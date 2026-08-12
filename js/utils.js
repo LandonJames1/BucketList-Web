@@ -20,22 +20,76 @@ function fmtDate(s){
   return d.toLocaleDateString('en-US',opts);
 }
 
+/* target_date is a text column holding one of two things: a preset band
+   ("This Year"), or an ISO date the user picked ("2026-12-25"). Both live
+   in the same column — no schema change was needed to add real dates. */
+const ISO_DATE=/^\d{4}-\d{2}-\d{2}$/;
+function isCustomDate(v){ return ISO_DATE.test(v||''); }
+
+/* Whole calendar days from today until an ISO date: today is 0,
+   tomorrow 1, yesterday -1. Both sides are floored to midnight — doing
+   the arithmetic on timestamps instead makes "today" come out as 1
+   whenever the clock has passed midnight, which it always has. */
+function daysUntil(iso){
+  const target=new Date(iso+'T00:00:00');
+  const today=new Date();
+  today.setHours(0,0,0,0);
+  return Math.round((target-today)/864e5);
+}
+
+/* Whole days until an activity's target, whichever kind it is. Used for
+   sorting, where the urgency *class* is too coarse: "tomorrow" and
+   "19 days" are both `urgent`, so ranking by class alone would let
+   priority push tomorrow's flight below something three weeks out.
+   Undated things sort last. */
+const NO_TARGET=10**7;
+function daysToTarget(a){
+  if(!a.targetDate) return NO_TARGET;
+  if(a.targetDate==='Before I Die') return NO_TARGET-1;
+  if(isCustomDate(a.targetDate)) return daysUntil(a.targetDate);
+  const t=presetTargetDate(a.targetDate);
+  if(!t) return NO_TARGET;
+  const today=new Date();today.setHours(0,0,0,0);
+  return Math.round((t-today)/864e5);
+}
+
+/* The end of the window each preset band describes. */
+function presetTargetDate(v){
+  const now=new Date();
+  switch(v){
+    case 'This Month':   return new Date(now.getFullYear(),now.getMonth()+1,0);
+    case 'This Year':    return new Date(now.getFullYear(),11,31);
+    case 'Next Year':    return new Date(now.getFullYear()+1,11,31);
+    case 'In 2-3 Years': return new Date(now.getFullYear()+3,11,31);
+    case 'In 5+ Years':  return new Date(now.getFullYear()+5,11,31);
+    default: return null;
+  }
+}
+
 /* Turn an activity's target date into a short label plus an urgency
-   class. Target dates are a fixed set of strings, not real dates. */
+   class, for both kinds of value. */
 function dateInfo(a){
   if(a.completed) return{label:a.completedDate?fmtDate(a.completedDate):'Done',cls:'done'};
   if(!a.targetDate) return{label:'',cls:''};
   if(a.targetDate==='Before I Die') return{label:'Someday',cls:'forever'};
-  const now=new Date();
-  let target;
-  switch(a.targetDate){
-    case 'This Month':   target=new Date(now.getFullYear(),now.getMonth()+1,0); break;
-    case 'This Year':    target=new Date(now.getFullYear(),11,31); break;
-    case 'Next Year':    target=new Date(now.getFullYear()+1,11,31); break;
-    case 'In 2-3 Years': target=new Date(now.getFullYear()+3,11,31); break;
-    case 'In 5+ Years':  target=new Date(now.getFullYear()+5,11,31); break;
-    default: return{label:a.targetDate,cls:''};
+
+  /* A specific date: count down while it is close, then show the date
+     itself — once something is months out, "Dec 25" is more use than
+     "184 days left". */
+  if(isCustomDate(a.targetDate)){
+    const d=daysUntil(a.targetDate);
+    if(d<0)   return{label:'Overdue',cls:'overdue'};
+    if(d===0) return{label:'Today',cls:'overdue'};
+    if(d===1) return{label:'Tomorrow',cls:'urgent'};
+    if(d<=30) return{label:`${d} days left`,cls:'urgent'};
+    const months=Math.round(d/30.44);
+    return{label:fmtDate(a.targetDate),
+           cls:d/365.25>2?'relaxed':months>6?'moderate':'soon'};
   }
+
+  const now=new Date();
+  const target=presetTargetDate(a.targetDate);
+  if(!target) return{label:a.targetDate,cls:''};
   const diffDays=Math.ceil((target-now)/864e5);
   if(diffDays<0) return{label:'Overdue',cls:'overdue'};
   const diffMonths=Math.round(diffDays/30.44);

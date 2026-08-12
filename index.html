@@ -132,7 +132,10 @@
     <button class="home-composer-go" onclick="homeQuickAdd()" aria-label="Add" id="homeComposerGo"></button>
   </div>
 
-  <div class="home-sec-head"><h2>Up next</h2></div>
+  <div class="home-sec-head">
+    <h2>Up next</h2>
+    <button onclick="nav('upnext')" id="homeUpNextAll" style="display:none">See all</button>
+  </div>
   <div class="up-list" id="homeUpNext"></div>
 
   <div id="homeRecentSection" style="display:none">
@@ -140,6 +143,16 @@
     <div class="shelf shelf-3" id="homeRecent"></div>
   </div>
 
+</div>
+
+<!-- ===== UP NEXT — pushed on top of Home =====
+     Every unfinished activity, grouped by how soon it is due. -->
+<div class="page" id="page-upnext">
+  <div class="large-title">
+    <div class="eyebrow" id="upnextEyebrow"></div>
+    <h1>Up <em>Next</em></h1>
+  </div>
+  <div id="upnextBody"></div>
 </div>
 
 <!-- ===== LISTS TAB (root) ===== -->
@@ -286,13 +299,20 @@
                  openEditAct() re-adds a legacy value as an option when an
                  existing activity still carries one, so editing an old row
                  cannot silently rewrite its date. -->
-            <select id="aDate">
+            <select id="aDate" onchange="onTargetDateChange()">
               <option value="This Month">This month</option>
               <option value="This Year">This year</option>
               <option value="Next Year">Next year</option>
               <option value="In 2-3 Years">2&ndash;3 years</option>
               <option value="In 5+ Years">5+ years</option>
+              <option value="__custom__">On a specific date&hellip;</option>
             </select>
+          </div>
+          <!-- Revealed only when "specific date" is chosen. The ISO value
+               goes into the same target_date column as the presets. -->
+          <div class="fg-inline" id="aDateCustomRow" style="display:none">
+            <span>Date</span>
+            <input type="date" id="aDateCustom" />
           </div>
           <div class="fg-inline">
             <span>Priority</span>
@@ -517,6 +537,7 @@
 
 <!-- Screens and features -->
 <script src="js/home.js"></script>
+<script src="js/upnext.js"></script>
 <script src="js/collections.js"></script>
 <script src="js/detail.js"></script>
 <script src="js/activities.js"></script>
