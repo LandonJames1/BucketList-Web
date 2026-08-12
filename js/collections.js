@@ -22,10 +22,15 @@ async function renderCollections(){
       const pct=total?Math.round(done/total*100):0;
       const cover=l.cover||randCover();
       const complete=total>0&&done===total;
+      /* Outstanding high-priority work, so the tab says which list wants
+         attention before you open any of them. Completed ones don't
+         count — a list can be all-high and entirely finished. */
+      const high=acts.filter(a=>!a.completed&&a.priority==='high').length;
       return `<button class="coll-card" onclick="nav('detail','${l.id}')">
         <img class="coll-card-img" src="${esc(cover)}" alt="" loading="lazy"/>
         <div class="coll-card-scrim"></div>
         ${complete?`<div class="coll-card-done">${icon('check')}</div>`:''}
+        ${high?`<div class="coll-card-pri">${high} High</div>`:''}
         <div class="coll-card-body">
           <div class="coll-card-title">${esc(l.name)}</div>
           <div class="coll-card-meta">

@@ -115,16 +115,34 @@
       text-decoration-color: var(--label-4);
       text-decoration-thickness: 1px;
     }
+    /* Never wraps. The meta line now carries a priority tag as well as
+       the deadline and the place, and letting it wrap would make row
+       height depend on how long the place name happens to be — the
+       same bug that was fixed on the Up Next rows. The location is the
+       only part allowed to give. */
     .act-meta {
-      display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+      display: flex; align-items: center; gap: 7px; flex-wrap: nowrap;
       font-family: var(--mono); font-size: 10.5px; font-weight: 500;
       letter-spacing: .07em; text-transform: uppercase;
       color: var(--label-3); margin-top: 3px;
+      width: 100%; min-width: 0;
+      /* Reserve the tag's height whether or not this row has one.
+         The capsule is taller than the text beside it, so without this
+         a medium-priority row is 6px shorter than a high one and the
+         list visibly steps as you read down it. */
+      min-height: 19px;
     }
     .act-meta .dot { color: var(--label-3); }
+    .act-meta .tag,
+    .act-meta .badge { flex: 0 0 auto; }
+    /* Compact enough to sit inline with 10.5px mono without dominating. */
+    .act-meta .tag { height: 19px; padding: 0 7px; font-size: 9px; letter-spacing: .09em; }
     .act-loc {
       display: inline-flex; align-items: center; gap: 3px;
-      max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      flex: 0 1 auto; min-width: 0; overflow: hidden;
+    }
+    .act-loc > span {
+      min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     .act-loc .ic { width: 12px; height: 12px; }
 

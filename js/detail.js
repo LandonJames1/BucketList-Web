@@ -140,17 +140,25 @@ function activityRowHTML(a){
   const di=dateInfo(a);
   const thumb=a.photos&&a.photos.length
     ? `<img class="act-thumb" src="${a.photos[0]}" alt="" loading="lazy"/>` : '';
+  /* Priority leads the meta line — it is what you are scanning for, and
+     the rail down the leading edge points straight at it. It sits
+     outside the dot-joined run: a capsule already reads as its own
+     object and a separator after it looks like a typo. */
+  const tag=priTagHTML(a);
   const bits=[];
   if(di.label) bits.push(`<span class="badge b-${di.cls}">${esc(di.label)}</span>`);
-  if(a.location) bits.push(`<span class="act-loc">${icon('pin','ic-xs')}${esc(a.location)}</span>`);
-  return `<div class="act-row${a.completed?' done':''}">
+  /* The place name is wrapped in its own span because text-overflow
+     does not reach the text of a flex item — without it the name is
+     chopped mid-letter instead of ellipsised. */
+  if(a.location) bits.push(`<span class="act-loc">${icon('pin','ic-xs')}<span>${esc(a.location)}</span></span>`);
+  return `<div class="act-row${a.completed?' done':''}${priClass(a)}">
     <button class="act-check" onclick="event.stopPropagation();toggleComplete('${a.id}',${a.completed})"
             aria-label="${a.completed?'Mark as not done':'Mark as done'}">
       ${icon(a.completed?'check-circle':'circle')}
     </button>
     <button class="act-main" onclick="openActDetail('${a.id}')">
       <span class="act-name">${esc(a.name)}</span>
-      ${bits.length?`<span class="act-meta">${bits.join('<span class="dot">·</span>')}</span>`:''}
+      ${tag||bits.length?`<span class="act-meta">${tag}${bits.join('<span class="dot">·</span>')}</span>`:''}
     </button>
     ${thumb}
     <span class="act-chevron">${icon('chevron-right')}</span>
@@ -162,7 +170,10 @@ function activityCardHTML(a){
     ? `<img src="${a.photos[0]}" alt="" loading="lazy"/>`
     : icon('photo');
   const di=dateInfo(a);
-  return `<button class="act-card${a.completed?' done':''}" onclick="openActDetail('${a.id}')">
+  /* The card gets the rail but not the tag: its body is a fixed
+     skeleton so every tile in a row lines up, and there is no width
+     beside the deadline badge for a second capsule anyway. */
+  return `<button class="act-card${a.completed?' done':''}${priClass(a)}" onclick="openActDetail('${a.id}')">
     <span class="act-card-check" onclick="event.stopPropagation();toggleComplete('${a.id}',${a.completed})">
       ${icon('check')}
     </span>

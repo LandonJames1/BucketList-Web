@@ -80,6 +80,10 @@ function actsToGeoJSON(acts){
       geometry:{type:'Point',coordinates:[parseFloat(a.locationLng),parseFloat(a.locationLat)]},
       properties:{
         id:a.id,name:a.name,done:a.completed?1:0,
+        /* High priority draws a larger pin. Colour is already taken —
+           terracotta means pending and olive means done — so the map
+           uses the same magnitude channel the lists use. */
+        hi:(!a.completed&&a.priority==='high')?1:0,
         photo:(a.photos&&a.photos[0])||'',location:a.location||'',
       },
     })),
@@ -102,6 +106,7 @@ function actsToGeoJSON(acts){
    ============================================================== */
 
 const PIN_R=18;              /* pin radius in CSS px */
+const PIN_R_HI=23;           /* high priority: same pin, more of it */
 const PIN_RING=2.5;
 const iconsAdded=new WeakMap();   /* map -> Set of image ids already added */
 
@@ -127,19 +132,20 @@ function addCanvasImage(map,id,canvas,dpr){
 }
 
 /* A plain dot pin: filled circle, white ring. */
-function ensureDotIcon(map,done){
-  const id='pin-'+(done?'done':'pending');
+function ensureDotIcon(map,done,hi){
+  const id='pin-'+(done?'done':'pending')+(hi?'-hi':'');
   if(iconSet(map).has(id))return id;
-  const size=PIN_R*2+PIN_RING*2+4;
+  const r=hi?PIN_R_HI:PIN_R;
+  const size=r*2+PIN_RING*2+4;
   const{canvas,ctx,dpr}=makeCanvas(size);
   const c=size/2;
-  ctx.beginPath();ctx.arc(c,c,PIN_R,0,Math.PI*2);
+  ctx.beginPath();ctx.arc(c,c,r,0,Math.PI*2);
   ctx.fillStyle=done?cssVar('--green'):cssVar('--tint');
   ctx.shadowColor='rgba(0,0,0,.35)';ctx.shadowBlur=6;ctx.shadowOffsetY=1.5;
   ctx.fill();
   ctx.shadowColor='transparent';
   ctx.lineWidth=PIN_RING;ctx.strokeStyle='#fff';ctx.stroke();
-  ctx.beginPath();ctx.arc(c,c,4.5,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();
+  ctx.beginPath();ctx.arc(c,c,hi?5.5:4.5,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();
   addCanvasImage(map,id,canvas,dpr);
   iconSet(map).add(id);
   return id;
@@ -148,30 +154,34 @@ function ensureDotIcon(map,done){
 /* A photo pin: the activity's first photo, circular-cropped in a ring.
    Loading is async, so the feature renders as a dot until the image is
    ready and then repaints. */
-function ensurePhotoIcon(map,id,src,done,onReady){
+function ensurePhotoIcon(map,id,src,done,hi,onReady){
   if(iconSet(map).has(id))return;
   iconSet(map).add(id);                        /* claim it, so we load once */
   const img=new Image();
   img.crossOrigin='anonymous';
   img.onload=()=>{
     if(!map.getStyle())return;                 /* map torn down mid-load */
-    const size=PIN_R*2+PIN_RING*2+4;
+    const r=hi?PIN_R_HI:PIN_R;
+    const size=r*2+PIN_RING*2+4;
     const{canvas,ctx,dpr}=makeCanvas(size);
     const c=size/2;
     ctx.save();
-    ctx.beginPath();ctx.arc(c,c,PIN_R,0,Math.PI*2);
+    ctx.beginPath();ctx.arc(c,c,r,0,Math.PI*2);
     ctx.shadowColor='rgba(0,0,0,.35)';ctx.shadowBlur=6;ctx.shadowOffsetY=1.5;
     ctx.fillStyle='#fff';ctx.fill();
     ctx.shadowColor='transparent';
     ctx.clip();
     /* cover-fit the photo into the circle */
-    const s=Math.max((PIN_R*2)/img.width,(PIN_R*2)/img.height);
+    const s=Math.max((r*2)/img.width,(r*2)/img.height);
     const w=img.width*s,h=img.height*s;
     ctx.drawImage(img,c-w/2,c-h/2,w,h);
     ctx.restore();
-    ctx.beginPath();ctx.arc(c,c,PIN_R,0,Math.PI*2);
-    ctx.lineWidth=PIN_RING;
-    ctx.strokeStyle=done?cssVar('--green'):'#fff';
+    ctx.beginPath();ctx.arc(c,c,r,0,Math.PI*2);
+    /* A high-priority pin is ringed in terracotta as well as being
+       bigger, since at a glance one photo circle looks much like
+       another and size alone needs a neighbour to compare against. */
+    ctx.lineWidth=hi?PIN_RING+1:PIN_RING;
+    ctx.strokeStyle=done?cssVar('--green'):(hi?cssVar('--tint'):'#fff');
     ctx.stroke();
     try{
       addCanvasImage(map,id,canvas,dpr);
@@ -237,6 +247,11 @@ const SYMBOL_LAYOUT={
      on would only make pins silently vanish. */
   'icon-allow-overlap':true,
   'icon-ignore-placement':true,
+  /* Higher sort key draws later, i.e. on top. A high-priority pin is
+     bigger, so it is the one that must not end up underneath a
+     neighbour it overlaps. Clusters have no `hi` property and fall
+     through to 0, which is what we want — they are all the same size. */
+  'symbol-sort-key':['case',['==',['get','hi'],1],1,0],
 };
 
 /* Writes an `_icon` id onto every point feature and pushes the data to
@@ -247,12 +262,15 @@ function stampPointIcons(map,state,push){
   state.geojson.features.forEach(f=>{
     const p=f.properties;
     let id;
+    const hi=p.hi===1;
     if(p.photo){
-      const pid='photo-'+p.id;
-      ensurePhotoIcon(map,pid,p.photo,p.done===1,()=>stampPointIcons(map,state,true));
-      id=map.hasImage(pid)?pid:ensureDotIcon(map,p.done===1);
+      /* The id carries `hi`, so changing an activity's priority builds a
+         new image rather than reusing the old size. */
+      const pid='photo-'+p.id+(hi?'-hi':'');
+      ensurePhotoIcon(map,pid,p.photo,p.done===1,hi,()=>stampPointIcons(map,state,true));
+      id=map.hasImage(pid)?pid:ensureDotIcon(map,p.done===1,hi);
     } else {
-      id=ensureDotIcon(map,p.done===1);
+      id=ensureDotIcon(map,p.done===1,hi);
     }
     if(p._icon!==id){p._icon=id;changed=true;}
   });

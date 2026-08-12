@@ -151,6 +151,10 @@
       font-family: var(--mono); font-size: 10px; font-weight: 500;
       letter-spacing: .08em; text-transform: uppercase; color: var(--label-3);
       width: 100%; min-width: 0;
+      /* Reserve the tag's height even on rows that have no tag, or a
+         medium-priority row is shorter than a high one and the list
+         steps as you read down it. */
+      min-height: 19px;
     }
     .up-meta .up-list {
       color: var(--tint);

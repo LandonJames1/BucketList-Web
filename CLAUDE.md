@@ -298,6 +298,41 @@ one activity** if it has one — otherwise opening an old activity and pressing
 Save would silently rewrite its target date. Keep that behaviour if you touch
 the date field.
 
+#### Showing priority
+
+`priClass(a)` and `priTagHTML(a)` in `utils.js` are the single source of this,
+and every list of activities uses them. The rules:
+
+| Priority | Mark |
+| --- | --- |
+| High | a terracotta rail down the row's leading edge, plus a `HIGH` capsule |
+| Medium | nothing at all |
+| Low | the name recedes to `--label-2`, plus an outline `LOW` capsule |
+
+**Medium gets nothing deliberately.** It is the column default, so most
+activities carry it; the Up Next rows used to print a `MEDIUM` capsule on
+almost every row, and a label that appears on everything differentiates
+nothing while eating the horizontal budget that row has none of. Completed
+activities drop their mark entirely — priority is about what to do next.
+
+**The rail is `.pri-high::before` in `components.css`**, absolutely positioned
+so it is not a flex item on the rows and cards it is applied to, and clipped
+to the card's radius by the `overflow: hidden` already on `.act-group` /
+`.act-card`.
+
+**Any row that can show a capsule must reserve its height.** The capsule is
+19px and the mono text beside it is not, so `.act-meta` and `.up-meta` both
+carry `min-height: 19px`. Without it a medium row is ~6px shorter than a high
+one and the list visibly steps as you read down it — the same defect that the
+`flex-wrap: nowrap` rules on those lines exist to prevent.
+
+On the map, priority is size: `PIN_R_HI` draws a high-priority pin larger and
+`symbol-sort-key` keeps it above the pins it overlaps. Colour there is already
+taken — terracotta is pending and olive is done — so the magnitude channel is
+the only one free, which is the same reasoning as everywhere else. The Lists
+tab shows an outstanding high-priority count per collection (`.coll-card-pri`)
+so the tab says which list wants attention before you open any of them.
+
 #### The list picker
 
 `openListPicker({subtitle, currentId, onPick})` in `modals.js` is the one way
@@ -379,6 +414,11 @@ Other rules:
 - **`--tint` (terracotta) means "tappable"**; `--green` (olive) means
   completed; `--red` is destructive only. The token is named for its role, so
   the component CSS reads correctly whatever hue it holds.
+- **Hue belongs to the deadline; priority uses a different channel.**
+  `dateInfo()` already paints its badge red/orange/yellow by urgency, so
+  colouring priority too would put two colour systems on one row and neither
+  would read. Priority is shown by position and weight instead — see
+  **Showing priority** below.
 - **Nothing outside `:root` in `base.css` should contain a raw hex value.**
   Re-theming the entire app is meant to be one file. The `--shadow-*` tokens
   are warm-tinted for the same reason: neutral black shadows grey the
@@ -412,7 +452,7 @@ Loaded in this order; **order matters**.
 | --- | --- |
 | `base.css` | The design system: `color-scheme`, the three type tokens (`--serif`/`--sans`/`--mono`), the warm palette with a full `prefers-color-scheme: dark` variant, the `--shadow-*` depth scale, layout metrics (`--gutter`, `--nav-h`, `--tab-h`), the iOS safe-area tokens (`--safe-*`, plus the `--gx-l`/`--gx-r` gutter+inset shorthands every screen uses for horizontal padding), the type scale (`.t-*`, including `.t-eyebrow` for the mono small-caps label), the reset, and the shared keyframes. Everything depends on it. |
 | `layout.css` | The app shell: the translucent `.navbar` and its `.condensed` state, `.large-title`, the `.tabbar`, and the `.page` show/hide system with its push/fade animations. |
-| `components.css` | The reusable iOS primitives every screen builds from: `.group`/`.row` inset grouped lists, `.seg` segmented controls, `.btn` styles, `.searchfield`, `.badge`/`.tag`, `.empty`, `.progress`, `.spinner`. Look here before inventing a new component. |
+| `components.css` | The reusable iOS primitives every screen builds from: `.group`/`.row` inset grouped lists, `.seg` segmented controls, `.btn` styles, `.searchfield`, `.badge`/`.tag`, the `.pri-*` priority marks, `.empty`, `.progress`, `.spinner`. Look here before inventing a new component. |
 | `auth.css` | The signed-out screen — no nav bar, no tab bar, its own centring. |
 | `home.css` | The dashboard: the greeting, the SVG progress ring, the context-free quick-add composer, the Up Next list, and the two `.shelf` grids (recently accomplished, your lists). |
 | `collections.css` | The Lists tab: `.coll-card` photo cards and the "New List" tile. |
@@ -433,7 +473,7 @@ Loaded in this order; **order matters**.
 | --- | --- |
 | `config.js` | `SUPABASE_URL`/`SUPABASE_KEY`, the `sb` client, the `COVERS` array of default Unsplash covers, and `randCover(existingCovers)` (picks a cover the user isn't already using). |
 | `state.js` | Every shared mutable global: `currentUser`, the navigation triple (`curTab`, `curPage`, `backTab`), `curListId`, `editingListId`, `editingActId`, `completingId`, `curFilter`, `curView`, `upPhotos`, `coverPhoto`, `userProfile`, and the map handles. Other files declare their own feature-local globals next to their code (`aLinks`, `bulkEntries`, `actMap`, `lbPhotos`, `locTimer`). |
-| `utils.js` | `$` (getElementById), `esc` (HTML-escape — **use it on every interpolated value**, all rendering is template strings), `cap`, `todayISO`, `fmtDate` (omits the year when it's the current one), `dateInfo(a)` (turns a target date like "This Year" into a `{label, cls}` urgency badge), `shakeEl`, `compress`, `confetti`. |
+| `utils.js` | `$` (getElementById), `esc` (HTML-escape — **use it on every interpolated value**, all rendering is template strings), `cap`, `todayISO`, `fmtDate` (omits the year when it's the current one), `dateInfo(a)` (turns a target date like "This Year" into a `{label, cls}` urgency badge), `shakeEl`, `compress`, `confetti`, and the priority pair `priClass`/`priTagHTML` (see **Showing priority**). |
 | `icons.js` | `ICON_PATHS`, the app's own inline-SVG glyph set, plus `ICON_FILLED` (glyphs already solid, which must not be stroked) and `icon(name, cls)`. Icons inherit `currentColor`. **Add new glyphs here**, not inline in a template string. |
 | `api.js` | **Every Supabase read/write.** `mapCollection`/`mapActivity` translate snake_case DB columns into the camelCase shapes the UI uses. Then `fetchCollections`, `fetchActivitiesFor`, `fetchAllActivities`, `fetchActivity`, `fetchCollection`, `updateCollectionStats`. New queries belong here, not inline in a screen file. |
 

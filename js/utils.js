@@ -154,6 +154,39 @@ function priorityRank(a){
   return p!==undefined?p:1;
 }
 
+/* ==============================================================
+   SHOWING PRIORITY
+
+   Deadline urgency already owns hue: dateInfo() paints its badge red,
+   orange or yellow. Giving priority a hue too would put two colour
+   systems on one row and neither would read. So priority is shown in
+   a different channel entirely — position and weight:
+
+     high    a rail at the leading edge, plus an explicit tag
+     medium  nothing
+     low     the name recedes, plus an outline tag
+
+   Medium gets nothing deliberately. It is the column default, so most
+   activities carry it, and marking the common case would flatten the
+   contrast that makes high legible. Completed activities get nothing
+   either — priority is about what to do next, and a finished thing has
+   no next.
+   ============================================================== */
+function priClass(a){
+  if(a.completed)return '';
+  const p=a.priority||'medium';
+  return p==='high'?' pri-high':p==='low'?' pri-low':'';
+}
+
+/* The capsule, for the places that have room to spell it out. Returns
+   nothing for medium, so a list is not papered with a label that says
+   the same thing on nearly every row. */
+function priTagHTML(a){
+  const p=a.priority||'medium';
+  if(a.completed||p==='medium')return '';
+  return `<span class="tag tag-${p}">${cap(p)}</span>`;
+}
+
 /* Nudge an invalid field. Uses a transform animation rather than a
    colour change so it reads the same in light and dark. */
 function shakeEl(el){

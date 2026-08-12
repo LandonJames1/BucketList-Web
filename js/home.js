@@ -94,13 +94,13 @@ function renderHomeUpNext(acts,lists){
 function upNextRowHTML(a,lists,source){
   const l=lists.find(c=>c.id===a.listId);
   const di=dateInfo(a);
-  return `<div class="up-row">
+  return `<div class="up-row${priClass(a)}">
     <button class="act-check" onclick="event.stopPropagation();toggleCompleteFrom('${source}','${a.id}')"
             aria-label="Mark as done">${icon('circle')}</button>
     <button class="up-main" onclick="openActDetail('${a.id}')">
       <span class="up-name">${esc(a.name)}</span>
       <span class="up-meta">
-        <span class="tag tag-${esc(a.priority||'medium')}">${esc(cap(a.priority||'medium'))}</span>
+        ${priTagHTML(a)}
         <span class="up-list">${esc(l?l.name:'')}</span>
         ${di.label?`<span class="badge b-${di.cls}">${esc(di.label)}</span>`:''}
       </span>
