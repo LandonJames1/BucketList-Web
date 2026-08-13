@@ -271,16 +271,19 @@
     .ad-badges.done .ad-datebtn { padding: 0 10px; margin: 0; }
     .ad-badges.done .ad-datebtn .ic { width: 15px; height: 15px; }
     .ad-head { padding: 0 var(--gx-r) 0 var(--gx-l); }
-    /* The badges lead the sheet and the name sits under them, so the
-       spacing runs the other way: nothing above the badges, and the
-       title carries the gap. See openActDetail(). */
+    /* The name leads the sheet and the badges sit under it, so nothing
+       goes above the title and the badges carry the gap. See
+       openActDetail(). */
     .ad-title {
       font-family: var(--serif); font-size: 29px; font-weight: 600;
       letter-spacing: -.014em; line-height: 1.1; color: var(--label);
-      margin-top: 14px;
+      margin-top: 0;
     }
     .ad-title.centered { text-align: center; }
-    .ad-badges { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .ad-badges {
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+      margin-top: 14px;
+    }
     /* A single piece of media leads the sheet. The wrapper carries the
        size and the corner so the .media-tile inside can stay generic. */
     .ad-hero-wrap {
@@ -296,6 +299,20 @@
       aspect-ratio: 1; border-radius: 8px; overflow: hidden;
       background: var(--fill-3); cursor: pointer;
     }
+    /* The "+N" tile that stands in for everything past the sixth item.
+       It is a tile, not a text link, so the grid keeps its shape — the
+       count reads as one more piece of media rather than a control
+       bolted on beside them. */
+    .ad-photo-more {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 2px;
+      border: none; background: var(--tint-soft); color: var(--tint);
+      font-family: var(--mono); font-size: 15px; font-weight: 500;
+      letter-spacing: .04em;
+      box-shadow: 0 0 0 .5px var(--separator);
+    }
+    .ad-photo-more:active { opacity: .6; }
+    .ad-photo-more .ic { width: 18px; height: 18px; stroke-width: 2.4; }
     .ad-section { margin: 22px var(--gx-r) 0 var(--gx-l); }
     .ad-section-label {
       font-family: var(--mono); font-size: 10px; font-weight: 500;
@@ -309,10 +326,21 @@
       box-shadow: var(--shadow-sm), 0 0 0 .5px var(--separator);
     }
     /* Long-form completion notes are the one place body copy is worth
-       setting in the serif — it is prose, not UI. */
+       setting in the serif — it is prose, not UI.
+
+       And they are the one place the user can write without limit, so
+       the block is capped and scrolls inside itself. Uncapped, a long
+       write-up pushed the location, the links and every action button
+       far below the fold, and the sheet read as if it had nothing but
+       notes in it. `overscroll-behavior: contain` stops a flick at the
+       end of the notes from chaining into the sheet body; the note is
+       also listed in ownsVertical() in gestures.js, so scrolling it
+       never registers as a swipe-to-dismiss. */
     .ad-note.prose {
       font-family: var(--serif); font-size: 18.5px; line-height: 1.55;
       letter-spacing: 0;
+      max-height: 240px; overflow-y: auto;
+      overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
     }
     .ad-links { display: flex; flex-direction: column; gap: 0; }
     .ad-link {

@@ -427,6 +427,10 @@ async function delActivity(id){
 /* ==============================================================
    ACTIVITY DETAIL SHEET
    ============================================================== */
+/* Tiles the media grid will draw before it folds the rest behind a
+   "+N" tile — two rows of three. */
+const AD_GRID_MAX=6;
+
 async function openActDetail(id){
   const a=await fetchActivity(id);if(!a)return;
   editingActId=null;
@@ -436,15 +440,16 @@ async function openActDetail(id){
      rather than being skipped over. */
   const mediaArg=JSON.stringify(media).replace(/"/g,'&quot;');
 
-  /* Badges, then the name, then the photos. The state and the date read
-     as the mono eyebrow above a large title — the same pairing every
-     screen header in the app uses — and it keeps the name directly above
-     the media it belongs to instead of separated from it by two chips.
+  /* The name, then the badges, then the photos. The title leads because
+     it is what the sheet is about; the state and the date read as the
+     caption under it, and they still sit directly above the media rather
+     than being separated from it by anything else.
 
-     The name is centred on a completed activity to sit under the
+     The name is centred on a completed activity to sit over the
      symmetric full-width pair of badges; a pending activity's badges are
      small left-aligned chips, so its title stays left. */
   let h=`<div class="ad-head">
+    <div class="ad-title${a.completed?' centered':''}">${esc(a.name)}</div>
     <div class="ad-badges${a.completed?' done':''}">
       <span class="tag ${a.completed?'tag-done':'tag-'+(a.priority||'medium')}">
         ${a.completed?'Accomplished':cap(a.priority||'medium')}
@@ -454,15 +459,26 @@ async function openActDetail(id){
         ${icon('calendar','ic-xs')}${esc(a.completedDate?fmtDate(a.completedDate,true):'Set date')}
       </button>`:''}
       ${!a.completed&&di.label?`<span class="badge b-${di.cls}">${esc(di.label)}</span>`:''}
-    </div>
-    <div class="ad-title${a.completed?' centered':''}">${esc(a.name)}</div>`;
+    </div>`;
 
   if(media.length===1){
     h+=`<div class="ad-hero-wrap" onclick="openLB(${mediaArg},0)">
       ${mediaTileHTML(media[0],'ad-hero')}</div>`;
   } else if(media.length>1){
-    h+=`<div class="ad-photos">${media.map((m,i)=>
-      `<div class="ad-photo-cell" onclick="openLB(${mediaArg},${i})">${mediaTileHTML(m)}</div>`).join('')}</div>`;
+    /* Past six the grid runs several rows deep and pushes the notes and
+       the actions off the bottom of the sheet, so it is capped at two
+       rows: five tiles and a "+N" tile. The extra tile opens the
+       lightbox at the first item it is hiding, and the lightbox walks
+       the whole list — so nothing is unreachable, it is only folded. */
+    const over=media.length>AD_GRID_MAX;
+    const shown=over?media.slice(0,AD_GRID_MAX-1):media;
+    h+=`<div class="ad-photos">${shown.map((m,i)=>
+      `<div class="ad-photo-cell" onclick="openLB(${mediaArg},${i})">${mediaTileHTML(m)}</div>`).join('')}
+      ${over?`<button class="ad-photo-cell ad-photo-more"
+        onclick="openLB(${mediaArg},${AD_GRID_MAX-1})"
+        aria-label="Show all ${media.length} items">
+        ${icon('plus','ic-sm')}<span>${media.length-(AD_GRID_MAX-1)}</span>
+      </button>`:''}</div>`;
   }
   h+=`</div>`;
 

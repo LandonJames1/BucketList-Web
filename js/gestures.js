@@ -32,7 +32,10 @@ function ownsVertical(el){
     el.closest('.loc-results')||el.closest('.maplibregl-map')||
     /* Photo tiles are dragged to reorder; a downward drag on one must
        not throw the whole sheet away. */
-    el.closest('.photo-previews')));
+    el.closest('.photo-previews')||
+    /* Completion notes scroll inside their own capped block, so a drag
+       there is reading, not dismissing. */
+    el.closest('.ad-note.prose')));
 }
 
 /* ==============================================================

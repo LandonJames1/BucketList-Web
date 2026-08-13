@@ -804,14 +804,27 @@ functions look redundant:
   `date_completed`**, so un-completing never destroys the notes and photos on
   a past completion.
 
-  **The activity sheet reads badges → name → photos → "How it went".** The
-  state and date pair acts as the mono eyebrow above a large title, the same
-  pairing every screen header uses, and it keeps the name directly above the
-  media it names rather than separated from it by two chips. The name is
-  centred on a completed activity, to sit under the symmetric full-width pair
-  of badges above it; a pending activity's badges are small left-aligned
-  chips, so its title stays left. Spacing runs downward from the badges —
-  `.ad-badges` has no top margin and `.ad-title` carries the gap.
+  **The activity sheet reads name → badges → photos → "How it went".** The
+  title leads because it is what the sheet is about, and the state/date pair
+  reads as the caption beneath it while still sitting directly above the media
+  it names. The name is centred on a completed activity, to sit over the
+  symmetric full-width pair of badges below it; a pending activity's badges are
+  small left-aligned chips, so its title stays left. Spacing runs downward from
+  the title — `.ad-title` has no top margin and `.ad-badges` carries the gap.
+
+  **The media grid is capped at six tiles** (`AD_GRID_MAX` in
+  `activities.js`) — two rows. Past that it shows five and folds the rest
+  behind a `+N` tile (`.ad-photo-more`) that opens the lightbox at the first
+  item it is hiding; the lightbox walks the whole list, so nothing is
+  unreachable. Uncapped, a dozen photos pushed the notes and every action
+  button off the bottom of the sheet.
+
+  **"How it went" is capped in height and scrolls inside itself**
+  (`.ad-note.prose`, 240px). It is the one field the user can write without
+  limit, and an uncapped block made the sheet read as if it held nothing but
+  notes. It is listed in `ownsVertical()` in `gestures.js` and sets
+  `overscroll-behavior: contain`, so scrolling it neither dismisses the sheet
+  nor chains into the sheet body.
 
   Its actions differ by state too. Completed: **Edit** takes a full-width row
   because it is what you came for, and *Mark as not done* pairs with *Delete*
