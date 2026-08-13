@@ -151,12 +151,16 @@ function activityRowHTML(a){
      does not reach the text of a flex item — without it the name is
      chopped mid-letter instead of ellipsised. */
   if(a.location) bits.push(`<span class="act-loc">${icon('pin','ic-xs')}<span>${esc(a.location)}</span></span>`);
-  return `<div class="act-row${a.completed?' done':''}${priClass(a)}">
+  /* The whole row opens the activity, not just the text. The handler used
+     to sit on .act-main, so the thumbnail and the chevron beside it — the
+     part that most looks like "tap here to open" — were dead. The check
+     button stops propagation, so it still toggles rather than opening. */
+  return `<div class="act-row${a.completed?' done':''}${priClass(a)}" onclick="openActDetail('${a.id}')">
     <button class="act-check" onclick="event.stopPropagation();toggleComplete('${a.id}',${a.completed})"
             aria-label="${a.completed?'Mark as not done':'Mark as done'}">
       ${icon(a.completed?'check-circle':'circle')}
     </button>
-    <button class="act-main" onclick="openActDetail('${a.id}')">
+    <button class="act-main">
       <span class="act-name">${esc(a.name)}</span>
       ${tag||bits.length?`<span class="act-meta">${tag}${bits.join('<span class="dot">·</span>')}</span>`:''}
     </button>

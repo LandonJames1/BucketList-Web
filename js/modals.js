@@ -8,13 +8,63 @@
    the old fixed confirmation modal.
    ============================================================== */
 
-function openModal(id){$(id).classList.add('open');setBodyScrollLock(true);}
-function closeModal(id){$(id).classList.remove('open');setBodyScrollLock(false);}
+function openModal(id){
+  const el=$(id);
+  /* A sheet keeps its scrollTop between openings, so once you have
+     scrolled one down — to reach the buttons at the bottom of the
+     activity sheet, say — every later opening starts there and whatever
+     is at the top is silently missing. That is why the activity sheet
+     looked like it had no title: it was scrolled past it, and the
+     grabber is position:absolute so the sheet still looked like it was
+     at the top. Reset before showing. */
+  el.querySelectorAll('.sheet-body').forEach(b=>{b.scrollTop=0;});
+  el.classList.add('open');
+  setBodyScrollLock(true);
+}
+function closeModal(id){
+  $(id).classList.remove('open');
+  releasePickerRoom(null);
+  setBodyScrollLock(false);
+  afterSheetClosed(id);
+}
+
+/* ==============================================================
+   GOING BACK TO THE SHEET YOU CAME FROM
+
+   A sheet opened from another sheet should return to it when it is
+   done, however it was dismissed — Save, Cancel, the scrim, Escape, or
+   a swipe down. Registering the return here rather than on the Save
+   button is what makes all five paths behave the same; hanging it off
+   Save alone meant Cancel dropped you on the bare page.
+
+   Every dismissal therefore has to go through closeModal() or call
+   afterSheetClosed() itself — see the swipe handler in gestures.js.
+   Returns fire once and are then forgotten, so a sheet reopened by
+   hand does not inherit the last one's.
+   ============================================================== */
+const _sheetReturns={};
+
+function onSheetClose(id,fn){ _sheetReturns[id]=fn; }
+
+function afterSheetClosed(id){
+  const fn=_sheetReturns[id];
+  if(!fn)return;
+  delete _sheetReturns[id];
+  /* Let the dismissal animate out before the next sheet slides in, or
+     the two cross over each other. */
+  setTimeout(fn,240);
+}
+
+/* Leaving the screen entirely cancels any pending return — a tab tap
+   must not resurrect a sheet on the page it just left. */
+function clearSheetReturns(){
+  Object.keys(_sheetReturns).forEach(k=>delete _sheetReturns[k]);
+}
 
 /* Tapping the dimmed area behind a sheet dismisses it. */
 document.querySelectorAll('.modal-overlay').forEach(o=>{
   o.addEventListener('click',e=>{
-    if(e.target===o){o.classList.remove('open');setBodyScrollLock(false);}
+    if(e.target===o) closeModal(o.id);
   });
 });
 
@@ -22,14 +72,79 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
     if($('lightbox').classList.contains('open')){closeLightbox();return;}
     if($('actionSheet').classList.contains('open')){closeActionSheet();return;}
-    document.querySelectorAll('.modal-overlay.open').forEach(m=>m.classList.remove('open'));
-    setBodyScrollLock(false);
+    document.querySelectorAll('.modal-overlay.open').forEach(m=>closeModal(m.id));
   }
   if($('lightbox').classList.contains('open')){
     if(e.key==='ArrowLeft') lbStep(-1);
     if(e.key==='ArrowRight') lbStep(1);
   }
 });
+
+/* ==============================================================
+   ROOM FOR A DATE PICKER
+
+   A native date picker opens as a panel anchored to its field, and the
+   browser will happily run it off the bottom of the window. Every date
+   field in this app lives in a bottom-anchored sheet, which is the
+   worst case for it: the reminder sheet is short, so its field sits low
+   and the calendar had nowhere to go.
+
+   The picker's own placement is the browser's business and cannot be
+   set from here. What can be controlled is how much room the field has
+   underneath it — so when a date field is focused with less than a
+   picker's height below it, the sheet is given that much extra
+   scrollable space and scrolled by the same amount, lifting the field
+   up the screen. The space is a ::after spacer rather than padding, so
+   nothing has to know the sheet's real padding to undo it.
+
+   It only fires when the room is genuinely missing, and is released as
+   soon as the field is done with.
+   ============================================================== */
+const PICKER_ROOM=310;
+
+function ensurePickerRoom(el){
+  const body=el.closest('.sheet-body');
+  if(!body)return;
+  releasePickerRoom(body);
+  /* Measure after the release, or a previous spacer skews the result. */
+  requestAnimationFrame(()=>{
+    const gap=window.innerHeight-el.getBoundingClientRect().bottom;
+    if(gap>=PICKER_ROOM)return;
+    /* Clamped, because the sheet may still be sliding in — it is
+       tappable before it has settled, so a field focused mid-animation
+       measures from wherever the sheet had got to and would otherwise
+       ask for a spacer the size of the whole screen. */
+    const need=Math.min(PICKER_ROOM,Math.ceil(PICKER_ROOM-gap));
+    body.style.setProperty('--picker-room',need+'px');
+    body.classList.add('has-picker-room');
+    /* The sheet may grow to its max-height first, which moves the field
+       up on its own; scroll by whatever is still missing. */
+    requestAnimationFrame(()=>{
+      const left=PICKER_ROOM-(window.innerHeight-el.getBoundingClientRect().bottom);
+      if(left>0) body.scrollTop+=left;
+    });
+  });
+}
+
+function releasePickerRoom(body){
+  const targets=body?[body]:[...document.querySelectorAll('.sheet-body.has-picker-room')];
+  targets.forEach(b=>{
+    b.classList.remove('has-picker-room');
+    b.style.removeProperty('--picker-room');
+  });
+}
+
+document.addEventListener('focusin',e=>{
+  const el=e.target;
+  if(el.tagName==='INPUT'&&el.type==='date') ensurePickerRoom(el);
+},true);
+document.addEventListener('focusout',e=>{
+  const el=e.target;
+  if(el.tagName==='INPUT'&&el.type==='date'){
+    /* Let the picker's own dismissal settle before the sheet moves. */
+    setTimeout(()=>{ if(document.activeElement!==el) releasePickerRoom(null); },120);
+  }
+},true);
 
 /* ==============================================================
    ACTION SHEET
@@ -137,7 +252,7 @@ async function openListPicker(opts){
   if(opts.subtitle){sub.textContent=opts.subtitle;sub.style.display='';}
   else sub.style.display='none';
 
-  $('listPickerRows').innerHTML='<div class="spinner"></div>';
+  if(!cacheWarm()) $('listPickerRows').innerHTML='<div class="spinner"></div>';
   openModal('listPickerSheet');
 
   _lpLists=await fetchCollections();
@@ -186,26 +301,51 @@ function listPickerCreateNew(){
 /* ==============================================================
    LIGHTBOX
    ============================================================== */
+/* Entries are the normalised media shape from api.js —
+   {type,url,poster} — so the same viewer handles photos and video. A
+   bare string or array of strings is still accepted, since plenty of
+   call sites only ever have photo URLs. */
 let lbPhotos=[],lbIdx=0;
-function openLB(photos,startIdx){
-  if(typeof photos==='string') photos=[photos];
-  lbPhotos=photos;lbIdx=startIdx||0;
+function openLB(items,startIdx){
+  if(typeof items==='string') items=[items];
+  lbPhotos=(items||[]).map(m=>typeof m==='string'?{type:'photo',url:m}:m);
+  lbIdx=startIdx||0;
   lbShow();
   $('lightbox').classList.add('open');
   setBodyScrollLock(true);
 }
 function lbShow(){
-  $('lbImg').src=lbPhotos[lbIdx];
+  const m=lbPhotos[lbIdx]||{type:'photo',url:''};
+  const img=$('lbImg'),vid=$('lbVideo');
+  const isVideo=m.type==='video';
+  /* Whatever is not showing is emptied, not just hidden: a <video> with
+     a src keeps buffering, and an <img> holding a large photo keeps it
+     decoded. */
+  if(isVideo){
+    img.style.display='none';img.src='';
+    vid.style.display='';vid.src=m.url;
+    if(m.poster) vid.poster=m.poster;
+  } else {
+    vid.pause();vid.removeAttribute('src');vid.load();
+    vid.style.display='none';
+    img.style.display='';img.src=m.url;
+  }
   $('lbCounter').textContent=lbPhotos.length>1?`${lbIdx+1} of ${lbPhotos.length}`:'';
   $('lbPrev').style.display=lbPhotos.length>1?'flex':'none';
   $('lbNext').style.display=lbPhotos.length>1?'flex':'none';
 }
 function lbStep(dir){
+  if(!lbPhotos.length)return;
   lbIdx=(lbIdx+dir+lbPhotos.length)%lbPhotos.length;
   lbShow();
 }
 function closeLightbox(){
-  $('lightbox').classList.remove('open');lbPhotos=[];lbIdx=0;
+  $('lightbox').classList.remove('open');
+  /* Stop playback on the way out, or the audio keeps going over
+     whatever screen is underneath. */
+  const vid=$('lbVideo');
+  if(vid){vid.pause();vid.removeAttribute('src');vid.load();}
+  lbPhotos=[];lbIdx=0;
   setBodyScrollLock(false);
 }
 
@@ -220,7 +360,12 @@ $('lightbox').addEventListener('touchend',e=>{
   const t=e.changedTouches[0];
   const dx=t.clientX-lbTouchX,dy=t.clientY-lbTouchY;
   lbTouchX=null;
-  /* A mostly-vertical drag is a dismiss gesture, not a page flip. */
+  /* Dragging on the video is scrubbing its controls, not a gesture. */
+  if(e.target&&e.target.closest&&e.target.closest('#lbVideo'))return;
+  /* A mostly-vertical drag closes it — the other half of the gesture
+     anyone expects from a full-screen viewer, and the reason the
+     sideways one checks which axis won first. */
+  if(Math.abs(dy)>70&&Math.abs(dy)>Math.abs(dx)){ closeLightbox(); return; }
   if(Math.abs(dx)<40||Math.abs(dx)<Math.abs(dy))return;
   if(lbPhotos.length>1) lbStep(dx<0?1:-1);
 },{passive:true});

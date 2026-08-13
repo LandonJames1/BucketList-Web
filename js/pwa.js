@@ -41,6 +41,16 @@ if('serviceWorker' in navigator){
           }
         });
       });
+      /* An installed PWA is rarely killed outright, so registration —
+         the only moment the browser goes looking for a new sw.js — can
+         be days apart. Without this a shipped fix simply never arrives
+         on the home-screen copy, which reads as the fix never having
+         been made. Check again whenever the app is foregrounded. */
+      const checkForUpdate=()=>{
+        if(document.visibilityState==='visible') reg.update().catch(()=>{});
+      };
+      document.addEventListener('visibilitychange',checkForUpdate);
+      window.addEventListener('online',checkForUpdate);
     }).catch(e=>console.warn('[pwa] service worker registration failed:',e));
 
     let refreshing=false;

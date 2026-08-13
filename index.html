@@ -316,7 +316,7 @@
       <div class="fg">
         <div class="fg-stack">
           <div class="fg-inline">
-            <span>Target</span>
+            <span>Target Date</span>
             <!-- Every activity gets a real horizon. "Someday" and "No date"
                  are gone: they were the default, so most things landed in a
                  bucket that never came up in Up Next.
@@ -338,15 +338,65 @@
             <span>Date</span>
             <input type="date" id="aDateCustom" />
           </div>
-          <div class="fg-inline">
-            <span>Priority</span>
-            <select id="aPri">
-              <option value="low">Low</option>
-              <option value="medium" selected>Medium</option>
-              <option value="high">High</option>
-            </select>
-          </div>
         </div>
+      </div>
+
+      <!-- Priority is its own field rather than a row in the stack above,
+           because a native <select> cannot show what each level looks
+           like — and the colour IS the thing you read in the lists. Each
+           option carries its own swatch, so all three hues are visible
+           while choosing, not just the one already picked. The real value
+           lives in the hidden input so saveActivity() still reads
+           $('aPri').value. -->
+      <div class="fg">
+        <label>Priority</label>
+        <div class="seg seg-pri" id="aPriSeg" role="radiogroup" aria-label="Priority">
+          <button type="button" class="pri-opt" data-pri="low" onclick="setPriorityChoice('low')">
+            <span class="pri-swatch"></span>Low
+          </button>
+          <button type="button" class="pri-opt" data-pri="medium" onclick="setPriorityChoice('medium')">
+            <span class="pri-swatch"></span>Medium
+          </button>
+          <button type="button" class="pri-opt" data-pri="high" onclick="setPriorityChoice('high')">
+            <span class="pri-swatch"></span>High
+          </button>
+        </div>
+        <input type="hidden" id="aPri" value="medium" />
+      </div>
+
+      <!-- Where it happens sits with the rest of the activity, not behind
+           the disclosure: it is the field that decides whether the thing
+           ever shows up on the map, so hiding it meant most activities
+           silently never did. -->
+      <div class="fg">
+        <label>Location<span class="opt"> optional</span></label>
+        <div class="loc-wrap">
+          <input id="aLoc" placeholder="Search for a place" maxlength="200" autocomplete="off"
+                 oninput="locSearch(this,'aLocResults')" onfocus="locSearch(this,'aLocResults')" />
+          <input type="hidden" id="aLocLat" /><input type="hidden" id="aLocLng" />
+          <div class="loc-results" id="aLocResults"></div>
+        </div>
+      </div>
+
+      <!-- 4: the reminder. A row that opens its own sheet, sitting right
+           under Priority. It used to be a date field plus a textarea
+           buried at the bottom of "More options", where a two-part
+           optional field made the disclosure look like the sheet's main
+           event. The row states whether one is set; the sheet is where
+           it is set. Hidden entirely until the remind_at column exists —
+           see probeRemindColumn() in api.js. -->
+      <div class="fg" id="aRemindRow" style="display:none">
+        <label>Reminder<span class="opt"> optional</span></label>
+        <button type="button" class="row tappable" id="aRemindBtn" onclick="openRemindSheet()"
+                style="border-radius:var(--r-row);box-shadow:var(--shadow-sm),0 0 0 .5px var(--separator)">
+          <span class="row-body"><span class="row-title">Remind me</span></span>
+          <span class="row-trailing">
+            <span id="aRemindValue">None</span>
+            <span class="row-chevron" id="aRemindChevron"></span>
+          </span>
+        </button>
+        <!-- Staged by the reminder sheet; written by saveActivity(). -->
+        <input type="hidden" id="aRemind" /><input type="hidden" id="aRemindNote" />
       </div>
 
       <button class="more-toggle" id="actMoreToggle" aria-expanded="false" onclick="toggleMoreFields()">
@@ -355,15 +405,6 @@
 
       <div class="more-fields" id="actMore">
         <div class="fg">
-          <label>Location<span class="opt"> optional</span></label>
-          <div class="loc-wrap">
-            <input id="aLoc" placeholder="Search for a place" maxlength="200" autocomplete="off"
-                   oninput="locSearch(this,'aLocResults')" onfocus="locSearch(this,'aLocResults')" />
-            <input type="hidden" id="aLocLat" /><input type="hidden" id="aLocLng" />
-            <div class="loc-results" id="aLocResults"></div>
-          </div>
-        </div>
-        <div class="fg">
           <label>Notes<span class="opt"> optional</span></label>
           <textarea id="aDesc" placeholder="Why is this on your list?" autocapitalize="sentences"></textarea>
         </div>
@@ -371,67 +412,89 @@
           <label>Links<span class="opt"> optional</span></label>
           <div class="chip-field" id="aLinksWrap" onclick="$('aLinkInput').focus()"></div>
         </div>
-        <!-- Hidden entirely until the remind_at column exists; see
-             probeRemindColumn() in api.js. -->
-        <div class="fg" id="aRemindRow" style="display:none">
-          <label>Remind me<span class="opt"> optional</span></label>
-          <div class="fg-stack">
-            <div class="fg-inline">
-              <span>On</span>
-              <input type="date" id="aRemind" />
-            </div>
-            <textarea id="aRemindNote" rows="2" maxlength="200"
-                      placeholder="What do you need to do? e.g. Book the permit &mdash; they sell out in an hour"
-                      autocapitalize="sentences"></textarea>
-            <button class="row tappable" id="aRemindClear" onclick="clearRemindField()">
-              <span class="row-body"><span class="row-title" style="color:var(--tint)">Clear reminder</span></span>
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- Just the completion date. One-tap completing assumes today, which
-     is right nearly always and wrong sometimes; this is the way back. -->
-<div class="modal-overlay" id="compDateSheet">
+<!-- Remind me. Opens on top of the activity sheet and only stages its
+     values into the hidden inputs there — nothing is written until the
+     activity itself is saved, so backing out of either one changes
+     nothing. -->
+<div class="modal-overlay" id="remindSheet">
   <div class="modal">
     <div class="sheet-grabber"></div>
     <div class="sheet-bar">
-      <button class="navbtn" onclick="closeModal('compDateSheet')">Cancel</button>
-      <div class="sheet-title">Completed</div>
-      <button class="navbtn strong" id="compDateSaveBtn" onclick="saveCompletedDate()">Save</button>
+      <button class="navbtn" onclick="closeModal('remindSheet')">Cancel</button>
+      <div class="sheet-title">Remind Me</div>
+      <button class="navbtn strong" onclick="saveRemindSheet()">Done</button>
     </div>
     <div class="sheet-body">
       <div class="fg">
-        <label>When did you do it?</label>
-        <div class="fg-stack">
-          <div class="fg-inline"><span id="compDateName" style="color:var(--label-2);font-size:15px"></span></div>
-          <input type="date" id="compDateOnly" />
-        </div>
+        <label>When</label>
+        <!-- "…before" options are added by openRemindSheet(), and ONLY when
+             the activity has a specific target date to count back from. A
+             band like "This year" resolves to 31 December, so "1 week
+             before" against it would fire on Christmas Eve for everything
+             you own — a date the user never picked and would not connect
+             to the activity. -->
+        <select id="rmMode" onchange="onRemindModeChange()">
+          <option value="date">On a specific date&hellip;</option>
+        </select>
+        <p class="fg-hint" id="rmNoRelative" style="display:none">Assign this
+          activity a specific target date to unlock more reminder options</p>
+      </div>
+      <div class="fg" id="rmDateRow">
+        <label>Date</label>
+        <input type="date" id="rmDate" />
+      </div>
+      <!-- What a relative choice actually works out to, so the stored date
+           is never a surprise. -->
+      <p class="fg-hint" id="rmResolved" style="display:none"></p>
+      <div class="fg">
+        <label>Note<span class="opt"> optional</span></label>
+        <textarea id="rmNote" rows="2" maxlength="200"
+                  placeholder="What do you need to do? e.g. Book the permit &mdash; they sell out in an hour"
+                  autocapitalize="sentences"></textarea>
+      </div>
+      <div class="sheet-actions" id="rmClearWrap">
+        <button class="btn btn-destructive btn-block" onclick="clearRemindSheet()">Remove reminder</button>
       </div>
     </div>
   </div>
 </div>
 
-<!-- Completion details (photos / notes / place) -->
+<!-- Completing something: the date, and everything else behind a
+     disclosure. This was two sheets — a date-only one that completed the
+     activity, and a separate details one you had to go and find
+     afterwards. The moment you tick something off is the moment you have
+     the photos, so they are in the same place now. The extras stay
+     collapsed on a fresh completion, which is what keeps the one-tap
+     flow one tap. -->
 <div class="modal-overlay" id="compSheet">
   <div class="modal">
     <div class="sheet-grabber"></div>
     <div class="sheet-bar">
       <button class="navbtn" onclick="closeModal('compSheet')">Cancel</button>
-      <div class="sheet-title">Details</div>
-      <button class="navbtn strong" id="compSaveBtn" onclick="confirmComplete()">Save</button>
+      <div class="sheet-title" id="compSheetTitle">Accomplished</div>
+      <button class="navbtn strong" id="compSaveBtn" onclick="confirmComplete()">Done</button>
     </div>
     <div class="sheet-body">
+      <!-- Once something is done this sheet is the only way to edit it,
+           so the name lives here rather than in the activity sheet — see
+           openActDetail(). Target date, priority and reminders are gone
+           from a completed activity entirely: they are all about what to
+           do next, and there is no next. -->
       <div class="fg">
-        <label>Accomplished</label>
-        <div class="fg-stack">
-          <div class="fg-inline"><span id="compName" style="color:var(--label-2);font-size:15px"></span></div>
-          <input type="date" id="compDate" />
-        </div>
+        <label>Activity</label>
+        <input id="compName" placeholder="What did you do?" maxlength="100"
+               autocapitalize="sentences" enterkeyhint="done" />
       </div>
+      <div class="fg">
+        <label>When did you do it?</label>
+        <input type="date" id="compDate" />
+      </div>
+
       <div class="fg">
         <label>Where<span class="opt"> optional</span></label>
         <div class="loc-wrap">
@@ -441,18 +504,25 @@
           <div class="loc-results" id="compLocResults"></div>
         </div>
       </div>
-      <div class="fg">
-        <label>How it went<span class="opt"> optional</span></label>
-        <textarea id="compNotes" placeholder="Tell the story&hellip;" autocapitalize="sentences"></textarea>
-      </div>
-      <div class="fg">
-        <label>Photos</label>
-        <button class="photo-zone" onclick="$('photoInput').click()">
-          <span id="photoZoneIcon"></span>
-          <span>Add photos</span>
-        </button>
-        <input type="file" id="photoInput" multiple accept="image/*" hidden onchange="handlePhotos(event)" />
-        <div class="photo-previews" id="photoPrev"></div>
+
+      <button class="more-toggle" id="compMoreToggle" aria-expanded="false" onclick="toggleCompMore()">
+        <span id="compMoreLabel">Add photos, video &amp; notes</span><span id="compMoreChevron"></span>
+      </button>
+
+      <div class="more-fields" id="compMore">
+        <div class="fg">
+          <label>Photos &amp; video<span class="opt"> optional</span></label>
+          <button class="photo-zone" onclick="$('photoInput').click()">
+            <span id="photoZoneIcon"></span>
+            <span>Add</span>
+          </button>
+          <input type="file" id="photoInput" multiple accept="image/*,video/*" hidden onchange="handleMedia(event)" />
+          <div class="photo-previews" id="photoPrev"></div>
+        </div>
+        <div class="fg">
+          <label>How it went<span class="opt"> optional</span></label>
+          <textarea id="compNotes" placeholder="Tell the story&hellip;" autocapitalize="sentences"></textarea>
+        </div>
       </div>
     </div>
   </div>
@@ -530,6 +600,10 @@
   <div class="lb-img-wrap">
     <button class="lb-nav lb-prev" id="lbPrev" onclick="lbStep(-1)" aria-label="Previous"></button>
     <img id="lbImg" src="" alt="" />
+    <!-- Video gets its own element rather than swapping the img's src:
+         a <video> needs real controls, and pausing/unloading it on the
+         way out is what stops audio carrying on over the next screen. -->
+    <video id="lbVideo" controls playsinline preload="metadata"></video>
     <button class="lb-nav lb-next" id="lbNext" onclick="lbStep(1)" aria-label="Next"></button>
   </div>
   <div class="lb-counter" id="lbCounter"></div>
@@ -592,11 +666,12 @@
 <script src="js/auth.js"></script>
 <script src="js/nav.js"></script>
 <script src="js/modals.js"></script>
+<script src="js/gestures.js"></script>
 
 <!-- Reusable form widgets -->
 <script src="js/links.js"></script>
 <script src="js/location.js"></script>
-<script src="js/photos.js"></script>
+<script src="js/media.js"></script>
 
 <!-- Screens and features -->
 <script src="js/home.js"></script>

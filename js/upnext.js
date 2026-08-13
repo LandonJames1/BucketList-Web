@@ -19,7 +19,11 @@
 
 async function renderUpNext(){
   const body=$('upnextBody');
-  body.innerHTML='<div class="spinner"></div>';
+  /* Only when there is actually a wait. Rows are cached for the session
+     (api.js), so on every visit after the first this screen paints from
+     memory — and blanking it to a spinner first would turn an instant
+     redraw into a visible flash of nothing. */
+  if(!cacheWarm()) body.innerHTML='<div class="spinner"></div>';
 
   const lists=await fetchCollections();
   const acts=await fetchAllActivities(lists);

@@ -20,8 +20,9 @@ function paintStaticIcons(){
   tab('tabMe','summit','summit-fill','You');
 
   set('coverZoneIcon',icon('photo','ic-lg'));
-  set('photoZoneIcon',icon('camera','ic-lg'));
+  set('photoZoneIcon',icon('camera','ic-sm'));
   set('actMoreChevron',icon('chevron-down'));
+  set('compMoreChevron',icon('chevron-down'));
   set('bulkAddIcon',icon('plus','ic-sm'));
 
   set('lbCloseBtn',icon('x'));
@@ -35,6 +36,7 @@ function paintStaticIcons(){
   set('homeComposerIcon',icon('plus'));
   set('homeComposerGo',icon('chevron-right'));
   set('actListChevron',icon('chevron-right'));
+  set('aRemindChevron',icon('chevron-right'));
   set('meNotifyIcon',icon('clock'));
   set('listPickerSearchIcon',icon('search'));
   set('listPickerNewIcon',icon('plus'));

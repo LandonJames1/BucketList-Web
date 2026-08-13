@@ -18,6 +18,10 @@ function showApp(){
      installing a login screen is pointless. */
   pwaMaybeShowIosHint();
   sb.auth.startAutoRefresh();
+  /* Whether the media bucket exists decides how the completion sheet
+     stores photos and whether it accepts video at all. Probed once,
+     early, so the first upload does not have to find out. */
+  probeStorage();
   /* Find out whether reminders are available, then re-render Home so the
      banner can appear, and ping anything already due. */
   probeRemindColumn().then(ok=>{
@@ -96,8 +100,21 @@ async function handleAuth(){
    ============================================================== */
 document.addEventListener('visibilitychange',()=>{
   if(!currentUser)return;
-  if(document.visibilityState==='visible') sb.auth.startAutoRefresh();
-  else sb.auth.stopAutoRefresh();
+  if(document.visibilityState!=='visible'){ sb.auth.stopAutoRefresh(); return; }
+  sb.auth.startAutoRefresh();
+  /* Rows are cached for the session so tab switches cost nothing (see
+     api.js). Coming back to the app is the one moment that cache could
+     be behind — the same account may have been used on another device —
+     so drop it, pull fresh, and redraw whatever is on screen. */
+  revalidate().then(()=>refreshAfterChange());
+});
+
+/* The network returning is the other moment the cache can be stale: a
+   cold launch offline fills it with the empty lists Supabase could not
+   answer for. */
+window.addEventListener('online',()=>{
+  if(!currentUser)return;
+  revalidate().then(()=>refreshAfterChange());
 });
 
 /* Keep currentUser in step with whatever the auth client decides.
@@ -113,6 +130,14 @@ sb.auth.onAuthStateChange((event,session)=>{
 });
 
 async function handleSignOut(){
+  /* The cache is per-account. Leaving it behind would show the next
+     person to sign in on this device the previous one's lists. */
+  invalidateAll();
+  /* The globe is kept alive across navigation, so signing out has to be
+     the thing that actually disposes it — otherwise the next account
+     inherits the previous one's pins. */
+  destroyGlobalMap();
+  destroyDetailMap();
   /* Before the session goes: a shared device should stop receiving this
      account's reminders. */
   await unsubscribeFromPush();

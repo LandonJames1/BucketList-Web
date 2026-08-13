@@ -1,11 +1,37 @@
 # Backend setup
 
-Two things live here: the SQL the app needs, and the Edge Function that
-delivers reminders as real push notifications.
+Three things live here: the SQL the app needs, the storage bucket that
+holds completion photos and video, and the Edge Function that delivers
+reminders as real push notifications.
 
-Everything is optional. With none of it deployed the app runs fine — the
-reminder UI just hides itself, because `probeRemindColumn()` in `js/api.js`
-checks whether the column exists before showing anything.
+Everything is optional, and each piece probes for itself at boot rather
+than assuming it is there:
+
+| Piece | Probe | Without it |
+| --- | --- | --- |
+| `schema.sql` | `probeRemindColumn()` in `js/api.js` | The reminder UI hides itself |
+| `storage.sql` | `probeStorage()` in `js/media.js` | Photos stay inline as base64; video is refused with an explanation |
+| `functions/send-reminders` | — | Reminders still show on Home and on next open, just not as background push |
+
+---
+
+## 0. Media storage (recommended)
+
+Open **Dashboard → SQL Editor**, paste in `storage.sql`, run it. It
+creates a public `media` bucket and the row-level policies that keep each
+user inside their own folder.
+
+This is worth doing even if you do not care about video. Photos were
+stored as base64 data URLs *inside* `Activities.photos`, so every render
+of every list pulled all of them down again as part of the row JSON — it
+is the single biggest thing making the app slow with any real amount of
+data. With the bucket in place the column holds URLs and the images are
+fetched (and HTTP-cached) separately.
+
+Existing base64 photos keep working: `js/api.js` normalises both shapes,
+so old rows render exactly as before and only new uploads become files.
+
+Idempotent, so re-running it is harmless.
 
 ---
 

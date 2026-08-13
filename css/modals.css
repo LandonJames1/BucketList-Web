@@ -94,6 +94,14 @@
     }
     .field + .field { margin-top: 18px; }
 
+    /* This has to outrank the display:block below, which otherwise beats
+       the browser's own [hidden] rule and paints a hidden file input as a
+       full-width native "Choose File" control — a second, unstyled button
+       sitting next to the real one. Both file inputs in the app (the
+       cover picker and the photo/video picker) live inside a .fg, so both
+       were showing it. */
+    .fg [hidden] { display: none; }
+
     .fg input, .fg textarea, .fg select {
       display: block; width: 100%;
       padding: 12px 16px; min-height: 46px;
@@ -114,6 +122,12 @@
       background-repeat: no-repeat; background-position: right 16px center;
     }
     .fg input[type="date"] { min-height: 46px; }
+
+    /* One line of orientation at the top of a sheet. */
+    .sheet-hint {
+      margin: 0 var(--gx-r) 20px var(--gx-l);
+      font-size: 13px; line-height: 1.38; color: var(--label-2);
+    }
 
     /* Two fields sharing one rounded card, split by a hairline. */
     .fg-stack {
@@ -163,6 +177,17 @@
     .sheet-actions {
       margin: 26px var(--gx-r) 0 var(--gx-l);
       display: flex; flex-direction: column; gap: 10px;
+    }
+    /* Two buttons sharing one row. Equal widths rather than sized to
+       their labels, so the row reads as one control strip and the
+       destructive half is never the wider target. */
+    .sheet-actions-row { display: flex; gap: 10px; }
+    .sheet-actions-row > .btn { flex: 1; min-width: 0; }
+    /* At this width the label has to be allowed to wrap to two lines —
+       "Mark as not done" does not fit on one below about 360px, and
+       ellipsising it would leave "Mark as not…". */
+    .sheet-actions-row > .btn {
+      white-space: normal; line-height: 1.15; padding-left: 10px; padding-right: 10px;
     }
 
     /* URL chip field (js/links.js). Behaves like a token field: the
@@ -241,21 +266,34 @@
 /*  ============================================================
     PHOTOS — upload zone and thumbnails inside a sheet.
     ============================================================ */
+    /* A compact pill, not a drop zone. It was a full-width dashed box
+       26px deep, which made the control for adding media far louder than
+       the media itself — the photos are the content here, the button is
+       just the way in. */
     .photo-zone {
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      gap: 9px; padding: 26px; border-radius: var(--r-row);
+      display: inline-flex; flex-direction: row; align-items: center; justify-content: center;
+      gap: 7px; padding: 0 14px; height: 38px; width: auto;
+      border-radius: 19px;
       background: var(--bg-elevated); color: var(--tint);
       font-family: var(--mono); font-size: 10px; font-weight: 500;
       letter-spacing: .12em; text-transform: uppercase;
-      border: 1.5px dashed var(--label-4);
+      border: 1px solid var(--separator);
     }
+    .photo-zone .ic { width: 16px; height: 16px; }
     .photo-zone:active { background: var(--fill-4); }
-    .photo-previews { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .photo-previews { display: flex; gap: 9px; flex-wrap: wrap; margin-top: 12px; position: relative; }
     .photo-th {
-      position: relative; width: 76px; height: 76px; border-radius: 8px;
+      position: relative; width: 92px; height: 92px; border-radius: 10px;
       overflow: hidden; background: var(--fill-3);
     }
-    .photo-th img { width: 100%; height: 100%; object-fit: cover; }
+    .photo-th img, .photo-th video { width: 100%; height: 100%; object-fit: cover; }
+    /* An upload in flight. Reserving the tile is the point: without it
+       the sheet looks like it ignored the file that was just picked,
+       which for a video can be several seconds of nothing. */
+    .photo-th.pending {
+      display: flex; align-items: center; justify-content: center;
+      border: 1.5px dashed var(--label-4); background: var(--fill-4);
+    }
     .photo-th .rm-photo {
       position: absolute; top: 2px; right: 2px;
       width: 22px; height: 22px; border-radius: 50%;
@@ -264,6 +302,38 @@
       -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
     }
     .photo-th .rm-photo .ic { width: 12px; height: 12px; stroke-width: 2.6; }
+
+    /* The first piece of media is what every other screen shows for this
+       activity, so it says so — and dragging one to the front is how you
+       change it. See the drag block in js/media.js.
+
+       touch-action stays default until a drag actually engages, so a
+       downward swipe on a tile still scrolls the sheet; .reordering is
+       what takes the gesture once the intent is unambiguous. */
+    .photo-th {
+      cursor: grab;
+      transition: transform .22s var(--ease), box-shadow .18s, opacity .18s;
+    }
+    .photo-previews.reordering { touch-action: none; }
+    .photo-previews.reordering .photo-th { cursor: grabbing; }
+    /* The tile being dragged is lifted off the sheet and stops
+       transitioning, so it tracks the finger exactly rather than easing
+       along behind it. */
+    .photo-th.dragging {
+      transition: none; z-index: 3;
+      box-shadow: var(--shadow-lg); opacity: .95;
+    }
+    .photo-th.dragging .rm-photo { opacity: 0; }
+    .photo-th.is-cover { box-shadow: 0 0 0 2px var(--tint); }
+    .photo-cover-tag {
+      position: absolute; left: 0; right: 0; bottom: 0;
+      padding: 3px 0 2px; text-align: center;
+      font-family: var(--mono); font-size: 8.5px; font-weight: 600;
+      letter-spacing: .1em; text-transform: uppercase;
+      color: #fff; background: rgba(0,0,0,.55);
+      -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+      pointer-events: none;
+    }
 
 /*  ============================================================
     LIGHTBOX
@@ -289,10 +359,13 @@
       position: relative; flex: 1; min-height: 0; width: 100%;
       display: flex; align-items: center; justify-content: center;
     }
-    .lb-img-wrap img {
+    .lb-img-wrap img, .lb-img-wrap video {
       max-width: 100%; max-height: 100%; width: auto; height: auto;
       object-fit: contain;
     }
+    /* The video's own controls need the taps that would otherwise be
+       the lightbox's swipe/dismiss surface. */
+    .lb-img-wrap video { touch-action: auto; }
     .lb-nav {
       position: absolute; top: 50%; transform: translateY(-50%);
       width: 44px; height: 44px; border-radius: 50%;
@@ -399,4 +472,36 @@
     .fg-hint {
       margin: 8px 4px 0 17px;
       font-size: 13px; line-height: 1.4; color: var(--label-2);
+    }
+
+/*  ============================================================
+    STACKED SHEETS
+
+    The reminder sheet opens on top of the activity sheet, so it needs
+    to sit above it — both are .modal-overlay at z-index 200, and
+    equal z-index falls back to document order, which would put this
+    one behind. Its scrim also has to darken the sheet underneath, or
+    the two read as one confusing stack.
+    ============================================================ */
+    #remindSheet { z-index: 210; }
+    /* Full height, not content height. It opens on top of the activity
+       sheet, and at its natural size the sheet underneath showed above
+       it — two stacked sheets reading as one confused stack. Matching
+       the .modal max-height means it covers exactly what the sheet below
+       it covers. */
+    #remindSheet .modal { height: calc(100dvh - 44px - var(--safe-top)); }
+    @supports not (height: 100dvh) {
+      #remindSheet .modal { height: calc(100vh - 44px - var(--safe-top)); }
+    }
+
+/*  ============================================================
+    DATE PICKER ROOM
+    Scrollable space added under a focused date field so its native
+    picker is not cut off by the bottom of the window. Set by
+    ensurePickerRoom() in js/modals.js; a spacer rather than padding so
+    releasing it does not need to know the sheet's real padding.
+    ============================================================ */
+    .sheet-body.has-picker-room::after {
+      content: ''; display: block; height: var(--picker-room, 0px);
+      flex-shrink: 0;
     }

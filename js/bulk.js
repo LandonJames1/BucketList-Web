@@ -160,8 +160,9 @@ async function saveBulkActivities(){
     showToast(error.message||'Couldn’t add those.');
     return;
   }
+  invalidateActivities();
   await updateCollectionStats(curListId);
   closeModal('bulkSheet');
-  renderDetail();
+  refreshAfterChange();
   showToast(`Added ${rows.length} activit${rows.length===1?'y':'ies'}`);
 }

@@ -30,8 +30,9 @@ async function quickAddActivity(){
     input.focus();
     return;
   }
+  invalidateActivities();
   await updateCollectionStats(curListId);
-  await renderDetail();
+  await refreshAfterChange();
   /* Re-render replaced the composer, so put the caret back for the
      next one. */
   focusComposer();
@@ -56,9 +57,14 @@ async function toggleComplete(id,isDone){
   /* Completing asks for the date first — the activity is not marked
      accomplished until that sheet is saved, so cancelling leaves it
      alone rather than filing it under a guess. Un-completing is still
-     immediate: there is nothing to ask. */
-  if(!isDone){ openCompletedDate(id,'detail'); return; }
-  const nowDone=false;
+     immediate: there is nothing to ask.
+
+     The source is deliberately not hardcoded here. This is reachable
+     from the activity sheet, which opens over *any* screen, so pinning
+     it to 'detail' redrew the collection page while the user was
+     looking at Up Next. */
+  if(!isDone){ openCompletedDate(id); return; }
+  const a=await fetchActivity(id);
   const{error}=await sb.from('Activities')
     .update({date_completed: null})
     .eq('id',id);
@@ -67,67 +73,114 @@ async function toggleComplete(id,isDone){
     showToast(error.message||'Couldn’t update that.');
     return;
   }
-  await updateCollectionStats(curListId);
-  await renderDetail();
+  invalidateActivities();
+  await updateCollectionStats((a&&a.listId)||curListId);
+  await refreshAfterChange();
 }
 
 /* ==============================================================
-   COMPLETION DATE
+   COMPLETING SOMETHING
 
-   The step that actually completes an activity. Tapping the check
-   opens this, and nothing is written until Save — so an accidental tap
-   costs a Cancel, not a wrong date to hunt down later.
+   One sheet does the whole job: the date, and — behind a disclosure —
+   where it happened, how it went, and the photos and video.
 
-   Also reachable from the date pill in the activity sheet, for
-   correcting one afterwards. Kept separate from openComp(), which is
-   photos and notes: the common correction is "I did this on Saturday",
-   not "let me write about it".
+   It used to be two. A date-only sheet completed the activity, and
+   attaching anything to it meant closing that, reopening the activity,
+   and finding "Add photos & notes" three taps down. The moment you have
+   the photos is the moment you tick the thing off, so they belong in
+   the same sheet.
+
+   The extras stay collapsed on a fresh completion, which is what keeps
+   the one-tap flow one tap: press the check, press Done. The disclosure
+   sits right under the date for the times you do want to write
+   something. Nothing is written until Save either way, so an accidental
+   tap still costs a Cancel rather than a wrong date to find later.
+
+   Reopening from the date pill in the activity sheet lands in the same
+   place, with the extras already open if any of them are in use.
    ============================================================== */
-let compDateId=null,compDateSrc='detail',compDateList=null,compDateNew=false;
+let compId=null,compSrc=null,compList=null,compNew=false;
 
-async function openCompletedDate(id,source){
+async function openComp(id,source){
   const a=await fetchActivity(id);
   if(!a)return;
-  compDateId=id;
-  compDateSrc=source||curPage;
-  compDateList=a.listId;
-  compDateNew=!a.completed;
-  $('compDateName').textContent=a.name;
+  compId=id;
+  compSrc=source||curPage;
+  compList=a.listId;
+  compNew=!a.completed;
+  upMedia=[...(a.media||[])];
+
+  $('compName').value=a.name;
   /* Defaults to the stored date, or today for anything completed
      before the app recorded one. */
-  $('compDateOnly').value=a.completedDate||todayISO();
-  $('compDateOnly').max=todayISO();     /* you cannot have done it yet */
-  $('compDateSaveBtn').textContent=compDateNew?'Done':'Save';
-  openModal('compDateSheet');
+  $('compDate').value=a.completedDate||todayISO();
+  $('compDate').max=todayISO();          /* you cannot have done it yet */
+  $('compLoc').value=a.location||'';
+  $('compLocLat').value=a.locationLat||'';
+  $('compLocLng').value=a.locationLng||'';
+  $('compNotes').value=a.completionNotes||'';
+  renderThumbs();
+
+  $('compSheetTitle').textContent=compNew?'Accomplished':'Edit';
+  $('compSaveBtn').textContent=compNew?'Done':'Save';
+  /* Extras already in use open themselves, so editing never hides what
+     is there. A fresh completion always starts collapsed. */
+  setCompMore(!compNew&&!!(a.location||a.completionNotes||upMedia.length));
+  openModal('compSheet');
 }
 
-async function saveCompletedDate(){
-  if(!compDateId)return;
-  const val=$('compDateOnly').value||todayISO();
-  const btn=$('compDateSaveBtn');btn.disabled=true;
-  const{error}=await sb.from('Activities')
-    .update({date_completed:val}).eq('id',compDateId);
+/* The name the check button and the date pill call. Completing and
+   correcting a date are the same sheet now. */
+function openCompletedDate(id,source){ return openComp(id,source); }
+
+/* Opened *from* the activity sheet, which is the only place both the
+   Edit button and the date pill live. Registering the return before
+   opening means every way out of the edit sheet — Save, Cancel, the
+   scrim, Escape, a swipe down — lands you back where you started rather
+   than on the bare page behind it. */
+function openCompFrom(id){
+  closeModal('actDetailSheet');
+  onSheetClose('compSheet',()=>openActDetail(id));
+  return openComp(id);
+}
+
+function setCompMore(open){
+  $('compMore').classList.toggle('open',open);
+  $('compMoreToggle').setAttribute('aria-expanded',open?'true':'false');
+  $('compMoreLabel').textContent=open?'Fewer details':'Add photos, video & notes';
+}
+function toggleCompMore(){
+  setCompMore(!$('compMore').classList.contains('open'));
+}
+
+async function confirmComplete(){
+  if(!compId)return;
+  const name=$('compName').value.trim();
+  if(!name){shakeEl($('compName'));$('compName').focus();return;}
+  const btn=$('compSaveBtn');btn.disabled=true;
+  const{error}=await sb.from('Activities').update({
+    name,
+    date_completed:$('compDate').value||todayISO(),
+    location:$('compLoc').value.trim()||null,
+    location_lat:parseFloat($('compLocLat').value)||null,
+    location_lng:parseFloat($('compLocLng').value)||null,
+    experience_notes:$('compNotes').value.trim()||null,
+    photos:denormMedia(upMedia)
+  }).eq('id',compId);
   btn.disabled=false;
   if(error){
-    console.error('saveCompletedDate:',error);
-    showToast(error.message||'Couldn\u2019t save that.');
+    console.error('confirmComplete:',error);
+    showToast(error.message||'Couldn’t save.');
     return;
   }
-  closeModal('compDateSheet');
-  compDateId=null;
-  await updateCollectionStats(compDateList||curListId);
-  if(compDateNew){ confetti(); showToast('Accomplished'); }
-  else showToast('Date updated');
-  refreshAfterChange(compDateSrc);
-}
-
-/* The screen that was showing owns the rows that just changed. */
-function refreshAfterChange(src){
-  const p=src||curPage;
-  if(p==='home') renderHome();
-  else if(p==='upnext') renderUpNext();
-  else if(p==='done') renderDone();
-  else renderDetail();
+  const wasNew=compNew,src=compSrc,list=compList;
+  closeModal('compSheet');
+  compId=null;
+  invalidateActivities();
+  await updateCollectionStats(list||curListId);
+  if(wasNew){ confetti(); showToast('Accomplished'); }
+  else showToast('Saved');
+  refreshAfterChange(src);
 }
 
 /* ==============================================================
@@ -147,7 +200,8 @@ async function openNewActivity(prefillName){
   $('aName').value=prefillName||'';
   $('aDesc').value='';$('aLoc').value='';$('aLocLat').value='';$('aLocLng').value='';
   resetDateOptions();
-  $('aDate').value=DEFAULT_TARGET_DATE;$('aPri').value='medium';
+  $('aDate').value=DEFAULT_TARGET_DATE;
+  setPriorityChoice('medium');
   $('aDateCustom').value='';onTargetDateChange();
   renderTagChips('aLinks');
   setRemindField(null,'');
@@ -178,12 +232,14 @@ async function openEditAct(id){
     $('aDateCustom').value='';
   }
   onTargetDateChange();
-  $('aPri').value=a.priority||'medium';
+  setPriorityChoice(a.priority||'medium');
   aLinks=[...(a.links||[])];
   renderTagChips('aLinks');
   setRemindField(a.remindAt,a.remindNote);
   /* Open the extra fields straight away when any of them are in use. */
-  setMoreFields(!!(a.description||a.location||a.remindAt||a.remindNote||(a.links&&a.links.length)));
+  /* Location and the reminder are top-level fields now, so they no
+     longer decide whether the disclosure opens. */
+  setMoreFields(!!(a.description||(a.links&&a.links.length)));
   $('actSheetTitle').textContent='Edit Activity';
   $('actSaveBtn').textContent='Save';
   openModal('actSheet');
@@ -251,7 +307,29 @@ function addLegacyDateOption(v){
   $('aDate').appendChild(o);
 }
 
-/* The reminder field only exists once the remind_at column does. */
+/* ==============================================================
+   PRIORITY
+
+   A native <select> cannot show what each level looks like, and the
+   colour is the thing you actually read back in the lists — so the
+   control is three swatched options instead. The chosen value is kept
+   in a hidden #aPri input so saveActivity() still just reads
+   $('aPri').value; anything that sets the priority must come through
+   here, or the buttons and the value drift apart.
+   ============================================================== */
+function setPriorityChoice(p){
+  const v=PRIORITY_RANK[p]!==undefined?p:'medium';
+  $('aPri').value=v;
+  const seg=$('aPriSeg');
+  if(!seg)return;
+  seg.querySelectorAll('.pri-opt').forEach(b=>{
+    const on=b.dataset.pri===v;
+    b.classList.toggle('active',on);
+    b.setAttribute('aria-checked',on?'true':'false');
+  });
+}
+
+/* The reminder row only exists once the remind_at column does. */
 function setRemindField(value,note){
   const row=$('aRemindRow');
   if(!row)return;
@@ -259,12 +337,7 @@ function setRemindField(value,note){
   row.style.display='';
   $('aRemind').value=value||'';
   $('aRemindNote').value=note||'';
-  $('aRemindClear').style.display=value?'':'none';
-}
-function clearRemindField(){
-  $('aRemind').value='';
-  $('aRemindNote').value='';
-  $('aRemindClear').style.display='none';
+  updateRemindRow();
 }
 
 function setMoreFields(open){
@@ -303,21 +376,34 @@ async function saveActivity(){
     fields.reminder_note=fields.remind_at?($('aRemindNote').value.trim()||null):null;
   }
   try{
+    /* An edit can move an activity between collections, so both ends
+       need their stats rebuilt — the one it left and the one it landed
+       in. Reading the old row before the write is the only way to know
+       where it was. */
+    const before=editingActId?await fetchActivity(editingActId):null;
     if(editingActId){
+      if(targetListId&&before&&targetListId!==before.listId) fields.collection_id=targetListId;
       const{error}=await sb.from('Activities').update(fields).eq('id',editingActId);
       if(error)throw error;
+      invalidateActivities();
+      await updateCollectionStats(targetListId||before.listId);
+      if(before&&targetListId&&targetListId!==before.listId)
+        await updateCollectionStats(before.listId);
     } else {
       const dest=targetListId||curListId;
       if(!dest){showToast('Create a list first');return;}
       fields.collection_id=dest;
       const{error}=await sb.from('Activities').insert(fields);
       if(error)throw error;
+      invalidateActivities();
       await updateCollectionStats(dest);
     }
-    if(editingActId) await updateCollectionStats(targetListId||curListId);
     closeModal('actSheet');
-    /* Re-render whichever screen the user is actually looking at. */
-    if(curPage==='detail') renderDetail(); else renderHome();
+    /* Whatever screen is actually showing owns the row that changed.
+       This used to fall back to Home for everything that was not the
+       detail screen, so editing from Up Next redrew a page the user was
+       not on and left the edited row stale in front of them. */
+    refreshAfterChange();
   }catch(err){
     console.error('saveActivity:',err);
     showToast(err.message||'Couldn’t save.');
@@ -325,56 +411,17 @@ async function saveActivity(){
 }
 
 async function delActivity(id){
+  const a=await fetchActivity(id);
   const{error}=await sb.from('Activities').delete().eq('id',id);
   if(error){
     console.error('delActivity:',error);
     showToast(error.message||'Couldn’t delete.');
     return;
   }
-  await updateCollectionStats(curListId);
-  renderDetail();
+  invalidateActivities();
+  await updateCollectionStats((a&&a.listId)||curListId);
+  refreshAfterChange();
   showToast('Deleted');
-}
-
-/* ==============================================================
-   COMPLETION DETAILS
-   Reached from an already-completed activity, to attach the
-   photos, notes and place. Completing itself needs none of this.
-   ============================================================== */
-async function openComp(id){
-  const a=await fetchActivity(id);if(!a)return;
-  completingId=id;
-  upPhotos=[...(a.photos||[])];
-  $('compName').textContent=a.name;
-  $('compLoc').value=a.location||'';
-  $('compLocLat').value=a.locationLat||'';
-  $('compLocLng').value=a.locationLng||'';
-  $('compDate').value=a.completedDate||todayISO();
-  $('compNotes').value=a.completionNotes||'';
-  renderThumbs();
-  openModal('compSheet');
-}
-async function confirmComplete(){
-  if(!completingId)return;
-  const btn=$('compSaveBtn');btn.disabled=true;
-  const{error}=await sb.from('Activities').update({
-    location:$('compLoc').value.trim()||null,
-    location_lat:parseFloat($('compLocLat').value)||null,
-    location_lng:parseFloat($('compLocLng').value)||null,
-    date_completed:$('compDate').value||todayISO(),
-    experience_notes:$('compNotes').value.trim()||null,
-    photos:upPhotos
-  }).eq('id',completingId);
-  btn.disabled=false;
-  if(error){
-    console.error('confirmComplete:',error);
-    showToast(error.message||'Couldn’t save.');
-    return;
-  }
-  await updateCollectionStats(curListId);
-  closeModal('compSheet');
-  renderDetail();
-  completingId=null;
 }
 
 /* ==============================================================
@@ -384,37 +431,51 @@ async function openActDetail(id){
   const a=await fetchActivity(id);if(!a)return;
   editingActId=null;
   const di=dateInfo(a);
-  const photos=a.photos||[];
-  const photosArg=JSON.stringify(photos).replace(/"/g,'&quot;');
+  const media=a.media||[];
+  /* The lightbox walks the full media list, so a video opens in place
+     rather than being skipped over. */
+  const mediaArg=JSON.stringify(media).replace(/"/g,'&quot;');
 
+  /* Badges, then the name, then the photos. The state and the date read
+     as the mono eyebrow above a large title — the same pairing every
+     screen header in the app uses — and it keeps the name directly above
+     the media it belongs to instead of separated from it by two chips.
+
+     The name is centred on a completed activity to sit under the
+     symmetric full-width pair of badges; a pending activity's badges are
+     small left-aligned chips, so its title stays left. */
   let h=`<div class="ad-head">
-    <div class="ad-title">${esc(a.name)}</div>
-    <div class="ad-badges">
+    <div class="ad-badges${a.completed?' done':''}">
       <span class="tag ${a.completed?'tag-done':'tag-'+(a.priority||'medium')}">
         ${a.completed?'Accomplished':cap(a.priority||'medium')}
       </span>
       ${a.completed?`<button class="badge b-done ad-datebtn"
-        onclick="closeModal('actDetailSheet');openCompletedDate('${a.id}')">
-        ${icon('calendar','ic-xs')}${esc(a.completedDate?fmtDate(a.completedDate):'Set date')}
+        onclick="openCompFrom('${a.id}')">
+        ${icon('calendar','ic-xs')}${esc(a.completedDate?fmtDate(a.completedDate,true):'Set date')}
       </button>`:''}
       ${!a.completed&&di.label?`<span class="badge b-${di.cls}">${esc(di.label)}</span>`:''}
-    </div>`;
+    </div>
+    <div class="ad-title${a.completed?' centered':''}">${esc(a.name)}</div>`;
 
-  if(photos.length===1){
-    h+=`<img class="ad-hero" src="${photos[0]}" alt="" onclick="openLB(${photosArg},0)"/>`;
-  } else if(photos.length>1){
-    h+=`<div class="ad-photos">${photos.map((p,i)=>
-      `<img src="${p}" alt="" loading="lazy" onclick="openLB(${photosArg},${i})"/>`).join('')}</div>`;
+  if(media.length===1){
+    h+=`<div class="ad-hero-wrap" onclick="openLB(${mediaArg},0)">
+      ${mediaTileHTML(media[0],'ad-hero')}</div>`;
+  } else if(media.length>1){
+    h+=`<div class="ad-photos">${media.map((m,i)=>
+      `<div class="ad-photo-cell" onclick="openLB(${mediaArg},${i})">${mediaTileHTML(m)}</div>`).join('')}</div>`;
   }
   h+=`</div>`;
 
-  if(a.location){
-    h+=`<div class="ad-section"><div class="ad-section-label">Location</div>
-      <div class="ad-note">${esc(a.location)}</div></div>`;
-  }
+  /* What you wrote when you finished it reads with the photos, so it
+     sits directly under them — above the location and the notes-from-
+     before, which are reference rather than the story. */
   if(a.completed&&a.completionNotes){
     h+=`<div class="ad-section"><div class="ad-section-label">How it went</div>
       <div class="ad-note prose">${esc(a.completionNotes)}</div></div>`;
+  }
+  if(a.location){
+    h+=`<div class="ad-section"><div class="ad-section-label">Location</div>
+      <div class="ad-note">${esc(a.location)}</div></div>`;
   }
   if(a.description){
     h+=`<div class="ad-section"><div class="ad-section-label">Notes</div>
@@ -432,22 +493,48 @@ async function openActDetail(id){
          </a>`).join('')}</div></div>`;
   }
 
-  /* Actions: the primary one flips completion, then the rest. */
-  h+=`<div class="sheet-actions">
-    <button class="btn ${a.completed?'btn-gray':'btn-green'} btn-block"
-            onclick="closeModal('actDetailSheet');toggleComplete('${a.id}',${a.completed})">
-      ${icon(a.completed?'undo':'check')}${a.completed?'Mark as not done':'Mark accomplished'}
-    </button>
-    ${a.completed?`<button class="btn btn-tinted btn-block" onclick="closeModal('actDetailSheet');openComp('${a.id}')">
-      ${icon('camera')}${photos.length||a.completionNotes?'Edit photos &amp; notes':'Add photos &amp; notes'}
-    </button>`:''}
-    <button class="btn btn-gray btn-block" onclick="closeModal('actDetailSheet');openEditAct('${a.id}')">
-      ${icon('pencil')}Edit details
-    </button>
-    <button class="btn btn-destructive btn-block" onclick="confirmDeleteActivity('${a.id}','${esc(a.name).replace(/'/g,'&#39;')}')">
+  /* Actions: the primary one flips completion, then the rest.
+
+     A completed activity gets ONE edit button, not two. "Edit details"
+     is the target date, the priority and the reminder — every one of
+     them about what to do next, which a finished thing does not have.
+     So it is dropped, and the remaining button carries the name and the
+     location alongside the photos and notes it already held. */
+  const delBtn=`<button class="btn btn-destructive btn-block"
+      onclick="confirmDeleteActivity('${a.id}','${esc(a.name).replace(/'/g,'&#39;')}')">
       ${icon('trash')}Delete
-    </button>
-  </div>`;
+    </button>`;
+
+  h+= a.completed
+    /* Editing is the thing you came here to do once something is done,
+       so it takes the full-width row. Un-completing and deleting are
+       both corrections — undoing a record rather than adding to one —
+       so they share the last row instead of each claiming a full-width
+       button of their own. */
+    ? `<div class="sheet-actions">
+        <button class="btn btn-tinted btn-block" onclick="openCompFrom('${a.id}')">
+          ${icon('pencil')}Edit
+        </button>
+        <div class="sheet-actions-row">
+          <button class="btn btn-gray btn-block"
+                  onclick="closeModal('actDetailSheet');toggleComplete('${a.id}',true)">
+            ${icon('undo')}Mark as not done
+          </button>
+          ${delBtn}
+        </div>
+      </div>`
+    /* Still pending: finishing it is the primary action and keeps the
+       emphasis of a full-width row of its own. */
+    : `<div class="sheet-actions">
+        <button class="btn btn-green btn-block"
+                onclick="closeModal('actDetailSheet');toggleComplete('${a.id}',false)">
+          ${icon('check')}Mark accomplished
+        </button>
+        <button class="btn btn-gray btn-block" onclick="closeModal('actDetailSheet');openEditAct('${a.id}')">
+          ${icon('pencil')}Edit details
+        </button>
+        ${delBtn}
+      </div>`;
 
   $('actDetailBody').innerHTML=h;
   openModal('actDetailSheet');

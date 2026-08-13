@@ -5,7 +5,11 @@
 
 async function renderCollections(){
   const wrap=$('collGrid');
-  wrap.innerHTML='<div class="spinner"></div>';
+  /* Only when there is actually a wait. Rows are cached for the session
+     (api.js), so on every visit after the first this screen paints from
+     memory — and blanking it to a spinner first would turn an instant
+     redraw into a visible flash of nothing. */
+  if(!cacheWarm()) wrap.innerHTML='<div class="spinner"></div>';
   try{
     const lists=await fetchCollections();
     if(!lists.length){
@@ -114,8 +118,9 @@ async function saveList(){
       if(error)throw error;
       curListId=data.id;
     }
+    invalidateCollections();
     closeModal('listSheet');
-    if(curPage==='detail') renderDetail(); else renderCollections();
+    refreshAfterChange();
   }catch(err){
     console.error('saveList:',err);
     showToast(err.message||'Couldn’t save the list.');
@@ -129,6 +134,7 @@ async function delList(id){
     if(e1)throw e1;
     const{error:e2}=await sb.from('Collections').delete().eq('id',id);
     if(e2)throw e2;
+    invalidateAll();
     nav('lists');
     showToast('List deleted');
   }catch(err){

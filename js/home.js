@@ -94,10 +94,12 @@ function renderHomeUpNext(acts,lists){
 function upNextRowHTML(a,lists,source){
   const l=lists.find(c=>c.id===a.listId);
   const di=dateInfo(a);
-  return `<div class="up-row${priClass(a)}">
+  /* Row-level handler, so the chevron and the whole row open the activity
+     — see the note in activityRowHTML(). */
+  return `<div class="up-row${priClass(a)}" onclick="openActDetail('${a.id}')">
     <button class="act-check" onclick="event.stopPropagation();toggleCompleteFrom('${source}','${a.id}')"
             aria-label="Mark as done">${icon('circle')}</button>
-    <button class="up-main" onclick="openActDetail('${a.id}')">
+    <button class="up-main">
       <span class="up-name">${esc(a.name)}</span>
       <span class="up-meta">
         ${priTagHTML(a)}
@@ -201,10 +203,11 @@ async function addActivityToList(listId,name){
     showToast(error.message||'Couldn’t add that.');
     return;
   }
+  invalidateActivities();
   await updateCollectionStats(listId);
   if(input){input.value='';onHomeComposerInput();input.focus();}
   showToast('Added');
-  renderHome();
+  refreshAfterChange();
 }
 
 /* Completing from Home has no curListId, so the stats update needs the
@@ -212,9 +215,8 @@ async function addActivityToList(listId,name){
 async function toggleCompleteFrom(source,id){
   const a=await fetchActivity(id);
   if(!a)return;
-  /* Completing goes through the date sheet — see toggleComplete. */
+  /* Completing goes through the completion sheet — see toggleComplete. */
   if(!a.completed){ openCompletedDate(id,source); return; }
-  const nowDone=false;
   const{error}=await sb.from('Activities')
     .update({date_completed: null}).eq('id',id);
   if(error){
@@ -222,9 +224,7 @@ async function toggleCompleteFrom(source,id){
     showToast(error.message||'Couldn’t update that.');
     return;
   }
+  invalidateActivities();
   await updateCollectionStats(a.listId);
-  if(source==='home') renderHome();
-  else if(source==='upnext') renderUpNext();
-  else if(source==='done') renderDone();
-  else renderDetail();
+  refreshAfterChange(source);
 }

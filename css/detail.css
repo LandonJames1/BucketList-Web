@@ -71,6 +71,8 @@
     }
 
     .act-row {
+      /* The whole row is the tap target now. */
+      cursor: pointer;
       position: relative; display: flex; align-items: center; gap: 12px;
       padding: 10px 14px 10px 12px; min-height: 56px;
       background: var(--bg-elevated);
@@ -248,29 +250,51 @@
     /* The completion date is a control, not a label — it is the only
        way to correct a date that one-tap completing guessed. */
     .ad-datebtn {
-      gap: 4px; padding: 3px 8px; margin: -3px 0;
+      gap: 6px; padding: 3px 8px; margin: -3px 0;
       border-radius: 9px; background: var(--green-soft);
     }
     .ad-datebtn:active { opacity: .6; }
     .ad-datebtn .ic { width: 12px; height: 12px; }
+
+    /* A completed activity has exactly two badges — the state and the
+       date it happened — and at the shared badge size they sat as two
+       small chips against a 29px serif title with most of the row empty
+       beside them. Here they are the header's second line, so they take
+       a size to match and split the width between them. */
+    .ad-badges.done { gap: 10px; flex-wrap: nowrap; }
+    .ad-badges.done > * {
+      flex: 1; min-width: 0;
+      height: 38px; border-radius: 12px;
+      justify-content: center;
+      font-size: 12px; letter-spacing: .1em;
+    }
+    .ad-badges.done .ad-datebtn { padding: 0 10px; margin: 0; }
+    .ad-badges.done .ad-datebtn .ic { width: 15px; height: 15px; }
     .ad-head { padding: 0 var(--gx-r) 0 var(--gx-l); }
+    /* The badges lead the sheet and the name sits under them, so the
+       spacing runs the other way: nothing above the badges, and the
+       title carries the gap. See openActDetail(). */
     .ad-title {
       font-family: var(--serif); font-size: 29px; font-weight: 600;
       letter-spacing: -.014em; line-height: 1.1; color: var(--label);
+      margin-top: 14px;
     }
-    .ad-badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
-    .ad-hero {
-      width: 100%; max-height: 240px; object-fit: cover;
-      margin-top: 18px; border-radius: var(--r-card);
-      box-shadow: var(--shadow-md);
+    .ad-title.centered { text-align: center; }
+    .ad-badges { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    /* A single piece of media leads the sheet. The wrapper carries the
+       size and the corner so the .media-tile inside can stay generic. */
+    .ad-hero-wrap {
+      margin-top: 18px; height: 240px; border-radius: var(--r-card);
+      overflow: hidden; box-shadow: var(--shadow-md); cursor: pointer;
     }
+    .ad-hero { border-radius: inherit; }
     .ad-photos {
       display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
       margin: 16px 0 0;
     }
-    .ad-photos img {
-      width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px;
-      background: var(--fill-3);
+    .ad-photo-cell {
+      aspect-ratio: 1; border-radius: 8px; overflow: hidden;
+      background: var(--fill-3); cursor: pointer;
     }
     .ad-section { margin: 22px var(--gx-r) 0 var(--gx-l); }
     .ad-section-label {

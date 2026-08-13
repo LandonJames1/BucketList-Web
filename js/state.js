@@ -15,7 +15,11 @@ let currentUser=null;
 let curTab='home',curPage='home',backTab='lists';
 
 let curListId=null,editingListId=null,editingActId=null;
-let completingId=null,curFilter='all',curView='list',upPhotos=[],coverPhoto='';
+/* upMedia is the working list of {type,url,poster} entries for whichever
+   sheet is open — see js/media.js. It was upPhotos, an array of base64
+   data URLs, before photos moved into Supabase Storage and video existed
+   at all. */
+let curFilter='all',curView='list',upMedia=[],coverPhoto='';
 let globalMapFilter='all',globalMapObj=null,globalMapHomeBounds=null;
 let detMapHomeBounds=null;
 

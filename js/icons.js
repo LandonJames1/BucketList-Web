@@ -53,6 +53,10 @@ const ICON_PATHS = {
   /* ---- Content ---- */
   'photo':    '<rect x="3" y="5" width="18" height="14" rx="3"/><circle cx="8.6" cy="10" r="1.7" fill="currentColor" stroke="none"/><path d="M3.8 17.6 9 12.6a2 2 0 0 1 2.8 0l6.2 6"/>',
   'camera':   '<path d="M3 9a3 3 0 0 1 3-3h1.4l1.2-2h6.8l1.2 2H19a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z"/><circle cx="12.5" cy="13" r="3.6"/>',
+  /* Solid triangle: it sits on top of a photo, where a stroked outline
+     disappears into whatever is behind it. */
+  'play':     '<path d="M8.4 5.6 19 12 8.4 18.4z" fill="currentColor" stroke="none"/>',
+  'video':    '<rect x="2.6" y="6" width="13.4" height="12" rx="3"/><path d="M16 11.2l4.2-2.7a.8.8 0 0 1 1.2.7v5.6a.8.8 0 0 1-1.2.7L16 12.8z"/>',
   'trash':    '<path d="M4.4 6.6h15.2M9.4 6.6V4.9a1.4 1.4 0 0 1 1.4-1.4h2.4a1.4 1.4 0 0 1 1.4 1.4v1.7"/><path d="M6.4 6.6l.9 12.5a1.8 1.8 0 0 0 1.8 1.7h5.8a1.8 1.8 0 0 0 1.8-1.7l.9-12.5"/><path d="M10 10.4v6.2M14 10.4v6.2"/>',
   'pencil':   '<path d="M4 20l.9-4.3L15.6 5a2.1 2.1 0 0 1 3 0l1.4 1.4a2.1 2.1 0 0 1 0 3L9.3 20.1z"/><path d="M14 6.8 17.2 10"/>',
   'link':     '<path d="M10.2 13.8a3.9 3.9 0 0 0 5.5 0l3-3a3.9 3.9 0 1 0-5.5-5.5l-1.4 1.4"/><path d="M13.8 10.2a3.9 3.9 0 0 0-5.5 0l-3 3a3.9 3.9 0 1 0 5.5 5.5l1.4-1.4"/>',
@@ -78,7 +82,7 @@ const ICON_PATHS = {
 /* Icons whose art is already solid and must not be given a stroke. */
 const ICON_FILLED = new Set([
   'home-fill', 'stack-fill', 'compass-fill', 'summit-fill',
-  'check-circle', 'ellipsis',
+  'check-circle', 'ellipsis', 'play',
 ]);
 
 function icon(name, cls) {

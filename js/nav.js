@@ -37,10 +37,17 @@ function nav(page,listId){
   curTab=PAGE_TAB[page]||curTab;
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===curTab));
 
-  /* Tear down any live map on the way out. A GL map holds a WebGL
-     context, and browsers cap how many can exist at once. */
-  if(page!=='globalmap') destroyGlobalMap();
-  if(page!=='detail')    destroyDetailMap();
+  /* The per-collection map is torn down on the way out: it is rebuilt
+     for whichever collection you open next anyway, so keeping it costs a
+     WebGL context for nothing.
+
+     The Map tab's globe is deliberately kept. Rebuilding it meant
+     re-downloading the style, re-fetching tiles and re-spinning the
+     globe every single visit, which is most of what made that tab feel
+     slow. That leaves at most two live contexts — the cap browsers
+     enforce is an order of magnitude above that. renderGlobalMap()
+     resizes it on the way back in, since a hidden container measures 0. */
+  if(page!=='detail') destroyDetailMap();
 
   window.scrollTo(0,0);
   updateNavbar();
@@ -54,15 +61,74 @@ function nav(page,listId){
   if(page==='me')        renderMe();
 }
 
-/* Tab bar taps. Tapping the tab you are already on inside a pushed
-   screen pops back to that tab's root, as iOS does. */
+/* Which screen is the root of each tab, and the order they sit in the
+   tab bar — which is the order js/gestures.js swipes through. */
+const TAB_ROOT={home:'home',lists:'lists',map:'globalmap',me:'me'};
+const TAB_ORDER=['home','lists','map','me'];
+
+/* Tab bar taps.
+
+   A tab button must ALWAYS go somewhere. The old guard bailed out
+   whenever the tapped tab was already the selected one, which is wrong
+   for every screen pushed on top of a tab: standing on Up Next or
+   Accomplished (both owned by Home) and pressing Home did nothing at
+   all, because the Home tab was already lit. It only special-cased
+   'detail'. The rule is simply "if you are not on the tab's root, go to
+   it" — which is also what iOS does.
+
+   An open sheet is dismissed first. The tab bar sits above the scrim and
+   stays tappable, so without this a tap navigated the screen underneath
+   and left the sheet floating over the wrong page. */
 function selectTab(tab){
-  if(tab===curTab&&curPage!=='detail')return;
-  const root={home:'home',lists:'lists',map:'globalmap',me:'me'}[tab];
+  const root=TAB_ROOT[tab];
+  if(!root)return;
+  dismissOverlays();
+  if(curPage===root){
+    /* Already home: scroll back to the top, the other thing iOS does. */
+    window.scrollTo({top:0,behavior:'smooth'});
+    return;
+  }
   curTab=tab;
   nav(root);
 }
 function goBack(){ nav(backTab==='lists'?'lists':backTab); }
+
+/* Close anything floating above the page. Used by the tab bar, so a
+   navigation can never leave a sheet stranded over a screen it has
+   nothing to do with. */
+function dismissOverlays(){
+  clearSheetReturns();
+  document.querySelectorAll('.modal-overlay.open').forEach(m=>m.classList.remove('open'));
+  const as=$('actionSheet'),lb=$('lightbox');
+  if(as&&as.classList.contains('open')) closeActionSheet();
+  if(lb&&lb.classList.contains('open')) closeLightbox();
+  setBodyScrollLock(false);
+}
+
+/* ==============================================================
+   REFRESHING AFTER A CHANGE
+
+   The single place that answers "something was written, what needs to
+   be redrawn?". Every mutation ends here.
+
+   It defaults to whatever screen is actually showing, which is the
+   whole point: the old code passed a source string around by hand and
+   several paths hardcoded 'detail'. Completing or editing an activity
+   from Up Next therefore re-rendered the collection screen — a screen
+   the user was not even looking at — and the row they had just changed
+   sat there unchanged until a manual reload. Pass a source only to
+   force a specific screen; leave it off and the current one is right.
+   ============================================================== */
+function refreshAfterChange(src){
+  const p=src||curPage;
+  if(p==='home')           return renderHome();
+  if(p==='upnext')         return renderUpNext();
+  if(p==='done')           return renderDone();
+  if(p==='lists')          return renderCollections();
+  if(p==='globalmap')      return renderGlobalMap();
+  if(p==='me')             return renderMe();
+  return renderDetail();
+}
 
 /* ==============================================================
    NAVIGATION BAR

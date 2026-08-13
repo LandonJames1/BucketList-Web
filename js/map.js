@@ -353,6 +353,18 @@ function setLayerData(map,state,acts){
   if(state.ensureClusterIcons) setTimeout(state.ensureClusterIcons,60);
 }
 
+/* Resolves when a map has finished loading its style — or immediately
+   if it already has. Lets the data query and the map build run at the
+   same time instead of one after the other. */
+function mapLoaded(map){
+  return new Promise(resolve=>{
+    if(map.loaded()&&map.getStyle())return resolve();
+    map.once('load',resolve);
+  });
+}
+
+const hasGeo=a=>a.locationLat&&a.locationLng;
+
 function boundsOf(acts){
   const b=new maplibregl.LngLatBounds();
   acts.forEach(a=>b.extend([parseFloat(a.locationLng),parseFloat(a.locationLat)]));
@@ -375,9 +387,13 @@ async function renderGlobalMap(){
     </div>
     <div class="map-count" id="globalMapCount"></div>`;
 
+  /* The map survives navigation now (see destroyGlobalMap), so coming
+     back to the tab is a resize and a data swap rather than a rebuild —
+     no style download, no tile fetch, no globe spin-up. Rebuilding it
+     every visit was most of what made this tab feel slow. */
   if(globalMapObj){
+    globalMapObj.resize();
     updateGlobalMapMarkers();
-    setTimeout(()=>globalMapObj&&globalMapObj.resize(),120);
     return;
   }
 
@@ -388,12 +404,21 @@ async function renderGlobalMap(){
     return;
   }
 
-  const allActs=await fetchAllActivities();
-  const geo=allActs.filter(a=>a.locationLat&&a.locationLng);
-  if(!geo.length){
-    mapEl.innerHTML=emptyMapHTML();
-    $('globalMapBar').innerHTML='';$('globalMapActions').innerHTML='';
-    globalMapObj=null;return;
+  /* Start the query WITHOUT waiting on it, so the style, the tiles and
+     the Supabase round trip all happen at once. The old code awaited the
+     data first and only then began building the map, which made the two
+     costs add up instead of overlap. */
+  const dataP=fetchAllActivities();
+
+  /* When rows are already cached the answer is free, so an empty map can
+     be shown without building a globe only to tear it down again. */
+  if(cacheWarm()){
+    const known=(await dataP).filter(hasGeo);
+    if(!known.length){
+      mapEl.innerHTML=emptyMapHTML();
+      $('globalMapBar').innerHTML='';$('globalMapActions').innerHTML='';
+      return;
+    }
   }
 
   mapEl.innerHTML='';
@@ -413,16 +438,27 @@ async function renderGlobalMap(){
   /* Floor the zoom so you can never pull back past a full-screen globe. */
   globalMapObj.setMinZoom(globeFillZoom());
 
-  globalMapObj.on('load',()=>{
-    attachActivityLayer(globalMapObj,geo,globalMapState);
-    globalMapHomeBounds=boundsOf(geo);
-    fitGlobal(false);
-    updateGlobalMapMarkers();
-  });
-
   $('globalMapActions').innerHTML=
     `<button class="map-fab" onclick="zoomGlobe()" aria-label="View the whole globe">${icon('compass')}</button>`+
     `<button class="map-fab" onclick="fitGlobal(true)" aria-label="Fit all places">${icon('locate')}</button>`;
+
+  const built=globalMapObj;
+  const [acts]=await Promise.all([dataP,mapLoaded(built)]);
+  /* The user can leave the tab while this is in flight, which tears the
+     map down underneath us. */
+  if(globalMapObj!==built||!built.getStyle())return;
+
+  const geo=acts.filter(hasGeo);
+  if(!geo.length){
+    destroyGlobalMap();
+    mapEl.innerHTML=emptyMapHTML();
+    $('globalMapBar').innerHTML='';$('globalMapActions').innerHTML='';
+    return;
+  }
+  attachActivityLayer(built,geo,globalMapState);
+  globalMapHomeBounds=boundsOf(geo);
+  fitGlobal(false);
+  updateGlobalMapMarkers(geo);
 }
 
 /* The zoom at which the globe just fills the viewport.
@@ -436,6 +472,10 @@ const GLOBE_PX_AT_Z0=211;
 function globeFillZoom(){
   const el=$('globalMapContainer');
   const short=Math.min(el.clientWidth||window.innerWidth,el.clientHeight||window.innerHeight);
+  /* The map now outlives its screen, so this can be asked while the Map
+     tab is hidden and the container measures 0 — which would make the
+     log2 -Infinity and pin minZoom there. */
+  if(!(short>0)) return 0;
   return Math.log2((short*0.94)/GLOBE_PX_AT_Z0);
 }
 
@@ -462,10 +502,13 @@ function zoomGlobe(){
 
 /* Filtering swaps the source data; the clustering worker re-runs on the
    new subset without any refetch of the map itself. */
-async function updateGlobalMapMarkers(){
+async function updateGlobalMapMarkers(preloaded){
   if(!globalMapObj||!globalMapObj.getSource('acts'))return;
-  const all=await fetchAllActivities();
-  let acts=all.filter(a=>a.locationLat&&a.locationLng);
+  /* renderGlobalMap already has the rows when it calls this on first
+     build. It used to refetch them here — every single activity,
+     including their photos — purely to filter a list it was holding. */
+  const all=preloaded||await fetchAllActivities();
+  let acts=all.filter(hasGeo);
   if(globalMapFilter==='pending')   acts=acts.filter(a=>!a.completed);
   if(globalMapFilter==='completed') acts=acts.filter(a=>a.completed);
   setLayerData(globalMapObj,globalMapState,acts);
@@ -495,7 +538,7 @@ let detMapState={};
 
 function renderMap(acts){
   const mapEl=$('mapContainer');
-  const geo=acts.filter(a=>a.locationLat&&a.locationLng);
+  const geo=acts.filter(hasGeo);
 
   destroyDetailMap();
   if(!geo.length){mapEl.innerHTML=emptyMapHTML();return;}
@@ -544,7 +587,10 @@ function destroyDetailMap(){
 
 /* Both maps must re-measure when the viewport changes. */
 function refreshMapZoomFloors(){
-  if(globalMapObj){
+  /* Only the map on screen is worth re-measuring; the global map is kept
+     alive while hidden, where its container has no size. It is resized on
+     the way back in by renderGlobalMap(). */
+  if(globalMapObj&&curPage==='globalmap'){
     globalMapObj.resize();
     /* The fill zoom depends on the container's short side, so a rotate
        changes it. */

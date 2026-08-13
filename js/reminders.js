@@ -50,6 +50,156 @@ function dueReminders(acts){
 }
 
 /* ==============================================================
+   THE REMINDER SHEET
+
+   Opened from the Remind me row in the activity sheet, on top of it.
+
+   It only *stages*: Done copies the two fields into the hidden inputs
+   the activity sheet already carries, and nothing reaches the database
+   until the activity itself is saved. That is what lets Cancel on
+   either sheet leave everything exactly as it was — and it is why the
+   row label is read back from those hidden inputs rather than from any
+   state of its own.
+
+   The row was a date field plus a textarea sitting at the bottom of
+   "More options". Two controls for one optional idea made the
+   disclosure look like the main event, and neither of them said whether
+   a reminder was actually set without reading the date.
+   ============================================================== */
+
+/* "None" until one is set, then "Scheduled". */
+function updateRemindRow(){
+  const val=$('aRemind');
+  const label=$('aRemindValue');
+  if(!val||!label)return;
+  const set=!!val.value;
+  label.textContent=set?'Scheduled':'None';
+  label.classList.toggle('is-set',set);
+}
+
+/* ==============================================================
+   COUNTING BACK FROM THE TARGET
+
+   "1 month before" is the way people actually think about this — the
+   permit window, not a date they have to work out themselves.
+
+   **These are offered only when the activity has a specific target
+   date.** That restriction is the whole design. A preset band resolves
+   to the end of its window: "This year" is 31 December. Counting back a
+   week from that would file a reminder on Christmas Eve — for every
+   activity set to "This year", all firing on the same day, none of them
+   on a date the user chose or would connect to the thing. The offsets
+   need a real date to be relative to, so without one they are not shown
+   and the sheet says why.
+
+   Only the *resolved* date is stored, in `remind_at`, so nothing about
+   the schema changes and the delivery paths in this file need no idea
+   this feature exists. Reopening the sheet infers which offset was used
+   by matching the stored date back against the target — so a relative
+   choice still reads as relative next time, without a column to hold it.
+   ============================================================== */
+const REMIND_OFFSETS=[
+  {id:'1w', label:'1 week before',   days:7},
+  {id:'2w', label:'2 weeks before',  days:14},
+  {id:'1m', label:'1 month before',  months:1},
+  {id:'3m', label:'3 months before', months:3},
+  {id:'6m', label:'6 months before', months:6},
+  {id:'1y', label:'1 year before',   years:1},
+];
+
+/* target ISO date minus one offset, as an ISO date. */
+function remindOffsetDate(targetISO,id){
+  const o=REMIND_OFFSETS.find(x=>x.id===id);
+  if(!o||!isCustomDate(targetISO))return '';
+  const d=new Date(targetISO+'T00:00:00');
+  if(o.days)   d.setDate(d.getDate()-o.days);
+  if(o.months) d.setMonth(d.getMonth()-o.months);
+  if(o.years)  d.setFullYear(d.getFullYear()-o.years);
+  const p=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+}
+
+/* The target the activity sheet currently holds — which is the staged
+   value, not what is in the database, so choosing a date and setting a
+   relative reminder in the same visit works. */
+function currentTargetDate(){
+  try{ return readTargetDate()||''; }catch(e){ return ''; }
+}
+
+/* Which offset a stored date corresponds to, or '' if it is just a date. */
+function inferRemindMode(stored,target){
+  if(!stored||!isCustomDate(target))return 'date';
+  const hit=REMIND_OFFSETS.find(o=>remindOffsetDate(target,o.id)===stored);
+  return hit?hit.id:'date';
+}
+
+function openRemindSheet(){
+  const target=currentTargetDate();
+  const relative=isCustomDate(target);
+  const stored=$('aRemind').value||'';
+
+  /* Rebuild the menu each time: whether the offsets belong there depends
+     on a target date the user may have just changed. */
+  const sel=$('rmMode');
+  sel.innerHTML='<option value="date">On a specific date\u2026</option>'+
+    (relative?REMIND_OFFSETS.map(o=>
+      `<option value="${o.id}">${esc(o.label)}</option>`).join(''):'');
+  $('rmNoRelative').style.display=relative?'none':'';
+
+  sel.value=inferRemindMode(stored,target);
+  $('rmDate').value=stored;
+  $('rmNote').value=$('aRemindNote').value||'';
+  /* Nothing to remove until there is something set. */
+  $('rmClearWrap').style.display=stored?'':'none';
+  onRemindModeChange();
+  openModal('remindSheet');
+}
+
+/* Show the date field for an explicit date, or what the chosen offset
+   works out to. */
+function onRemindModeChange(){
+  const mode=$('rmMode').value;
+  const target=currentTargetDate();
+  const isDate=mode==='date';
+  $('rmDateRow').style.display=isDate?'':'none';
+  const note=$('rmResolved');
+  if(isDate){ note.style.display='none'; return; }
+
+  const d=remindOffsetDate(target,mode);
+  note.style.display='';
+  if(!d){ note.textContent=''; note.style.display='none'; return; }
+  /* Say the date out loud. A relative choice that silently resolves to
+     something already past is the surprise worth heading off. */
+  note.textContent=daysUntil(d)<0
+    ? `That works out to ${fmtDate(d)} — already past, so this will show up straight away.`
+    : `That works out to ${fmtDate(d)}.`;
+}
+
+function saveRemindSheet(){
+  const mode=$('rmMode').value;
+  const d=mode==='date'
+    ? $('rmDate').value
+    : remindOffsetDate(currentTargetDate(),mode);
+  if(!d){
+    /* Done with no date is the same as not wanting one. */
+    clearRemindSheet();
+    return;
+  }
+  $('aRemind').value=d;
+  /* A note with no date has nothing to fire it — mirrors saveActivity(). */
+  $('aRemindNote').value=$('rmNote').value.trim();
+  updateRemindRow();
+  closeModal('remindSheet');
+}
+
+function clearRemindSheet(){
+  $('aRemind').value='';
+  $('aRemindNote').value='';
+  updateRemindRow();
+  closeModal('remindSheet');
+}
+
+/* ==============================================================
    THE HOME BANNER — the part that always works
    ============================================================== */
 function renderHomeReminders(acts,lists){
@@ -62,9 +212,9 @@ function renderHomeReminders(acts,lists){
   $('homeReminders').innerHTML=due.map(a=>{
     const l=lists.find(c=>c.id===a.listId);
     const when=a.remindAt===todayISO()?'Today':fmtDate(a.remindAt);
-    return `<div class="rem-row">
+    return `<div class="rem-row" onclick="openActDetail('${a.id}')">
       <span class="rem-icon">${icon('clock')}</span>
-      <button class="rem-main" onclick="openActDetail('${a.id}')">
+      <button class="rem-main">
         <span class="rem-name">${esc(a.name)}</span>
         ${a.remindNote?`<span class="rem-note">${esc(a.remindNote)}</span>`:''}
         <span class="rem-meta">${esc(when)}${l?' · '+esc(l.name):''}</span>
@@ -77,13 +227,14 @@ function renderHomeReminders(acts,lists){
 
 async function clearReminder(id){
   const{error}=await sb.from('Activities').update({remind_at:null}).eq('id',id);
+  invalidateActivities();
   if(error){
     console.error('clearReminder:',error);
     showToast(error.message||'Couldn’t clear that.');
     return;
   }
   showToast('Reminder cleared');
-  if(curPage==='home') renderHome(); else if(curPage==='detail') renderDetail();
+  refreshAfterChange();
 }
 
 /* ==============================================================

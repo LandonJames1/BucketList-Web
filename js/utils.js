@@ -10,13 +10,16 @@ function esc(s){const d=document.createElement('div');d.textContent=s==null?'':s
 function cap(s){return s.charAt(0).toUpperCase()+s.slice(1);}
 function todayISO(){return new Date().toISOString().split('T')[0];}
 
-function fmtDate(s){
+function fmtDate(s,withYear){
   const d=new Date(s+'T00:00:00');
   const now=new Date();
   const opts={month:'short',day:'numeric'};
-  /* Only spell out the year when it isn't the current one — the way
-     iOS date labels do. */
-  if(d.getFullYear()!==now.getFullYear()) opts.year='numeric';
+  /* Only spell out the year when it isn't the current one — the way iOS
+     date labels do. `withYear` overrides that for the places where the
+     date is the record rather than a hint: an accomplishment is
+     something you look back on, and "Jul 19" with no year is no use a
+     year later. */
+  if(withYear||d.getFullYear()!==now.getFullYear()) opts.year='numeric';
   return d.toLocaleDateString('en-US',opts);
 }
 
@@ -87,6 +90,13 @@ function targetBand(a){
   return{id:'y5',label:'5+ years',order:5};
 }
 
+/* Bands that describe a range or an open end rather than a deadline.
+   Their resolved date exists only so they can be sorted and grouped; it
+   is not a date the user chose, so it must never be counted down to.
+   The labels match the group headers targetBand() hands the Up Next
+   screen, so a row reads the same as the section it sits under. */
+const OPEN_BANDS={'In 2-3 Years':'2–3 years','In 5+ Years':'5+ years'};
+
 /* The end of the window each preset band describes. */
 function presetTargetDate(v){
   const now=new Date();
@@ -120,6 +130,15 @@ function dateInfo(a){
     return{label:fmtDate(a.targetDate),
            cls:d/365.25>2?'relaxed':months>6?'moderate':'soon'};
   }
+
+  /* Some bands name a range or an open end rather than a deadline, and
+     counting down to one states something the user never said. "In 5+
+     Years" has no cutoff at all — it resolves to +5 years only so it can
+     be sorted and bucketed — so rendering it as "5 years left" invents a
+     date. These bands show themselves instead. The ones below (This
+     Month / This Year / Next Year) do close on a real date, so they keep
+     their countdown. */
+  if(OPEN_BANDS[a.targetDate]) return{label:OPEN_BANDS[a.targetDate],cls:'relaxed'};
 
   const now=new Date();
   const target=presetTargetDate(a.targetDate);
@@ -161,13 +180,17 @@ function priorityRank(a){
    edge of the row and a capsule in the meta line — and differ only by
    hue:
 
-     high    terracotta   --tint
-     medium  violet       --purple
-     low     slate blue   --slate
+     high    terracotta        --tint
+     medium  saturated purple  --violet
+     low     blue-teal         --slate
 
    They are three steps of one scale, so they have to look like it.
    Marking only some of them, or giving each a different shape, read as
    three unrelated things rather than a ranking.
+
+   The lower two are separated on chroma as well as hue. They were a
+   muted violet and a muted slate, which at capsule size read as the
+   same colour twice — see the palette note in base.css.
 
    None of the three is red. Red is the deadline badge that sits beside
    them: an overdue activity and an important one are different claims
