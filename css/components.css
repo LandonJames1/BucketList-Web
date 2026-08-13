@@ -169,6 +169,39 @@
       font-family: var(--mono); font-size: 10px; font-weight: 600;
       letter-spacing: .1em; text-transform: uppercase;
     }
+
+    /* ---- A collection's name, as a chip ----
+       Used by every row that could have come from ANY list: Home's Up
+       Next, the Up Next screen, search results, and the duplicate
+       sheet. Those rows already carry two capsules — priority and the
+       deadline — so an unadorned run of mono text between them read as
+       a fragment of the badge beside it.
+
+       This existed by accident before it existed on purpose: the span
+       was called .up-list, the same name as the card containing it, so
+       it inherited that card's ring and radius with no padding at all
+       and the text sat flush against the outline. Same trap as
+       .dupe-list. Naming it for what it is fixes both.
+
+       Its typography is self-contained rather than inherited, so it
+       looks identical in a 10px mono meta line and in the 12px sans
+       one on the duplicate sheet.
+
+       `display: block` rather than inline-flex: it is always a flex
+       item, and text-overflow: ellipsis does not apply to an
+       inline-flex box — which is the whole point of the thing, since
+       it is the only part of a meta line allowed to shrink. */
+    .list-chip {
+      flex: 0 1 auto;                 /* the one shrinkable child */
+      display: block; min-width: 0; max-width: 100%;
+      height: 19px; line-height: 18px; padding: 0 8px;
+      border-radius: 9.5px;
+      box-shadow: inset 0 0 0 .5px var(--separator-solid);
+      font-family: var(--mono); font-size: 9px; font-weight: 500;
+      letter-spacing: .09em; text-transform: uppercase;
+      color: var(--tint);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
     /* One shape for all three priorities; only the hue changes. They are
        three steps of a single scale, so giving each a different shape
        made them read as three unrelated things instead of a ranking.

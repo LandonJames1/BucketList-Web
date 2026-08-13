@@ -21,7 +21,6 @@ function paintStaticIcons(){
 
   set('coverZoneIcon',icon('photo','ic-lg'));
   set('photoZoneIcon',icon('camera','ic-sm'));
-  set('actMoreChevron',icon('chevron-down'));
   set('compMoreChevron',icon('chevron-down'));
   set('bulkAddIcon',icon('plus','ic-sm'));
 
@@ -33,14 +32,20 @@ function paintStaticIcons(){
   set('iosCloseIcon',icon('x'));
   set('iosShareGlyph',icon('share'));
 
-  set('homeComposerIcon',icon('plus'));
+  /* The composer's left slot is the screenshot button, not a
+     decorative plus — see the note in index.html. */
+  set('homeComposerShot',icon('camera'));
   set('homeComposerGo',icon('chevron-right'));
+  set('searchFieldIcon',icon('search'));
+  set('searchClearIcon',icon('x','ic-xs'));
   set('actListChevron',icon('chevron-right'));
   set('aRemindChevron',icon('chevron-right'));
   set('meNotifyIcon',icon('clock'));
   set('listPickerSearchIcon',icon('search'));
   set('listPickerNewIcon',icon('plus'));
   set('meInstallChevron',icon('chevron-right'));
+  set('meShareIcon',icon('link'));
+  set('meShareChevron',icon('chevron-right'));
   const lead=document.querySelector('#page-me .li-blue');
   if(lead) lead.innerHTML=icon('share');
 }
@@ -100,6 +105,16 @@ function hasStoredSession(){ return !!readStoredSession(); }
 
 (async()=>{
   paintStaticIcons();
+  /* Before the session is restored, not after: a link can be shared in
+     — or an invite to a shared list opened — while signed out, and the
+     query string has to be captured and stripped before anything else
+     can navigate away from it. showApp() picks both back up once there
+     is a user. */
+  readSharedInput();
+  readPendingJoin();
+  /* The offline banner reflects the queue, which may be non-empty from
+     a previous session, so it is painted before anything can render. */
+  updateSyncUI();
   const user=await restoreSession();
   if(user){
     currentUser=user;

@@ -10,7 +10,8 @@
 
 /* Which tab each screen belongs to, so the right tab stays lit while
    a pushed screen is showing. */
-const PAGE_TAB={home:'home',lists:'lists',globalmap:'map',me:'me',detail:'lists',upnext:'home',done:'home'};
+const PAGE_TAB={home:'home',lists:'lists',globalmap:'map',me:'me',detail:'lists',
+  upnext:'home',done:'home',search:'home'};
 
 function nav(page,listId){
   const prev=curPage;
@@ -23,7 +24,7 @@ function nav(page,listId){
   if(page==='detail'&&prev!=='detail') curView='list';
 
   /* Pushed screens slide in from the right; switching tabs cross-fades. */
-  const PUSHED=['detail','upnext','done'];
+  const PUSHED=['detail','upnext','done','search'];
   const pushing = PUSHED.includes(page) && !PUSHED.includes(prev);
   if(pushing) backTab=curTab;
 
@@ -55,6 +56,7 @@ function nav(page,listId){
   if(page==='home')      renderHome();
   if(page==='upnext')    renderUpNext();
   if(page==='done')      renderDone();
+  if(page==='search')    renderSearch();
   if(page==='lists')     renderCollections();
   if(page==='detail')    renderDetail();
   if(page==='globalmap') renderGlobalMap();
@@ -124,6 +126,10 @@ function refreshAfterChange(src){
   if(p==='home')           return renderHome();
   if(p==='upnext')         return renderUpNext();
   if(p==='done')           return renderDone();
+  /* Only the results, not the whole screen — rebuilding the field
+     would drop focus, which on this screen means losing the caret
+     mid-query every time a row is ticked off. */
+  if(p==='search')         return renderSearchResults();
   if(p==='lists')          return renderCollections();
   if(p==='globalmap')      return renderGlobalMap();
   if(p==='me')             return renderMe();
@@ -142,17 +148,30 @@ function updateNavbar(){
   /* The primary "add" action is the floating button, not a bar button —
      the top-right corner is the worst place on a phone to put the thing
      people press most. The bar keeps only Back and the overflow menu. */
+  /* Search is reachable from every screen that lists things, because
+     "where did I put that" is a question you have on all of them.
+     Not from the Map (its chrome floats over the globe and already has
+     a filter) or from You (nothing there to search). */
+  const searchBtn=`<button class="navbtn disc ghost" onclick="openSearch()"
+      aria-label="Search everything">${icon('search')}</button>`;
+
   let fabFn=null,fabLabel='';
   if(curPage==='home'){
     /* No floating button here: the composer near the top of the page is
        already the add affordance, and two of them competing on one
        screen is one too many. */
-    title.textContent='Bucket List';
+    title.textContent='Someday We’ll Die';
+    right.innerHTML=searchBtn;
   } else if(curPage==='lists'){
     title.textContent='Your Lists';
+    right.innerHTML=searchBtn;
     fabFn=openNewList;fabLabel='New list';
   } else if(curPage==='upnext'||curPage==='done'){
     title.textContent=curPage==='upnext'?'Up Next':'Accomplished';
+    left.innerHTML=`<button class="navbtn back" onclick="nav('home')">${icon('chevron-left')}<span>Home</span></button>`;
+    right.innerHTML=searchBtn;
+  } else if(curPage==='search'){
+    title.textContent='Search';
     left.innerHTML=`<button class="navbtn back" onclick="nav('home')">${icon('chevron-left')}<span>Home</span></button>`;
   } else if(curPage==='detail'){
     left.innerHTML=`<button class="navbtn back" onclick="goBack()">${icon('chevron-left')}<span>Lists</span></button>`;

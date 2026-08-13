@@ -133,16 +133,14 @@ function pwaShowInstallHelp(){
 
 /* ==============================================================
    OFFLINE STATE
-   Supabase reads fail silently when offline, so say so out loud.
-   ============================================================== */
-function pwaUpdateOnlineState(){
-  const bar=$('offlineBar');
-  if(!bar)return;
-  bar.classList.toggle('show',!navigator.onLine);
-}
-window.addEventListener('online',()=>{
-  pwaUpdateOnlineState();
-  /* Re-render whatever screen is showing now that data can load. */
-  if(typeof nav==='function'&&currentUser) nav(curPage,curListId);
-});
-window.addEventListener('offline',pwaUpdateOnlineState);
+
+   The banner's text is owned by js/offline.js now, because what it
+   should say depends on how many writes are waiting — "offline" and
+   "offline with three unsaved changes" are different situations and
+   the second one is the one people need told.
+
+   The refresh on reconnect is not here either: auth.js listens for
+   `online` and calls revalidate(), which flushes the queue first and
+   then redraws the current screen. The old handler re-ran nav(),
+   which also reset the scroll position out from under the user. */
+function pwaUpdateOnlineState(){ updateSyncUI(); }

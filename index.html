@@ -6,7 +6,7 @@
        area when installed; base.css reads the env(safe-area-inset-*) values
        back out so nothing actually sits under the hardware. -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Bucket List</title>
+  <title>Someday We&rsquo;ll Die</title>
   <meta name="description" content="Curate and track the experiences that define your life." />
 
   <!-- ===== PWA ===== -->
@@ -20,7 +20,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-  <meta name="apple-mobile-web-app-title" content="Bucket List" />
+  <meta name="apple-mobile-web-app-title" content="Someday We’ll Die" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png" />
   <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png" />
@@ -47,7 +47,8 @@
        layout      nav bar, tab bar, page system (the app shell)
        components  grouped lists, segmented controls, buttons, badges
        auth / home / collections / detail / me   one file per screen
-       modals / map / bulk / pwa          per-feature components
+       modals / map / bulk / import / search / dupes / sharing / pwa
+                   per-feature components
        responsive  breakpoint overrides, must load last -->
   <link rel="stylesheet" href="css/base.css" />
   <link rel="stylesheet" href="css/layout.css" />
@@ -60,6 +61,10 @@
   <link rel="stylesheet" href="css/modals.css" />
   <link rel="stylesheet" href="css/map.css" />
   <link rel="stylesheet" href="css/bulk.css" />
+  <link rel="stylesheet" href="css/import.css" />
+  <link rel="stylesheet" href="css/search.css" />
+  <link rel="stylesheet" href="css/dupes.css" />
+  <link rel="stylesheet" href="css/sharing.css" />
   <link rel="stylesheet" href="css/pwa.css" />
   <link rel="stylesheet" href="css/responsive.css" />
 </head>
@@ -77,7 +82,7 @@
   <div class="auth-inner">
     <div class="auth-brand">
       <img class="auth-mark" src="icons/icon-192.png" alt="" />
-      <div class="auth-eyebrow">Bucket List</div>
+      <div class="auth-eyebrow">Someday We&rsquo;ll Die</div>
       <h1 class="auth-title" id="authTitle">Welcome Back</h1>
       <p class="auth-sub" id="authSub">Sign in to reach your lists.</p>
     </div>
@@ -129,14 +134,23 @@
 
   <div class="home-progress" id="homeProgress"></div>
 
-  <!-- Quick add with no collection context: the list is chosen on submit. -->
+  <!-- Quick add with no collection context: the list is chosen on submit.
+       Three ways in on one row: type it, paste a link (the go glyph
+       changes to say so), or screenshot it. The camera replaces the old
+       decorative plus rather than being added beside it — the
+       placeholder and the go arrow already say "add". -->
   <div class="home-composer" id="homeComposer">
-    <span class="composer-icon" id="homeComposerIcon"></span>
+    <button class="home-composer-shot" id="homeComposerShot" onclick="pickScreenshot()"
+            aria-label="Add from a screenshot"></button>
     <input id="homeComposerInput" type="text" placeholder="Add something you want to do"
            maxlength="100" autocomplete="off" autocapitalize="sentences" enterkeyhint="done"
            oninput="onHomeComposerInput()" onkeydown="onHomeComposerKey(event)" />
     <button class="home-composer-go" onclick="homeQuickAdd()" aria-label="Add" id="homeComposerGo"></button>
   </div>
+  <!-- Shared by the composer's camera and by "read a screenshot
+       instead" on a failed link import. Lives outside any .fg, so it
+       needs no [hidden] override. -->
+  <input type="file" id="shotInput" accept="image/*" hidden onchange="handleScreenshot(event)" />
 
   <div class="home-sec-head">
     <h2>Up next</h2>
@@ -172,6 +186,32 @@
     <h1><em>Accomplished</em></h1>
   </div>
   <div id="doneBody"></div>
+</div>
+
+<!-- ===== SEARCH — pushed on top of Home =====
+     One field over every activity in every list, plus the lists
+     themselves. Matching is fuzzy, so a misremembered name still
+     finds the row. The field is part of the page rather than the nav
+     bar so it can pin under the bar and stay reachable while the
+     results scroll. See search.js. -->
+<div class="page page-pushed" id="page-search">
+  <div class="srch-bar">
+    <div class="searchfield" id="searchField">
+      <span id="searchFieldIcon"></span>
+      <input id="searchInput" type="search" placeholder="Search everything"
+             autocomplete="off" autocorrect="off" spellcheck="false"
+             inputmode="search" enterkeyhint="search" oninput="onSearchInput()" />
+      <button class="search-clear" onclick="clearSearch()" aria-label="Clear search">
+        <span id="searchClearIcon"></span>
+      </button>
+    </div>
+    <div class="seg" id="searchFilter">
+      <button data-f="all" class="active" onclick="setSearchFilter('all')">All</button>
+      <button data-f="pending" onclick="setSearchFilter('pending')">To Do</button>
+      <button data-f="completed" onclick="setSearchFilter('completed')">Done</button>
+    </div>
+  </div>
+  <div id="searchResults"></div>
 </div>
 
 <!-- ===== LISTS TAB (root) ===== -->
@@ -227,6 +267,11 @@
       <span class="row-leading li-blue"></span>
       <span class="row-body"><span class="row-title">Add to Home Screen</span></span>
       <span class="row-chevron" id="meInstallChevron"></span>
+    </button>
+    <button class="row tappable has-leading" onclick="openShareSetup()">
+      <span class="row-leading li-purple" id="meShareIcon"></span>
+      <span class="row-body"><span class="row-title">Share links into the app</span></span>
+      <span class="row-chevron" id="meShareChevron"></span>
     </button>
   </div>
 
@@ -297,48 +342,57 @@
       <button class="navbtn strong" id="actSaveBtn" onclick="saveActivity()">Add</button>
     </div>
     <div class="sheet-body">
-      <!-- The name is the only required field; everything else is
-           tucked behind the disclosure below. -->
-      <div class="fg">
+      <!-- The name is what the whole sheet is about, so it is set apart
+           rather than being the first of six identical boxes: the serif
+           face is how an activity name is set everywhere else in the
+           app, so the field states what it holds. -->
+      <div class="fg fg-hero">
+        <label>Activity</label>
         <input id="aName" placeholder="What do you want to do?" maxlength="100"
                autocapitalize="sentences" enterkeyhint="done" />
       </div>
-      <!-- Which list this belongs to. Hidden when there are no lists;
-           populated by renderActListPicker(). -->
-      <div class="fg" id="actListRow" style="display:none">
-        <label>List</label>
-        <button class="row tappable" style="border-radius:var(--r-row);box-shadow:var(--shadow-sm),0 0 0 .5px var(--separator)">
-          <span class="row-body"><span class="row-title" id="actListName"></span></span>
-          <span class="row-chevron" id="actListChevron"></span>
-        </button>
+
+      <!-- Target date and list share a line. Both are one-tap choices
+           with a short value, and with no disclosure left to hide
+           anything behind, two full-width rows for them pushed the rest
+           of the sheet off the screen. The List half hides itself when
+           there are no lists (renderActListPicker) and the date then
+           spans the line on its own — which is why this is a flex row
+           and not a two-column grid. -->
+      <div class="fg-pair">
+        <div class="fg">
+          <label>Target Date</label>
+          <!-- Every activity gets a real horizon. "Someday" and "No date"
+               are gone: they were the default, so most things landed in a
+               bucket that never came up in Up Next.
+               openEditAct() re-adds a legacy value as an option when an
+               existing activity still carries one, so editing an old row
+               cannot silently rewrite its date. -->
+          <select id="aDate" onchange="onTargetDateChange()">
+            <option value="This Month">This month</option>
+            <option value="This Year">This year</option>
+            <option value="Next Year">Next year</option>
+            <option value="In 2-3 Years">2&ndash;3 years</option>
+            <option value="In 5+ Years">5+ years</option>
+            <option value="__custom__">Specific date&hellip;</option>
+          </select>
+        </div>
+        <!-- Which list this belongs to. Hidden when there are no lists;
+             populated by renderActListPicker(). -->
+        <div class="fg" id="actListRow" style="display:none">
+          <label>List</label>
+          <button type="button" class="picker-btn" id="actListBtn">
+            <span class="picker-btn-value" id="actListName"></span>
+            <span class="picker-btn-chevron" id="actListChevron"></span>
+          </button>
+        </div>
       </div>
 
-      <div class="fg">
-        <div class="fg-stack">
-          <div class="fg-inline">
-            <span>Target Date</span>
-            <!-- Every activity gets a real horizon. "Someday" and "No date"
-                 are gone: they were the default, so most things landed in a
-                 bucket that never came up in Up Next.
-                 openEditAct() re-adds a legacy value as an option when an
-                 existing activity still carries one, so editing an old row
-                 cannot silently rewrite its date. -->
-            <select id="aDate" onchange="onTargetDateChange()">
-              <option value="This Month">This month</option>
-              <option value="This Year">This year</option>
-              <option value="Next Year">Next year</option>
-              <option value="In 2-3 Years">2&ndash;3 years</option>
-              <option value="In 5+ Years">5+ years</option>
-              <option value="__custom__">On a specific date&hellip;</option>
-            </select>
-          </div>
-          <!-- Revealed only when "specific date" is chosen. The ISO value
-               goes into the same target_date column as the presets. -->
-          <div class="fg-inline" id="aDateCustomRow" style="display:none">
-            <span>Date</span>
-            <input type="date" id="aDateCustom" />
-          </div>
-        </div>
+      <!-- Revealed only when "specific date" is chosen. The ISO value
+           goes into the same target_date column as the presets. -->
+      <div class="fg" id="aDateCustomRow" style="display:none">
+        <label>Date</label>
+        <input type="date" id="aDateCustom" />
       </div>
 
       <!-- Priority is its own field rather than a row in the stack above,
@@ -399,19 +453,18 @@
         <input type="hidden" id="aRemind" /><input type="hidden" id="aRemindNote" />
       </div>
 
-      <button class="more-toggle" id="actMoreToggle" aria-expanded="false" onclick="toggleMoreFields()">
-        <span id="actMoreLabel">More options</span><span id="actMoreChevron"></span>
-      </button>
-
-      <div class="more-fields" id="actMore">
-        <div class="fg">
-          <label>Notes<span class="opt"> optional</span></label>
-          <textarea id="aDesc" placeholder="Why is this on your list?" autocapitalize="sentences"></textarea>
-        </div>
-        <div class="fg">
-          <label>Links<span class="opt"> optional</span></label>
-          <div class="chip-field" id="aLinksWrap" onclick="$('aLinkInput').focus()"></div>
-        </div>
+      <!-- Notes and links are shown outright rather than behind a
+           "More options" disclosure. Once the date and list share a
+           line the sheet is short enough to hold everything, and a
+           collapsed field is one most people never open — the same
+           reason Location was pulled out of the disclosure before it. -->
+      <div class="fg">
+        <label>Notes<span class="opt"> optional</span></label>
+        <textarea id="aDesc" placeholder="Why is this on your list?" autocapitalize="sentences"></textarea>
+      </div>
+      <div class="fg">
+        <label>Links<span class="opt"> optional</span></label>
+        <div class="chip-field" id="aLinksWrap" onclick="$('aLinkInput').focus()"></div>
       </div>
     </div>
   </div>
@@ -579,6 +632,116 @@
   </div>
 </div>
 
+<!-- Import from a shared link. Nothing here writes: it reads the link,
+     then hands off to the activity sheet or the bulk sheet, both of
+     which still need a Save. See share.js. -->
+<div class="modal-overlay" id="importSheet">
+  <div class="modal">
+    <div class="sheet-grabber"></div>
+    <div class="sheet-bar">
+      <button class="navbtn" onclick="closeModal('importSheet')">Cancel</button>
+      <div class="sheet-title" id="importTitle">Add from link</div>
+      <button class="navbtn strong" id="importAddBtn" onclick="confirmImport()">Add</button>
+    </div>
+    <div class="imp-source" id="importSource"></div>
+    <div class="sheet-body" id="importBody"></div>
+  </div>
+</div>
+
+<!-- How to get the app into the iOS share sheet. iOS does not
+     support the Web Share Target API, so a Shortcut is the mechanism —
+     all the app can do is explain it and hand over the URL. -->
+<div class="modal-overlay" id="shareSetupSheet">
+  <div class="modal">
+    <div class="sheet-grabber"></div>
+    <div class="sheet-bar">
+      <button class="navbtn" onclick="closeModal('shareSetupSheet')">Done</button>
+      <div class="sheet-title">Share into the app</div>
+      <span class="navbtn" style="pointer-events:none;opacity:0">Done</span>
+    </div>
+    <div class="sheet-body">
+      <p class="shr-lead">iPhone doesn’t let a web app add itself to the share
+        sheet. A Shortcut does the same job, and you only build it once.</p>
+      <ol class="shr-steps">
+        <li>Open <strong>Shortcuts</strong> and make a new shortcut.</li>
+        <li>Turn on <strong>Show in Share Sheet</strong>, and set it to accept
+          <strong>URLs</strong>.</li>
+        <li>Add the <strong>Open URLs</strong> action.</li>
+        <li>Set the URL to the address below with <strong>Shortcut Input</strong>
+          added on the end.</li>
+        <li>Name it <strong>Add to Someday We&rsquo;ll Die</strong>.</li>
+      </ol>
+      <div class="shr-url" id="shareSetupUrl"></div>
+      <button class="btn btn-tinted btn-block" onclick="copyShareTargetUrl()">Copy address</button>
+      <p class="shr-note">Sharing a TikTok, X post, or web page from anywhere on
+        the phone will then open Someday We&rsquo;ll Die with it filled in. Instagram blocks
+        apps from reading its posts, so those ask you to paste the caption.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Possible duplicate. Nothing is ever merged or deleted here: the
+     sheet shows what already exists and the user decides, with "Add"
+     as the primary. It opens on top of the activity sheet, so like
+     remindSheet it needs a z-index above the other overlays — equal
+     z-index falls back to document order. Matching is fuzzy; see
+     dupes.js and fuzzy.js. -->
+<div class="modal-overlay" id="dupeSheet">
+  <div class="modal">
+    <div class="sheet-grabber"></div>
+    <div class="sheet-bar">
+      <button class="navbtn" onclick="dupeCancelBatch()">Cancel</button>
+      <div class="sheet-title" id="dupeTitle">Looks familiar</div>
+      <span class="navbtn" style="pointer-events:none;opacity:0">Cancel</span>
+    </div>
+    <div class="sheet-body">
+      <p class="dupe-lead" id="dupeLead"></p>
+      <div class="dupe-list" id="dupeList"></div>
+      <div class="sheet-actions">
+        <button class="btn btn-tinted btn-block" onclick="dupeAddAnyway()"
+                id="dupeAddBtn"><span id="dupeAddLabel">Add it anyway</span></button>
+        <!-- Only ever shown for a batch: with a single item, "skip the
+             duplicates" and "cancel" are the same thing. -->
+        <div id="dupeSkipWrap" style="display:none">
+          <button class="btn btn-gray btn-block" id="dupeSkipBtn"
+                  onclick="dupeSkipDuplicates()"><span id="dupeSkipLabel"></span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Share a list. Invites are a link with a one-time code rather than
+     a username lookup: nothing has to be known about the other person
+     in advance, no user directory has to be exposed, and the link
+     travels by whatever the two people already use. See sharing.js. -->
+<div class="modal-overlay" id="shareListSheet">
+  <div class="modal">
+    <div class="sheet-grabber"></div>
+    <div class="sheet-bar">
+      <button class="navbtn" onclick="closeModal('shareListSheet')">Done</button>
+      <div class="sheet-title">Share List</div>
+      <span class="navbtn" style="pointer-events:none;opacity:0">Done</span>
+    </div>
+    <div class="sheet-body" id="shareListBody"></div>
+  </div>
+</div>
+
+<!-- Accepting an invite. Shown when the app is opened on a ?join= link,
+     after sign-in — the code is held from boot exactly like a shared
+     link is, because it can arrive while signed out. -->
+<div class="modal-overlay" id="joinSheet">
+  <div class="modal">
+    <div class="sheet-grabber"></div>
+    <div class="sheet-bar">
+      <button class="navbtn" onclick="declineJoin()">Not now</button>
+      <div class="sheet-title">Shared List</div>
+      <span class="navbtn" style="pointer-events:none;opacity:0">Not now</span>
+    </div>
+    <div class="sheet-body" id="joinBody"></div>
+  </div>
+</div>
+
 <!-- Activity detail -->
 <div class="modal-overlay" id="actDetailSheet">
   <div class="modal barless">
@@ -618,7 +781,7 @@
 <div class="install-bar" id="pwaInstall">
   <img src="icons/icon-192.png" alt="" />
   <div class="install-bar-text">
-    <div class="install-bar-title">Install Bucket List</div>
+    <div class="install-bar-title">Install Someday We&rsquo;ll Die</div>
     <div class="install-bar-sub">Full screen, works offline.</div>
   </div>
   <button class="btn btn-filled" onclick="pwaInstall()">Install</button>
@@ -631,7 +794,7 @@
     <img src="icons/icon-192.png" alt="" />
     <div>
       <div class="ios-install-title">Add to Home Screen</div>
-      <div class="ios-install-sub">Run Bucket List full screen, like a real app.</div>
+      <div class="ios-install-sub">Run Someday We&rsquo;ll Die full screen, like a real app.</div>
     </div>
   </div>
   <div class="ios-install-steps">
@@ -655,11 +818,16 @@
      which is what lets the inline onclick="..." handlers above find them.
      Rough dependency order: config -> state -> helpers -> screens -> boot. -->
 
-<!-- Foundation -->
+<!-- Foundation.
+     fuzzy before dupes and search, which both build on it; offline
+     before api, which reads through its snapshot when the network
+     cannot answer. -->
 <script src="js/config.js"></script>
 <script src="js/state.js"></script>
 <script src="js/utils.js"></script>
+<script src="js/fuzzy.js"></script>
 <script src="js/icons.js"></script>
+<script src="js/offline.js"></script>
 <script src="js/api.js"></script>
 
 <!-- Shell + shared UI -->
@@ -673,8 +841,13 @@
 <script src="js/location.js"></script>
 <script src="js/media.js"></script>
 
-<!-- Screens and features -->
+<!-- Screens and features.
+     dupes before every screen that adds an activity — all of them
+     route their add through dupeGuard(). -->
+<script src="js/dupes.js"></script>
+<script src="js/sharing.js"></script>
 <script src="js/home.js"></script>
+<script src="js/search.js"></script>
 <script src="js/upnext.js"></script>
 <script src="js/done.js"></script>
 <script src="js/reminders.js"></script>
@@ -684,6 +857,9 @@
 <script src="js/me.js"></script>
 <script src="js/bulk.js"></script>
 <script src="js/map.js"></script>
+<!-- Sharing a link in. After bulk.js and activities.js: it hands drafts
+     to both of them. -->
+<script src="js/share.js"></script>
 
 <!-- PWA: service worker, install prompts, offline state -->
 <script src="js/pwa.js"></script>

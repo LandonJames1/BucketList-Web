@@ -1,0 +1,80 @@
+/* ==============================================================
+   SHARING — the invite sheet and the join sheet.
+
+   Both borrow .shr-lead / .shr-url / .shr-note from import.css,
+   which the iOS Shortcut setup screen already defines: the two
+   screens are the same kind of thing (here is a link, here is what
+   to do with it) and should not look like two different apps.
+   ============================================================== */
+
+/* ---- Who is in the list ---- */
+.shr-people-head{
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--label-3);
+  padding: 26px 0 8px;
+}
+
+/* An initial, not an avatar image. There is nowhere to upload one and
+   a generic silhouette repeated down a list says less than a letter
+   does. */
+.shr-avatar{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.shr-role{
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--label-3);
+}
+
+.shr-remove{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px; height: 28px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--fill-3);
+  color: var(--label-2);
+}
+.shr-remove:active{ background: var(--fill-1); }
+
+/* ---- The join sheet ----
+   The list being joined is the one thing this screen is about, so it
+   gets the card and the serif rather than sitting in a run of body
+   copy. */
+.join-card{
+  margin: 18px 0 4px;
+  padding: 20px 18px;
+  border-radius: var(--r-card);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-sm), 0 0 0 .5px var(--separator);
+  text-align: center;
+}
+.join-name{
+  font-family: var(--serif);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--label);
+}
+.join-count{
+  margin-top: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--label-3);
+}

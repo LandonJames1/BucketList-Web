@@ -9,7 +9,7 @@
    installs pick the new build up instead of serving a stale one.
    ============================================================== */
 
-const CACHE_VERSION = 'v27';
+const CACHE_VERSION = 'v35';
 const SHELL_CACHE = `bucketlist-shell-${CACHE_VERSION}`;
 const VENDOR_CACHE = `bucketlist-vendor-${CACHE_VERSION}`;
 const IMAGE_CACHE = `bucketlist-images-${CACHE_VERSION}`;
@@ -32,12 +32,18 @@ const SHELL_ASSETS = [
   './css/modals.css',
   './css/map.css',
   './css/bulk.css',
+  './css/import.css',
+  './css/search.css',
+  './css/dupes.css',
+  './css/sharing.css',
   './css/pwa.css',
   './css/responsive.css',
   './js/config.js',
   './js/state.js',
   './js/utils.js',
+  './js/fuzzy.js',
   './js/icons.js',
+  './js/offline.js',
   './js/api.js',
   './js/auth.js',
   './js/nav.js',
@@ -46,7 +52,10 @@ const SHELL_ASSETS = [
   './js/links.js',
   './js/location.js',
   './js/media.js',
+  './js/dupes.js',
+  './js/sharing.js',
   './js/home.js',
+  './js/search.js',
   './js/upnext.js',
   './js/done.js',
   './js/reminders.js',
@@ -56,6 +65,7 @@ const SHELL_ASSETS = [
   './js/me.js',
   './js/bulk.js',
   './js/map.js',
+  './js/share.js',
   './js/pwa.js',
   './js/main.js',
   './icons/icon-192.png',

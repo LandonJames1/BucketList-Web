@@ -33,7 +33,7 @@ async function renderHome(){
 function renderHomeGreeting(){
   $('homeEyebrow').textContent=new Date().toLocaleDateString('en-US',
     {weekday:'long',month:'long',day:'numeric'});
-  $('homeGreeting').innerHTML='Do It <em>All</em>';
+  $('homeGreeting').innerHTML='Someday We&rsquo;ll <em>Die</em>';
 }
 
 /* ---- Progress ring ----
@@ -103,7 +103,7 @@ function upNextRowHTML(a,lists,source){
       <span class="up-name">${esc(a.name)}</span>
       <span class="up-meta">
         ${priTagHTML(a)}
-        <span class="up-list">${esc(l?l.name:'')}</span>
+        <span class="list-chip">${esc(l?l.name:'')}</span>
         ${di.label?`<span class="badge b-${di.cls}">${esc(di.label)}</span>`:''}
       </span>
     </button>
@@ -166,13 +166,48 @@ function onHomeComposerKey(e){
 }
 function onHomeComposerInput(){
   const c=$('homeComposer');
-  if(c) c.classList.toggle('has-text',!!$('homeComposerInput').value.trim());
+  if(!c)return;
+  const v=$('homeComposerInput').value.trim();
+  c.classList.toggle('has-text',!!v);
+  /* Pasting a link is the other way an activity gets created, and the
+     composer is already the add control on this screen — so it changes
+     what it does rather than Home growing a second button for it.
+     See js/share.js. */
+  const isLink=looksLikeUrl(v);
+  c.classList.toggle('is-link',isLink);
+  const go=$('homeComposerGo');
+  if(go){
+    /* The glyph is the whole tell that this will do something else —
+       there is no room for a label beside a 100-character field. */
+    go.innerHTML=icon(isLink?'link':'chevron-right');
+    go.setAttribute('aria-label',isLink?'Import link':'Add');
+  }
 }
 
+/* Home's composer hands off to the full activity sheet rather than
+   filing the activity on the spot.
+
+   It used to insert immediately with nothing but a name, which made it
+   the fastest path in the app and also the one that produced the worst
+   rows: no list chosen, no priority, and — the real damage — no target
+   date, so the thing sank to the bottom of Up Next and was never seen
+   again. An idea captured into a hole is not captured.
+
+   The in-list composer still inserts on Return (see quickAddActivity),
+   because standing inside a collection has already answered the only
+   question this sheet exists to ask. Home has no collection context, so
+   it has to ask anyway — and once a sheet is opening, showing the rest
+   of the fields costs nothing.
+
+   openNewActivity() seeds the sheet: DEFAULT_TARGET_DATE, medium
+   priority, and the List row so the destination is a visible choice
+   rather than a guess. saveActivity() runs the duplicate check, so
+   there is none here. */
 async function homeQuickAdd(){
   const input=$('homeComposerInput');
   const name=input.value.trim();
   if(!name){shakeEl(input);return;}
+  if(looksLikeUrl(name)){ importFromComposer(); return; }
 
   const lists=await fetchCollections();
   if(!lists.length){
@@ -183,31 +218,12 @@ async function homeQuickAdd(){
     input.value='';onHomeComposerInput();
     return;
   }
-  if(lists.length===1){
-    await addActivityToList(lists[0].id,name);
-    return;
-  }
-  openListPicker({
-    subtitle:name,
-    onPick:id=>addActivityToList(id,name),
-  });
-}
 
-async function addActivityToList(listId,name){
-  const input=$('homeComposerInput');
-  if(input){input.disabled=true;}
-  const{error}=await sb.from('Activities').insert({name,collection_id:listId});
-  if(input){input.disabled=false;}
-  if(error){
-    console.error('addActivityToList:',error);
-    showToast(error.message||'Couldn’t add that.');
-    return;
-  }
-  invalidateActivities();
-  await updateCollectionStats(listId);
-  if(input){input.value='';onHomeComposerInput();input.focus();}
-  showToast('Added');
-  refreshAfterChange();
+  /* Cleared before the sheet opens: the name lives in the sheet now,
+     and leaving it behind here means it is sitting in two places and
+     can be filed twice. */
+  input.value='';onHomeComposerInput();
+  openNewActivity(name);
 }
 
 /* Completing from Home has no curListId, so the stats update needs the
@@ -217,14 +233,12 @@ async function toggleCompleteFrom(source,id){
   if(!a)return;
   /* Completing goes through the completion sheet — see toggleComplete. */
   if(!a.completed){ openCompletedDate(id,source); return; }
-  const{error}=await sb.from('Activities')
-    .update({date_completed: null}).eq('id',id);
+  const{error}=await dbUpdate('Activities',{date_completed:null},{id});
   if(error){
     console.error('toggleCompleteFrom:',error);
     showToast(error.message||'Couldn’t update that.');
     return;
   }
-  invalidateActivities();
   await updateCollectionStats(a.listId);
   refreshAfterChange(source);
 }

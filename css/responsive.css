@@ -24,7 +24,7 @@
          the ~40px left over it renders as "TR…", which is worse than
          absent. Priority and the deadline are the two things you are
          actually scanning for, and the collection is one tap away. */
-      .up-meta .up-list { display: none; }
+      .up-meta .list-chip, .act-meta .list-chip { display: none; }
       .large-title h1 { font-size: 33px; }
       .home-greeting h1 { font-size: 32px; }
       .coll-grid { gap: 11px; }
@@ -49,20 +49,55 @@
     and the cards keep their intended size.
     ============================================================ */
     @media (min-width: 700px) {
-      :root { --gutter: 24px; }
+      :root { --gutter: 24px; --content-max: 640px; }
 
-      /* Centre the chrome's contents on the same column as the pages. */
-      .navbar, .tabbar { justify-content: center; }
-      .navbar { padding-left: 0; padding-right: 0; }
-      .navbar-side { max-width: 300px; }
-      .navbar-side:first-of-type { padding-left: 16px; }
-      .navbar-side.right { padding-right: 16px; }
-      .tabbar { gap: 40px; }
+      /* ---- ONE COLUMN, and the cap goes on the PAGE ----
+         Every screen-level container insets itself by a gutter, but
+         they are split between two mechanisms: some use
+         `margin: 0 var(--gx-r) 0 var(--gx-l)` (the detail banner, the
+         Up Next card, the activity group) and some use the matching
+         `padding` (the search bar, the shelves, the section heads).
+         On a phone the two are indistinguishable.
+
+         Capping the CHILDREN — which is what this used to do, with
+         `.page > * { max-width: 640px; margin-inline: auto }` — breaks
+         that equivalence: `margin-inline: auto` overrides a margin
+         gutter but leaves a padding one alone. Margin-based containers
+         then ran a full gutter wider on each side than padding-based
+         ones, so on the collection screen the banner visibly bled past
+         the search field and list beneath it.
+
+         Capping the PAGE instead keeps both mechanisms honest: every
+         child is measured from the same edge and applies the same
+         gutter to it, so they line up by construction and nothing has
+         to be special-cased. Add a container with either mechanism and
+         it lands in the right place.
+
+         .page-map is excluded — it is full bleed by design and its map
+         is positioned against it. */
+      .page:not(.page-map) {
+        max-width: calc(var(--content-max) + var(--gutter) * 2);
+        margin-inline: auto;
+      }
+
+      /* The bars are `position: fixed`, so they span the viewport and
+         inherit nothing from the column. Padding them to the content's
+         own left edge is what puts the back button over the banner's
+         corner rather than floating somewhere inboard of it.
+
+         (100% - content-max) / 2 IS that edge: the page is
+         content-max + 2 gutters wide and centred, so its content
+         starts one gutter inside it. Floored at the phone inset so a
+         700px window does not go negative. */
+      .navbar {
+        padding-left:  max(calc(14px + var(--safe-left)),  calc((100% - var(--content-max)) / 2));
+        padding-right: max(calc(14px + var(--safe-right)), calc((100% - var(--content-max)) / 2));
+      }
+      /* The tab bar stays centred and compact rather than spreading
+         four tabs across the full column — a tab bar is chrome, and
+         stretched to 640px the targets drift away from the thumb. */
+      .tabbar { justify-content: center; gap: 40px; }
       .tab { flex: 0 0 90px; }
-
-      .page > * { max-width: 640px; margin-inline: auto; }
-      /* The map is the one thing that should use the whole width. */
-      #globalMapContainer { max-width: none; }
 
       .coll-grid { grid-template-columns: repeat(3, 1fr); }
       .acts-grid { grid-template-columns: repeat(3, 1fr); }
@@ -78,7 +113,9 @@
 
     @media (min-width: 1000px) {
       .coll-grid { grid-template-columns: repeat(4, 1fr); }
-      .page > * { max-width: 720px; }
+      /* Widening the column is one token — the page cap and both bar
+         paddings above are all derived from it. */
+      :root { --content-max: 720px; }
     }
 
 /*  ============================================================

@@ -112,7 +112,7 @@ async function renderActivitiesList(){
        straight in. */
     listEl.innerHTML=`<div class="empty" style="padding-bottom:24px">${icon('sparkle')}
         <div class="empty-title">Nothing here yet</div>
-        <div class="empty-sub">Add your first activity below — a name is all you need.</div>
+        <div class="empty-sub">Add your first activity below — the name is the only part you have to fill in.</div>
       </div>
       <div class="act-group">${composerHTML()}</div>`;
     focusComposer();
@@ -195,13 +195,18 @@ function activityCardHTML(a){
    keeps the caret in place, so a run of ideas goes in without
    opening anything.
    ============================================================== */
+/* No "Details" button any more: Return opens the activity sheet, so it
+   and the button did exactly the same thing, and two controls doing one
+   job on a single row is clutter. The chevron says the field leads
+   somewhere rather than filing on the spot. */
 function composerHTML(){
   return `<div class="composer" id="composer">
     <span class="composer-icon">${icon('plus')}</span>
     <input id="composerInput" type="text" placeholder="Add an activity" maxlength="100"
-           autocomplete="off" autocapitalize="sentences" enterkeyhint="done"
+           autocomplete="off" autocapitalize="sentences" enterkeyhint="next"
            oninput="onComposerInput()" onkeydown="onComposerKey(event)"/>
-    <button class="composer-more" onclick="openNewActivityFromComposer()">Details</button>
+    <button class="composer-go" onclick="quickAddActivity()"
+            aria-label="Add">${icon('chevron-right')}</button>
   </div>`;
 }
 function onComposerInput(){

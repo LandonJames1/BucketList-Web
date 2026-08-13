@@ -84,6 +84,26 @@
       box-shadow: var(--shadow-md), 0 0 0 1.5px var(--tint);
     }
     .home-composer .composer-icon { color: var(--tint); }
+
+    /* The left slot is a real control rather than a decorative plus:
+       a screenshot is the other way an idea gets in, and Home is where
+       capture lives. It replaces the plus rather than joining it —
+       the placeholder and the go arrow already say "add", and a third
+       add affordance on one row is one too many.
+
+       Sized to 44px so it is a genuine tap target, but drawn quietly:
+       it is the secondary route in, and it must not compete with the
+       field it sits beside. */
+    .home-composer-shot {
+      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; margin-left: -8px;
+      border-radius: 50%;
+      background: none; color: var(--tint);
+      transition: transform .2s var(--ease), background .2s;
+    }
+    .home-composer-shot:active { transform: scale(.9); background: var(--tint-soft); }
+    .home-composer-shot .ic { width: 22px; height: 22px; }
     .home-composer input {
       flex: 1; min-width: 0; align-self: stretch;
       border: none; outline: none; background: none;
@@ -158,11 +178,10 @@
          steps as you read down it. */
       min-height: 19px;
     }
-    .up-meta .up-list {
-      color: var(--tint);
-      flex: 0 1 auto; min-width: 0;              /* the only part that gives */
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
+    /* The collection's name is .list-chip (components.css) — it used to
+       be .up-list, colliding with the card that wraps these rows and
+       silently inheriting its ring with no padding. Nothing here should
+       ever reuse a container's class name for a span inside it. */
     .up-meta .tag,
     .up-meta .badge { flex: 0 0 auto; }          /* these hold their size */
     /* Compact enough to sit inline with 10px mono without dominating it. */

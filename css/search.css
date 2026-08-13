@@ -1,0 +1,84 @@
+/* ==============================================================
+   SEARCH — the "search everything" screen pushed from Home.
+
+   It borrows .act-row and .group wholesale from components.css and
+   detail.css; what lives here is only the field that sits above them
+   and the section headings between them.
+   ============================================================== */
+
+/* The field pins itself under the nav bar. Results are long and the
+   query is what you are editing, so scrolling it away means scrolling
+   back up to change a letter. */
+.srch-bar{
+  position: sticky;
+  top: var(--chrome-top);
+  z-index: 5;
+  padding: 8px var(--gx-r) 10px var(--gx-l);
+  background: var(--bg);
+  /* The rows scroll under it, so it needs a ground of its own or the
+     text of a passing row shows through the gap beside the field. */
+  box-shadow: 0 8px 12px -10px rgba(60,48,32,.10);
+}
+
+.srch-bar .searchfield{ margin-bottom: 10px; }
+.srch-bar .seg{ width: 100%; }
+
+/* ---- Section headings ---- */
+.srch-sec-head{
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--label-3);
+  padding: 20px var(--gx-r) 8px var(--gx-l);
+}
+
+/* ---- A collection hit ----
+   The cover makes a list recognisable at a glance, the same reason
+   the list picker carries one. */
+.srch-list-cover{
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex: none;
+  filter: brightness(.9) saturate(.92);
+}
+
+/* The list a result came from — the one piece of information a global
+   result needs that a per-collection one does not — is drawn with
+   .list-chip from components.css, shared with Home's Up Next rows and
+   the duplicate sheet so the three cannot drift apart. */
+
+/* ---- Matched text ----
+   A wash rather than a highlighter block: at 15px inside a dense row
+   a solid fill reads as a redaction. The weight bump is what actually
+   carries it. */
+.srch-sec-head + .act-group mark,
+.srch-sec-head + .group mark,
+#searchResults mark{
+  background: var(--tint-soft);
+  color: inherit;
+  font-weight: 600;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
+.srch-more{
+  padding: 16px var(--gx-r) 4px var(--gx-l);
+  font-size: 13px;
+  color: var(--label-3);
+  text-align: center;
+}
+
+/* Below 375px the list name is dropped rather than truncated to a
+   stub — the same call the Up Next rows make. Two characters of a
+   collection name tell the reader nothing and cost the deadline
+   badge its room. */
+@media (max-width: 374px){
+  /* The chip is hidden with the Up Next one, in responsive.css. The
+     separator before it has to go with it, or the row opens with a
+     stray dot. */
+  .list-chip + .dot{ display: none; }
+}

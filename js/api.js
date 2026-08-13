@@ -6,8 +6,14 @@
 
 function mapCollection(row){
   try{
-    return{id:row.id,name:row.name,description:row.description||'',cover:row.cover_image||'',createdAt:row.created_at};
-  }catch(e){console.error('mapCollection error:',e,row);return{id:row.id,name:row.name||'',description:'',cover:'',createdAt:row.created_at};}
+    return{id:row.id,name:row.name,description:row.description||'',cover:row.cover_image||'',
+      /* Who owns it. Only meaningful once shared lists are enabled, but
+         carried always so the UI never has to branch on whether the
+         field exists — a collection you do not own is one you can leave
+         but not delete, and cannot re-share. See js/sharing.js. */
+      ownerId:row.user_id||null,
+      createdAt:row.created_at};
+  }catch(e){console.error('mapCollection error:',e,row);return{id:row.id,name:row.name||'',description:'',cover:'',ownerId:null,createdAt:row.created_at};}
 }
 /* The `photos` column is a JSON array holding two shapes at once, and
    code that reads it must tolerate both:
@@ -120,16 +126,68 @@ function invalidateAll(){invalidateCollections();invalidateActivities();}
    skip the spinner, so a cached screen never flashes empty. */
 function cacheWarm(){return !!(_cCollections&&_cActivities);}
 
+/* Synchronous reads of whatever is already in hand.
+
+   Duplicate detection sits in the middle of the quick-add path, and
+   the whole point of that path is that it costs nothing — so it can
+   read what is cached but must never wait on a fetch. An empty array
+   here means "nothing to compare against", which degrades to the old
+   behaviour of adding without checking rather than to a stall. */
+function cachedActivities(){return _cActivities||[];}
+function cachedCollections(){return _cCollections||[];}
+
+/* ==============================================================
+   READING A TABLE
+
+   One helper behind both fetches, because both need the same
+   three-way answer:
+
+     online + ok      use it, and write it to the offline snapshot
+     offline          read the snapshot; never touch the network, so
+                      a tunnel costs nothing rather than a timeout
+     online + failed  fall back to the snapshot too. A request that
+                      fails while navigator.onLine is true is the
+                      common case on a bad connection, and it is
+                      exactly when showing the last known rows beats
+                      showing none.
+
+   `null` means "genuinely nothing to show" and stays uncached, so
+   the next call retries — rule 3 of the cache, unchanged.
+   ============================================================== */
+async function readRows(kind,table,build){
+  if(navigator.onLine){
+    try{
+      const{data,error}=await build(sb.from(table).select('*'));
+      if(error)throw error;
+      /* Persisting is not allowed to hold up the render. */
+      snapshotSave(kind,data);
+      return data;
+    }catch(e){
+      console.warn('readRows('+table+') falling back to cache:',e);
+    }
+  }
+  const rows=await snapshotLoad(kind);
+  if(rows) return rows;
+  return null;
+}
+
 async function fetchCollections(){
   if(!currentUser)return[];
   if(_cCollections)return _cCollections;
   if(_pCollections)return _pCollections;
   _pCollections=(async()=>{
-    const{data,error}=await sb.from('Collections').select('*')
-      .eq('user_id',currentUser.id).order('created_at',{ascending:false});
+    const rows=await readRows('collections','Collections',q=>
+      /* With shared lists enabled the visible set is owned + joined,
+         and RLS is what decides it — so the client-side owner filter
+         has to come off or a shared list is fetched and then thrown
+         away. Without sharing, the filter stays exactly as it was.
+         Neither is a security boundary; RLS is. See js/sharing.js. */
+      sharingReady()
+        ? q.order('created_at',{ascending:false})
+        : q.eq('user_id',currentUser.id).order('created_at',{ascending:false}));
     _pCollections=null;
-    if(error){console.error('fetchCollections:',error);return[];}
-    _cCollections=data.map(mapCollection);
+    if(!rows) return [];
+    _cCollections=rows.map(mapCollection);
     return _cCollections;
   })();
   return _pCollections;
@@ -141,11 +199,14 @@ async function fetchAllActivities(collections){
   _pActivities=(async()=>{
     const cols=collections||await fetchCollections();
     if(!cols.length){_pActivities=null;_cActivities=[];return _cActivities;}
-    const{data,error}=await sb.from('Activities').select('*')
-      .in('collection_id',cols.map(c=>c.id));
+    const ids=cols.map(c=>c.id);
+    const rows=await readRows('activities','Activities',q=>q.in('collection_id',ids));
     _pActivities=null;
-    if(error){console.error('fetchAllActivities:',error);return[];}
-    _cActivities=data.map(mapActivity);
+    if(!rows) return [];
+    /* The snapshot can outlive a collection being deleted or left, so
+       filter it to what is actually visible now rather than trusting
+       it wholesale. */
+    _cActivities=rows.filter(r=>ids.includes(r.collection_id)).map(mapActivity);
     return _cActivities;
   })();
   return _pActivities;
@@ -159,33 +220,44 @@ async function fetchActivitiesFor(collectionId){
             .sort((a,b)=>new Date(a.createdAt)-new Date(b.createdAt));
 }
 
+/* Both of these go through the shared cache rather than straight to a
+   single-row query. That is what makes them work offline — the cache
+   is snapshot-backed — and it also means a row created offline, which
+   exists nowhere but the snapshot, is findable by id like any other. */
 async function fetchActivity(id){
-  if(_cActivities){
-    const hit=_cActivities.find(a=>a.id===id);
-    if(hit)return hit;
-  }
+  const all=await fetchAllActivities();
+  const hit=all.find(a=>a.id===id);
+  if(hit)return hit;
+  if(!navigator.onLine)return null;
   const{data,error}=await sb.from('Activities').select('*').eq('id',id).single();
-  if(error){console.error('fetchActivity:',error);return null;}
+  if(error){console.warn('fetchActivity:',error);return null;}
   return mapActivity(data);
 }
 async function fetchCollection(id){
-  if(_cCollections){
-    const hit=_cCollections.find(c=>c.id===id);
-    if(hit)return hit;
-  }
+  const all=await fetchCollections();
+  const hit=all.find(c=>c.id===id);
+  if(hit)return hit;
+  if(!navigator.onLine)return null;
   const{data,error}=await sb.from('Collections').select('*').eq('id',id).single();
-  if(error){console.error('fetchCollection:',error);return null;}
+  if(error){console.warn('fetchCollection:',error);return null;}
   return mapCollection(data);
 }
 
 async function updateCollectionStats(collectionId){
   if(!collectionId)return;
+  /* These two columns are written but never read — every count the UI
+     shows is derived client-side from the fetched activities. So when
+     there is no network there is nothing to gain by queueing a write
+     of them: it would put a round trip's worth of ops in the sync
+     queue for a number nothing displays, and they are recomputed from
+     scratch the next time this runs online anyway. */
+  if(!navigator.onLine)return;
   /* Stats are derived from rows that have just changed, so read past the
      cache — the caller invalidates around this, but the order in which
      they do it is not something this function should depend on. */
   const{data,error}=await sb.from('Activities').select('id,date_completed')
     .eq('collection_id',collectionId);
-  if(error){console.error('updateCollectionStats:',error);return;}
+  if(error){console.warn('updateCollectionStats:',error);return;}
   await sb.from('Collections').update({
     number_activities:data.length,
     activites_completed:data.filter(r=>r.date_completed).length
@@ -195,9 +267,15 @@ async function updateCollectionStats(collectionId){
 
 /* Drop everything and pull fresh. Used when the app comes back to the
    foreground or the network returns, where another device may have
-   written since the cache was filled. */
+   written since the cache was filled.
+
+   Anything queued goes FIRST. Refetching with unsent writes still in
+   the queue would overwrite the local snapshot with server rows that
+   do not have them yet — the user would watch their offline additions
+   vanish, and then reappear a moment later when the flush landed. */
 async function revalidate(){
   if(!currentUser)return;
+  await flushQueue();
   invalidateAll();
   const lists=await fetchCollections();
   await fetchAllActivities(lists);

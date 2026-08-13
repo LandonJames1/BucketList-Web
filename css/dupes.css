@@ -1,0 +1,128 @@
+/* ==============================================================
+   DUPLICATES — the "you may already have this" sheet.
+
+   Deliberately quiet. It interrupts the fastest path in the app, so
+   it has to read as a question rather than a warning: no red, no
+   alert iconography, and the confirm button keeps the ordinary
+   tinted treatment every other primary action has.
+   ============================================================== */
+
+.dupe-lead{
+  padding: 2px var(--gx-r) 16px var(--gx-l);
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--label-2);
+}
+.dupe-lead strong{ color: var(--label); font-weight: 600; }
+
+/* ---- One existing match ----
+   `.sheet-body` has no horizontal padding of its own (every screen
+   inside a sheet sets its own), so this card has to inset itself or
+   it runs edge to edge and its rounded corners are clipped flat
+   against the sheet.
+
+   The collection a match sits in is drawn with `.list-chip`
+   (components.css), shared with Home's Up Next rows and the search
+   results. It used to be `.dupe-list` — the same name as this card —
+   so it inherited this ring and radius with no padding, and the text
+   sat flush against the outline. `.up-list` had the identical trap.
+   Never reuse a container's class name for a span inside it. */
+.dupe-list{
+  margin: 0 var(--gx-r) 0 var(--gx-l);
+  border-radius: var(--r-card);
+  overflow: hidden;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-sm), 0 0 0 .5px var(--separator);
+}
+
+.dupe-row{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 12px 12px 14px;
+  min-height: 60px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.dupe-row + .dupe-row{ box-shadow: inset 0 .5px 0 var(--separator); }
+.dupe-row:active{ background: var(--fill-4); }
+/* A batch row is a statement, not a destination — nothing to open. */
+.dupe-row.static{ cursor: default; }
+.dupe-row.static:active{ background: none; }
+.dupe-row.static .act-chevron{ display: none; }
+
+/* ---- How close it is ----
+   A number rather than a bar or a set of dots: it is the one piece of
+   information here the user cannot work out by reading, and it wants
+   to be legible at a glance beside the name it qualifies. Mono,
+   because it is a measurement. */
+.dupe-score{
+  flex: none;
+  min-width: 42px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .04em;
+  text-align: center;
+  padding: 4px 5px;
+  border-radius: 7px;
+  color: var(--label-2);
+  background: var(--fill-3);
+}
+/* Only the confident band gets the tint. Colouring every match the
+   same makes a 60% look like a verdict. */
+.dupe-score.strong{
+  color: var(--tint);
+  background: var(--tint-soft);
+}
+
+.dupe-main{
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: left;
+}
+.dupe-name{
+  font-family: var(--serif);
+  font-size: 17px;
+  line-height: 1.25;
+  color: var(--label);
+  /* One line. A wrapping name makes rows different heights, which is
+     the same defect the Up Next rows are built to avoid. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dupe-meta{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* Never wraps, and the list name is the only thing allowed to
+     shrink — a truncated deadline badge is worse than a truncated
+     collection name. */
+  flex-wrap: nowrap;
+  min-height: 19px;
+  font-size: 12px;
+  color: var(--label-3);
+}
+/* The batch view names the activity it matched rather than a
+   collection, so it stays plain text; a real collection name uses
+   .list-chip like everywhere else. */
+.dupe-meta .dupe-listname{
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dupe-vs{
+  flex: none;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--label-4);
+}
+
+.dupe-row .act-thumb{ flex: none; }

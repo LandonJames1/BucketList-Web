@@ -123,6 +123,59 @@
     }
     .fg input[type="date"] { min-height: 46px; }
 
+    /* The field a sheet is *about*.
+       Only the activity name uses this. As an ordinary .fg input it was
+       indistinguishable from Location or Notes below it, so the sheet
+       read as six identical boxes with no subject. The serif is how an
+       activity name is set everywhere else in the app; the focus ring is
+       the only one in the app, and it is here because this is the field
+       that gets focus when the sheet opens. */
+    .fg-hero { margin-bottom: 26px; }
+    .fg-hero input {
+      /* Well clear of the 16px floor Safari zooms below. */
+      font-family: var(--serif); font-size: 22px; font-weight: 600;
+      line-height: 1.24; letter-spacing: -.014em;
+      min-height: 60px; padding: 14px 18px;
+      box-shadow: var(--shadow-sm), 0 0 0 1px var(--tint-soft);
+    }
+    .fg-hero input::placeholder { font-weight: 400; }
+    .fg-hero input:focus { box-shadow: var(--shadow-sm), 0 0 0 1.5px var(--tint); }
+
+    /* Two short choices sharing one line (Target Date + List).
+       The halves are ordinary .fg blocks with their own margins zeroed,
+       so when one hides itself the other spans the line — which a
+       two-column grid would not do. */
+    .fg-pair {
+      display: flex; align-items: flex-end; gap: 12px;
+      margin: 0 var(--gx-r) 22px var(--gx-l);
+    }
+    .fg-pair > .fg { flex: 1 1 0; min-width: 0; margin: 0; }
+    /* At half width a long option ("Specific date…") has to truncate
+       rather than clip, and the caret needs less room to sit in. */
+    .fg-pair select {
+      text-overflow: ellipsis;
+      padding-right: 34px; background-position: right 13px center;
+    }
+
+    /* A value that opens a picker rather than a menu. Sized to match the
+       select beside it so the pair reads as one line of controls; the
+       chevron is what says it is tappable, so it stays flat like every
+       other field rather than taking the elevated .row treatment. */
+    .picker-btn {
+      display: flex; align-items: center; gap: 8px;
+      width: 100%; min-height: 46px; padding: 12px 16px;
+      background: var(--bg-elevated); border-radius: var(--r-row);
+      color: var(--label); text-align: left;
+      font-size: max(16px, 17px); letter-spacing: -.011em;
+    }
+    .picker-btn:active { background: var(--fill-4); }
+    .picker-btn-value {
+      flex: 1; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .picker-btn-chevron { flex-shrink: 0; display: flex; color: var(--label-3); }
+    .picker-btn-chevron .ic { width: 16px; height: 16px; stroke-width: 2.4; }
+
     /* One line of orientation at the top of a sheet. */
     .sheet-hint {
       margin: 0 var(--gx-r) 20px var(--gx-l);
@@ -138,23 +191,14 @@
     .fg-stack textarea { min-height: 62px; padding: 12px 16px; }
     .fg-stack > *:not(:last-child) { border-bottom: .5px solid var(--separator); }
 
-    /* Inline label + control on one row (Settings style). */
-    .fg-inline {
-      display: flex; align-items: center; gap: 12px;
-      background: var(--bg-elevated); padding: 0 16px; min-height: 46px;
-    }
-    .fg-inline > span { font-size: 17px; letter-spacing: -.011em; flex-shrink: 0; }
-    .fg-inline select, .fg-inline input {
-      flex: 1; text-align: right; padding-left: 0; padding-right: 22px;
-      color: var(--label-2); background: none;
-      background-position: right 0 center;
-    }
-
-    /* Disclosure for the optional half of a form.
+    /* Disclosure for the optional half of a form. The completion sheet
+       is the only user left — the activity sheet shows every field
+       outright now — and it keeps one because a fresh completion is
+       meant to be two taps, check then Done.
 
        Sized up and given a fill: as a bare 10px mono line it read as a
-       caption rather than a control, and the fields behind it — notes,
-       location, links, reminders — are most of what the sheet can do. */
+       caption rather than a control, and the fields behind it are most
+       of what that sheet can do. */
     .more-toggle {
       display: flex; align-items: center; justify-content: center; gap: 7px;
       width: calc(100% - var(--gx-l) - var(--gx-r));
@@ -484,6 +528,13 @@
     the two read as one confusing stack.
     ============================================================ */
     #remindSheet { z-index: 210; }
+    /* The duplicate sheet is the other one that stacks: it opens over
+       the activity sheet on save, and over the bulk sheet on "Add All".
+       It keeps its natural height rather than taking the full one the
+       reminder sheet does — it is short, and it is a question about
+       the sheet underneath rather than a replacement for it, so seeing
+       a sliver of that sheet behind it is correct here. */
+    #dupeSheet { z-index: 210; }
     /* Full height, not content height. It opens on top of the activity
        sheet, and at its natural size the sheet underneath showed above
        it — two stacked sheets reading as one confused stack. Matching

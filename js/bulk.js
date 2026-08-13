@@ -11,9 +11,14 @@
    ============================================================== */
 
 let bulkEntries=[];
+/* Which collection the rows land in. Normally the one being viewed —
+   the sheet opens from a collection's ⋯ menu — but an import from Home
+   has no collection context and passes the chosen list explicitly. */
+let bulkListId=null;
 
-function openBulkAdd(){
+function openBulkAdd(listId){
   bulkEntries=[];
+  bulkListId=listId||curListId||null;
   addBulkEntry(true);
   openModal('bulkSheet');
   setTimeout(()=>{
@@ -140,11 +145,25 @@ async function saveBulkActivities(){
     if(first){shakeEl(first);first.focus();}
     return;
   }
+  const dest=bulkListId||curListId;
+  if(!dest){showToast('Create a list first');return;}
+
+  /* A batch is checked as a whole rather than row by row. Stopping on
+     the first collision would mean fixing one row and being stopped
+     again by the next, which is intolerable at ten rows — so the user
+     is asked once and given the two answers that make sense for a
+     batch: keep everything, or drop the ones that collide. Cancelling
+     resolves to nothing and writes nothing. */
+  const keep=await dupeGuardBatch(valid.map(e=>({
+    name:e._name.trim(),location:(e._loc||'').trim(),_src:e,
+  })));
+  if(!keep.length) return;
+
   const btn=$('bulkSaveBtn');
   btn.disabled=true;btn.textContent='Adding…';
-  const rows=valid.map(e=>({
+  const rows=keep.map(({_src:e})=>({
     name:e._name.trim(),
-    collection_id:curListId,
+    collection_id:dest,
     description:(e._desc||'').trim()||null,
     location:(e._loc||'').trim()||null,
     location_lat:parseFloat(e._locLat)||null,
@@ -153,16 +172,16 @@ async function saveBulkActivities(){
     priority:e._pri||'medium',
     links:e.links||[],
   }));
-  const{error}=await sb.from('Activities').insert(rows);
+  const{error,offline}=await dbInsert('Activities',rows);
   btn.disabled=false;btn.textContent='Add All';
   if(error){
     console.error('saveBulkActivities:',error);
     showToast(error.message||'Couldn’t add those.');
     return;
   }
-  invalidateActivities();
-  await updateCollectionStats(curListId);
+  await updateCollectionStats(dest);
   closeModal('bulkSheet');
   refreshAfterChange();
-  showToast(`Added ${rows.length} activit${rows.length===1?'y':'ies'}`);
+  showToast(`Added ${rows.length} activit${rows.length===1?'y':'ies'}`+
+    (offline?' — will sync later':''));
 }

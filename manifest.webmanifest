@@ -1,6 +1,6 @@
 {
-  "name": "Bucket List",
-  "short_name": "Bucket List",
+  "name": "Someday We'll Die",
+  "short_name": "Someday",
   "description": "Curate and track the experiences that define your life.",
   "start_url": "./index.html",
   "scope": "./",
@@ -10,6 +10,15 @@
   "background_color": "#f2f2f7",
   "theme_color": "#f2f2f7",
   "categories": ["lifestyle", "travel", "productivity"],
+  "share_target": {
+    "action": "./index.html",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  },
   "icons": [
     {
       "src": "icons/icon-192.png",

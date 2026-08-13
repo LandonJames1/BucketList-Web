@@ -39,6 +39,25 @@ function locSearch(input,resultsId){
   },350);
 }
 
+/* One-shot lookup for a place name we already have — an imported link's
+   location, say. Unlike locSearch this is not debounced and does not
+   touch the DOM: it just resolves a string to coordinates, or null.
+   The unfurl function geocodes server-side too; this is the fallback
+   for when it could not, and for a place the user edits by hand. */
+async function geocodeOnce(q){
+  const query=(q||'').trim();
+  if(query.length<2) return null;
+  try{
+    const res=await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`,
+      {headers:{'Accept-Language':'en'}});
+    if(!res.ok) return null;
+    const data=await res.json();
+    if(!data.length) return null;
+    return {display:data[0].display_name,lat:parseFloat(data[0].lat),lng:parseFloat(data[0].lon)};
+  }catch(e){ console.warn('geocodeOnce:',e); return null; }
+}
+
 /* Inside the bulk sheet the dropdown is position:fixed so it can escape
    the sheet's scroll container; it therefore has to be placed by hand. */
 function positionLocBox(box,input){

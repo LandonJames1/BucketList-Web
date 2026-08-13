@@ -226,8 +226,7 @@ function renderHomeReminders(acts,lists){
 }
 
 async function clearReminder(id){
-  const{error}=await sb.from('Activities').update({remind_at:null}).eq('id',id);
-  invalidateActivities();
+  const{error}=await dbUpdate('Activities',{remind_at:null},{id});
   if(error){
     console.error('clearReminder:',error);
     showToast(error.message||'Couldn’t clear that.');

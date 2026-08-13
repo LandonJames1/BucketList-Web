@@ -10,41 +10,34 @@
 /* ==============================================================
    QUICK ADD  (composer → insert with just a name)
    ============================================================== */
-async function quickAddActivity(){
+/* The composer is a way to START an activity, not a way to file one.
+
+   Nothing anywhere in the app inserts an activity without showing this
+   sheet first. That is a deliberate reversal: the composer used to
+   insert on Return with only a name, which was the fastest path in the
+   app and also the one that produced its worst rows — no priority, no
+   real target date, no location, so the thing never surfaced in Up Next
+   and never appeared on the map. An idea captured into a hole is not
+   captured.
+
+   Nothing on the sheet is required beyond the name, so this still costs
+   one extra tap (Save) rather than any actual filling-in — but the
+   fields are in front of the user at the one moment they are thinking
+   about the thing, which is the only moment they will ever bother.
+
+   The duplicate check lives in saveActivity(), so there is none here —
+   checking twice would ask the same question on the way in and on the
+   way out. */
+function quickAddActivity(){
   const input=$('composerInput');
   if(!input)return;
   const name=input.value.trim();
   if(!name){shakeEl(input);return;}
-
+  /* Cleared before the sheet opens: the name lives in the sheet from
+     here on, and leaving a copy behind means it can be filed twice. */
   input.value='';
   onComposerInput();
-  input.disabled=true;
-
-  const{error}=await sb.from('Activities').insert({name,collection_id:curListId});
-  input.disabled=false;
-
-  if(error){
-    console.error('quickAddActivity:',error);
-    input.value=name;                       /* give the text back */
-    showToast(error.message||'Couldn’t add that.');
-    input.focus();
-    return;
-  }
-  invalidateActivities();
-  await updateCollectionStats(curListId);
-  await refreshAfterChange();
-  /* Re-render replaced the composer, so put the caret back for the
-     next one. */
-  focusComposer();
-}
-
-/* "Details" on the composer — carry whatever was typed into the
-   full sheet rather than making the user retype it. */
-function openNewActivityFromComposer(){
-  const input=$('composerInput');
-  const typed=input?input.value.trim():'';
-  if(input){input.value='';onComposerInput();}
-  openNewActivity(typed);
+  openNewActivity(name);
 }
 
 /* ==============================================================
@@ -65,15 +58,12 @@ async function toggleComplete(id,isDone){
      looking at Up Next. */
   if(!isDone){ openCompletedDate(id); return; }
   const a=await fetchActivity(id);
-  const{error}=await sb.from('Activities')
-    .update({date_completed: null})
-    .eq('id',id);
+  const{error}=await dbUpdate('Activities',{date_completed:null},{id});
   if(error){
     console.error('toggleComplete:',error);
     showToast(error.message||'Couldn’t update that.');
     return;
   }
-  invalidateActivities();
   await updateCollectionStats((a&&a.listId)||curListId);
   await refreshAfterChange();
 }
@@ -158,7 +148,7 @@ async function confirmComplete(){
   const name=$('compName').value.trim();
   if(!name){shakeEl($('compName'));$('compName').focus();return;}
   const btn=$('compSaveBtn');btn.disabled=true;
-  const{error}=await sb.from('Activities').update({
+  const{error,offline}=await dbUpdate('Activities',{
     name,
     date_completed:$('compDate').value||todayISO(),
     location:$('compLoc').value.trim()||null,
@@ -166,7 +156,7 @@ async function confirmComplete(){
     location_lng:parseFloat($('compLocLng').value)||null,
     experience_notes:$('compNotes').value.trim()||null,
     photos:denormMedia(upMedia)
-  }).eq('id',compId);
+  },{id:compId});
   btn.disabled=false;
   if(error){
     console.error('confirmComplete:',error);
@@ -176,17 +166,20 @@ async function confirmComplete(){
   const wasNew=compNew,src=compSrc,list=compList;
   closeModal('compSheet');
   compId=null;
-  invalidateActivities();
   await updateCollectionStats(list||curListId);
-  if(wasNew){ confetti(); showToast('Accomplished'); }
-  else showToast('Saved');
+  if(wasNew){ confetti(); showToast(offline?'Accomplished — will sync later':'Accomplished'); }
+  else showToast(offline?'Saved — will sync later':'Saved');
   refreshAfterChange(src);
 }
 
 /* ==============================================================
    FULL ACTIVITY SHEET (create / edit)
-   Everything past the name is behind a disclosure, so the common
-   case is one field.
+
+   Every field is on screen at once. There used to be a "More options"
+   disclosure holding notes and links; it went the way of the one that
+   used to hold Location, and for the same reason — a field nobody
+   opens is a field nobody fills in. Target date and list share a line
+   (.fg-pair), which is what buys the room for that.
    ============================================================== */
 /* targetListId is where a *new* activity will be filed. Inside a
    collection it is that collection; opened from Home it is whatever the
@@ -205,7 +198,6 @@ async function openNewActivity(prefillName){
   $('aDateCustom').value='';onTargetDateChange();
   renderTagChips('aLinks');
   setRemindField(null,'');
-  setMoreFields(false);
   $('actSheetTitle').textContent='New Activity';
   $('actSaveBtn').textContent='Add';
   openModal('actSheet');
@@ -236,10 +228,6 @@ async function openEditAct(id){
   aLinks=[...(a.links||[])];
   renderTagChips('aLinks');
   setRemindField(a.remindAt,a.remindNote);
-  /* Open the extra fields straight away when any of them are in use. */
-  /* Location and the reminder are top-level fields now, so they no
-     longer decide whether the disclosure opens. */
-  setMoreFields(!!(a.description||(a.links&&a.links.length)));
   $('actSheetTitle').textContent='Edit Activity';
   $('actSaveBtn').textContent='Save';
   openModal('actSheet');
@@ -256,7 +244,9 @@ async function renderActListPicker(){
   const cur=lists.find(l=>l.id===targetListId)||lists[0];
   targetListId=cur.id;
   $('actListName').textContent=cur.name;
-  row.onclick=()=>openListPicker({
+  /* The handler goes on the button, not on the .fg around it: the group
+     also holds the label, and tapping a label should do nothing. */
+  $('actListBtn').onclick=()=>openListPicker({
     currentId:targetListId,
     onPick:id=>{
       const picked=lists.find(l=>l.id===id);
@@ -340,24 +330,13 @@ function setRemindField(value,note){
   updateRemindRow();
 }
 
-function setMoreFields(open){
-  $('actMore').classList.toggle('open',open);
-  $('actMoreToggle').setAttribute('aria-expanded',open?'true':'false');
-  $('actMoreLabel').textContent=open?'Fewer options':'More options';
-}
-function toggleMoreFields(){
-  setMoreFields(!$('actMore').classList.contains('open'));
-}
-
 async function saveActivity(){
   const name=$('aName').value.trim();
   if(!name){shakeEl($('aName'));$('aName').focus();return;}
   /* "Specific date" with no date is not a choice. */
   if($('aDate').value===CUSTOM_DATE&&!$('aDateCustom').value){
-    setMoreFields($('actMore').classList.contains('open'));
     shakeEl($('aDateCustom'));$('aDateCustom').focus();return;
   }
-  const btn=$('actSaveBtn');btn.disabled=true;
   const fields={
     name,
     description:$('aDesc').value.trim()||null,
@@ -375,30 +354,50 @@ async function saveActivity(){
     /* A note with no date has nothing to fire it, so drop it too. */
     fields.reminder_note=fields.remind_at?($('aRemindNote').value.trim()||null):null;
   }
+
+  /* The fields are read off the sheet before the duplicate check, not
+     after: the check can open a sheet on top of this one, and a value
+     captured on the far side of that would be read from a form the
+     user may have moved on from.
+
+     An edit is checked too, but only against a name that actually
+     changed — otherwise saving an untouched activity would report it
+     as a duplicate of every near-miss in the library. `excludeId`
+     keeps it from matching itself. */
+  const before=editingActId?await fetchActivity(editingActId):null;
+  const renamed=!before||fuzzyNorm(before.name)!==fuzzyNorm(name);
+  if(!renamed) return commitSaveActivity(fields,before);
+  dupeGuard({name,location:fields.location||'',excludeId:editingActId||null},
+    ()=>commitSaveActivity(fields,before));
+}
+
+async function commitSaveActivity(fields,before){
+  const btn=$('actSaveBtn');btn.disabled=true;
   try{
     /* An edit can move an activity between collections, so both ends
        need their stats rebuilt — the one it left and the one it landed
        in. Reading the old row before the write is the only way to know
        where it was. */
-    const before=editingActId?await fetchActivity(editingActId):null;
+    let offline=false;
     if(editingActId){
       if(targetListId&&before&&targetListId!==before.listId) fields.collection_id=targetListId;
-      const{error}=await sb.from('Activities').update(fields).eq('id',editingActId);
-      if(error)throw error;
-      invalidateActivities();
-      await updateCollectionStats(targetListId||before.listId);
+      const r=await dbUpdate('Activities',fields,{id:editingActId});
+      if(r.error)throw r.error;
+      offline=!!r.offline;
+      await updateCollectionStats(targetListId||(before&&before.listId));
       if(before&&targetListId&&targetListId!==before.listId)
         await updateCollectionStats(before.listId);
     } else {
       const dest=targetListId||curListId;
       if(!dest){showToast('Create a list first');return;}
       fields.collection_id=dest;
-      const{error}=await sb.from('Activities').insert(fields);
-      if(error)throw error;
-      invalidateActivities();
+      const r=await dbInsert('Activities',fields);
+      if(r.error)throw r.error;
+      offline=!!r.offline;
       await updateCollectionStats(dest);
     }
     closeModal('actSheet');
+    if(offline) showToast('Saved — will sync when you’re back online');
     /* Whatever screen is actually showing owns the row that changed.
        This used to fall back to Home for everything that was not the
        detail screen, so editing from Up Next redrew a page the user was
@@ -412,13 +411,12 @@ async function saveActivity(){
 
 async function delActivity(id){
   const a=await fetchActivity(id);
-  const{error}=await sb.from('Activities').delete().eq('id',id);
+  const{error}=await dbDelete('Activities',{id});
   if(error){
     console.error('delActivity:',error);
     showToast(error.message||'Couldn’t delete.');
     return;
   }
-  invalidateActivities();
   await updateCollectionStats((a&&a.listId)||curListId);
   refreshAfterChange();
   showToast('Deleted');
@@ -560,17 +558,30 @@ async function openActDetail(id){
    COLLECTION OVERFLOW MENU  (the ⋯ in the nav bar)
    Holds everything the old hero row spelled out as five buttons.
    ============================================================== */
-function openCollectionMenu(){
-  showActionSheet({
-    items:[
-      {label:'List',  icon:'rows',        checked:curView==='list', onSelect:()=>setView('list')},
-      {label:'Grid',  icon:'square-grid', checked:curView==='grid', onSelect:()=>setView('grid')},
-      {label:'Map',   icon:'map',         checked:curView==='map',  onSelect:()=>setView('map')},
-      {label:'Add Many at Once', icon:'plus',    onSelect:openBulkAdd},
-      {label:'Edit List',        icon:'pencil',  onSelect:openEditList},
-      {label:'Delete List',      icon:'trash',   role:'destructive', onSelect:confirmDeleteCollection},
-    ],
-  });
+async function openCollectionMenu(){
+  const l=await fetchCollection(curListId);
+  const mine=ownsCollection(l);
+
+  const items=[
+    {label:'List',  icon:'rows',        checked:curView==='list', onSelect:()=>setView('list')},
+    {label:'Grid',  icon:'square-grid', checked:curView==='grid', onSelect:()=>setView('grid')},
+    {label:'Map',   icon:'map',         checked:curView==='map',  onSelect:()=>setView('map')},
+    {label:'Add Many at Once', icon:'plus',   onSelect:openBulkAdd},
+    {label:'Edit List',        icon:'pencil', onSelect:openEditList},
+  ];
+  /* Sharing only appears once the backend supports it — the same rule
+     the reminder row follows. See js/sharing.js. */
+  if(sharingReady()){
+    items.push({label:mine?'Share List':'Sharing',icon:'share',onSelect:openShareList});
+  }
+  /* A list you joined is not yours to delete. Leaving is the member's
+     equivalent and destroys nothing, so it is not marked destructive
+     in the same breath as Delete — it is reversible with the link. */
+  items.push(mine
+    ? {label:'Delete List',icon:'trash',role:'destructive',onSelect:confirmDeleteCollection}
+    : {label:'Leave List', icon:'signout',role:'destructive',onSelect:confirmLeaveList});
+
+  showActionSheet({items});
 }
 
 function setFilter(f){

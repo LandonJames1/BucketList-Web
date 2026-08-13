@@ -3,6 +3,16 @@
    Loaded first. Everything else assumes `sb` already exists.
    ============================================================== */
 
+/* The app's name, for anywhere it is spoken rather than laid out — the
+   OS share sheet, a toast. The marks in index.html (title, manifest,
+   the auth eyebrow, the nav title) are written out there.
+
+   Note what is deliberately NOT renamed with it: the auth storageKey
+   below, the IndexedDB name in offline.js, the sw.js cache prefix and
+   the bl_* localStorage keys. Those are storage identities — changing
+   one signs everyone out or orphans their cached data. */
+const APP_NAME='Someday We’ll Die';
+
 const SUPABASE_URL='https://xxdmendegyxlkikejvps.supabase.co';
 const SUPABASE_KEY='sb_publishable_45ETmiEMgvWn3QAd58ck5Q_opy0TWnX';
 

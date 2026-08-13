@@ -24,6 +24,21 @@ function showApp(){
   probeStorage();
   /* Find out whether reminders are available, then re-render Home so the
      banner can appear, and ping anything already due. */
+  /* Anything written while offline on an earlier visit is still in the
+     queue on disk. Find it and send it now, before the first render,
+     so the screen is never briefly drawn without the user's own
+     changes on it. See js/offline.js. */
+  offlineInit();
+  /* Whether the members table exists decides whether collections are
+     fetched as "mine" or as "everything RLS lets me see" — probed
+     early for the same reason as the media bucket. See js/sharing.js. */
+  probeSharing();
+  /* A link shared into the app is held from boot until there is
+     somewhere to file it. See js/share.js. */
+  handleSharedInput();
+  /* An invite to a shared list is held the same way, and for the same
+     reason: it can arrive while signed out. See js/sharing.js. */
+  handlePendingJoin();
   probeRemindColumn().then(ok=>{
     if(ok&&curPage==='home') renderHome();
     checkDueReminders();
@@ -110,12 +125,18 @@ document.addEventListener('visibilitychange',()=>{
 });
 
 /* The network returning is the other moment the cache can be stale: a
-   cold launch offline fills it with the empty lists Supabase could not
-   answer for. */
+   cold launch offline fills it from the on-disk snapshot rather than
+   from the server.
+
+   revalidate() flushes the write queue before it refetches — see the
+   note on it in api.js. Doing it the other way round makes the user's
+   offline additions visibly disappear and then come back. */
 window.addEventListener('online',()=>{
+  updateSyncUI();
   if(!currentUser)return;
   revalidate().then(()=>refreshAfterChange());
 });
+window.addEventListener('offline',()=>updateSyncUI());
 
 /* Keep currentUser in step with whatever the auth client decides.
    TOKEN_REFRESHED fires on every successful renewal; SIGNED_OUT fires if
@@ -130,9 +151,14 @@ sb.auth.onAuthStateChange((event,session)=>{
 });
 
 async function handleSignOut(){
+  /* Unsent writes belong to the account that made them, so give the
+     queue one last chance to drain before the session goes. */
+  await flushQueue();
   /* The cache is per-account. Leaving it behind would show the next
-     person to sign in on this device the previous one's lists. */
+     person to sign in on this device the previous one's lists — and
+     that now means the on-disk snapshot as well as the in-memory one. */
   invalidateAll();
+  await offlineSignOut();
   /* The globe is kept alive across navigation, so signing out has to be
      the thing that actually disposes it — otherwise the next account
      inherits the previous one's pins. */

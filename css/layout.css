@@ -14,7 +14,11 @@
     .navbar {
       position: fixed; top: 0; left: 0; right: 0; z-index: 100;
       height: calc(var(--nav-h) + var(--nav-inset));
-      padding: var(--nav-inset) calc(14px + var(--safe-right)) 0 calc(14px + var(--safe-left));
+      /* The gutter, not a bar-specific inset. The back button and the ⋯
+         menu sit directly above the first card on every screen, so
+         anything else leaves them visibly out of line with it — and
+         14px vs a 20px gutter is exactly far enough to notice. */
+      padding: var(--nav-inset) var(--gx-r) 0 var(--gx-l);
       display: flex; align-items: center; gap: 4px;
       background: transparent;
       -webkit-backdrop-filter: none; backdrop-filter: none;

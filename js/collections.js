@@ -19,6 +19,9 @@ async function renderCollections(){
     }
     $('collEmpty').style.display='none';
     const allActs=await fetchAllActivities(lists);
+    /* Which lists have more than one person in them. Empty set when
+       sharing is not enabled, so the badge simply never appears. */
+    const sharedOut=await sharedCollectionIds();
 
     wrap.innerHTML=lists.map(l=>{
       const acts=allActs.filter(a=>a.listId===l.id);
@@ -30,11 +33,22 @@ async function renderCollections(){
          attention before you open any of them. Completed ones don't
          count — a list can be all-high and entirely finished. */
       const high=acts.filter(a=>!a.completed&&a.priority==='high').length;
+      /* A list is marked as shared whenever more than one person can
+         edit it — both a list you joined and one you own and have
+         invited someone into. Which side you are on changes what you
+         can do (only an owner can delete or re-invite), but the thing
+         the card needs to say is simply "someone else is in here too",
+         and that is true either way.
+         `sharedOut` is filled in below, after the member counts are
+         fetched; a joined list is known from the row itself. */
+      const shared=isSharedWithMe(l)||sharedOut.has(l.id);
       return `<button class="coll-card" onclick="nav('detail','${l.id}')">
         <img class="coll-card-img" src="${esc(cover)}" alt="" loading="lazy"/>
         <div class="coll-card-scrim"></div>
         ${complete?`<div class="coll-card-done">${icon('check')}</div>`:''}
         ${high?`<div class="coll-card-pri">${high} High</div>`:''}
+        ${shared?`<div class="coll-card-shared" title="Shared list"
+           aria-label="Shared list">${icon('share','ic-xs')}</div>`:''}
         <div class="coll-card-body">
           <div class="coll-card-title">${esc(l.name)}</div>
           <div class="coll-card-meta">
@@ -102,24 +116,32 @@ async function saveList(){
   if(!name){shakeEl($('lName'));$('lName').focus();return;}
   const btn=$('listSaveBtn');btn.disabled=true;
   try{
+    let offline=false;
     if(editingListId){
       const updates={name,description:$('lDesc').value.trim()};
       if(coverPhoto) updates.cover_image=coverPhoto;
-      const{error}=await sb.from('Collections').update(updates).eq('id',editingListId);
-      if(error)throw error;
+      const r=await dbUpdate('Collections',updates,{id:editingListId});
+      if(r.error)throw r.error;
+      offline=!!r.offline;
     } else {
       /* Pick a default cover the user isn't already using. */
       const existing=(await fetchCollections()).map(l=>l.cover).filter(Boolean);
-      const{data,error}=await sb.from('Collections').insert({
+      /* No .select().single() round trip any more: dbInsert mints the
+         uuid itself and hands the stamped row back, so the new
+         collection's id is known without asking the server for it —
+         which is also what lets a list be created offline and have
+         activities filed into it immediately. */
+      const r=await dbInsert('Collections',{
         name,description:$('lDesc').value.trim(),
         cover_image:coverPhoto||randCover(existing),
         user_id:currentUser.id
-      }).select().single();
-      if(error)throw error;
-      curListId=data.id;
+      });
+      if(r.error)throw r.error;
+      offline=!!r.offline;
+      curListId=r.rows[0].id;
     }
-    invalidateCollections();
     closeModal('listSheet');
+    if(offline) showToast('Saved — will sync when you’re back online');
     refreshAfterChange();
   }catch(err){
     console.error('saveList:',err);
@@ -129,14 +151,15 @@ async function saveList(){
 
 async function delList(id){
   try{
-    /* No DB cascade — the activities have to go first. */
-    const{error:e1}=await sb.from('Activities').delete().eq('collection_id',id);
-    if(e1)throw e1;
-    const{error:e2}=await sb.from('Collections').delete().eq('id',id);
-    if(e2)throw e2;
-    invalidateAll();
+    /* No DB cascade — the activities have to go first. Queued in this
+       order too, so a replay after being offline cannot leave orphaned
+       activities behind a deleted collection. */
+    const r1=await dbDelete('Activities',{collection_id:id});
+    if(r1.error)throw r1.error;
+    const r2=await dbDelete('Collections',{id});
+    if(r2.error)throw r2.error;
     nav('lists');
-    showToast('List deleted');
+    showToast(r2.offline?'List deleted — will sync later':'List deleted');
   }catch(err){
     console.error('delList:',err);
     showToast(err.message||'Couldn’t delete the list.');

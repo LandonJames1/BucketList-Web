@@ -7,6 +7,52 @@
 const $=id=>document.getElementById(id);
 
 function esc(s){const d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML;}
+
+/* ==============================================================
+   UUIDs
+
+   Collections.id and Activities.id are uuid columns and the client
+   mints them itself, so this has to return a *real* RFC-4122 v4
+   string every time — Postgres rejects anything else outright with
+   `invalid input syntax for type uuid`.
+
+   ---- Why not just crypto.randomUUID() ----
+
+   It is only defined in a SECURE CONTEXT: https or localhost. Serve
+   the app over plain http on a LAN address — which is exactly how you
+   test it on a phone — and it is `undefined`. The same restriction
+   that stops the service worker registering there.
+
+   That bit for real: the first fallback here returned
+   'x' + timestamp + random, which is not a uuid, and every insert
+   failed on a LAN IP while working perfectly on localhost.
+
+   crypto.getRandomValues is NOT secure-context-gated, so the fallback
+   is still cryptographically random; the Math.random path exists only
+   for environments missing Web Crypto altogether, where a collision
+   is far less bad than being unable to add anything at all.
+   ============================================================== */
+function uuidv4(){
+  if(typeof crypto!=='undefined'&&crypto.randomUUID) return crypto.randomUUID();
+
+  const b=new Uint8Array(16);
+  if(typeof crypto!=='undefined'&&crypto.getRandomValues) crypto.getRandomValues(b);
+  else for(let i=0;i<16;i++) b[i]=Math.floor(Math.random()*256);
+
+  b[6]=(b[6]&0x0f)|0x40;          /* version 4  */
+  b[8]=(b[8]&0x3f)|0x80;          /* variant 10 */
+
+  const h=[];
+  for(let i=0;i<16;i++) h.push(b[i].toString(16).padStart(2,'0'));
+  return h.slice(0,4).join('')+'-'+h.slice(4,6).join('')+'-'+
+         h.slice(6,8).join('')+'-'+h.slice(8,10).join('')+'-'+h.slice(10,16).join('');
+}
+
+/* Cheap shape check. Used as an assertion at the one place a bad id
+   would reach the database, so the failure is a clear console error
+   here rather than a Postgres syntax error three layers down. */
+const UUID_RE=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isUuid(v){ return UUID_RE.test(v||''); }
 function cap(s){return s.charAt(0).toUpperCase()+s.slice(1);}
 function todayISO(){return new Date().toISOString().split('T')[0];}
 

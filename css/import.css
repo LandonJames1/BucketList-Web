@@ -1,0 +1,275 @@
+/* ==============================================================
+   IMPORT — the sheet a shared link opens into, plus the Shortcut
+   setup sheet behind the You tab row.
+
+   Both live inside .modal, so the sheet chrome (grabber, bar, body
+   padding) comes from modals.css; this file is only what goes in
+   them. See js/share.js.
+   ============================================================== */
+
+/* The link itself, under the bar. Small-caps mono, like every other
+   piece of metadata in the app — it is a label for what follows, not
+   content in its own right. */
+.imp-source {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--label-3);
+    padding: 0 var(--gx-r) 10px var(--gx-l);
+    text-align: center;
+    /* A URL has no spaces to break on, so it would otherwise widen the
+       sheet and drag the fixed tab bar sideways on iOS. */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ---- Waiting, and the ways this can come up empty ---- */
+.imp-status {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 22px 0 8px;
+    text-align: center;
+}
+.imp-status p {
+    font-size: 15px;
+    line-height: 1.45;
+    color: var(--label-2);
+    max-width: 34ch;
+}
+.imp-status textarea {
+    width: 100%;
+    min-height: 92px;
+    padding: 12px 14px;
+    border: 1px solid var(--separator);
+    border-radius: var(--r-ctl);
+    background: var(--bg-raised);
+    color: var(--label);
+    font-family: var(--sans);
+    /* Never below 16px: Safari zooms the page when a focused field's
+       text is smaller, and does not zoom back out. */
+    font-size: max(16px, 17px);
+    line-height: 1.4;
+    resize: none;
+}
+.imp-status textarea:focus {
+    outline: none;
+    border-color: var(--tint);
+}
+.imp-status .btn { margin-top: -4px; }
+
+/* ---- The result ---- */
+.imp-cover {
+    height: 132px;
+    border-radius: var(--r-card);
+    margin-bottom: 16px;
+    background-size: cover;
+    background-position: center;
+    /* Same treatment as a collection cover, so an imported thumbnail
+       sits in the app's palette rather than shouting over it. */
+    filter: brightness(.82) saturate(.92);
+}
+
+.imp-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.imp-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 11px;
+    width: 100%;
+    padding: 13px 14px;
+    border: 1px solid var(--separator);
+    border-radius: var(--r-row);
+    background: var(--bg-raised);
+    text-align: left;
+    /* Reads as a card, not a button, when there is only one result and
+       there is nothing to choose. */
+    transition: border-color .16s, background .16s, opacity .16s;
+}
+.imp-item[disabled] { opacity: 1; }
+.imp-item:not([disabled]):active { transform: scale(.99); }
+
+/* Unpicked rows recede rather than disappear — you still need to read
+   them to decide to bring one back. */
+.imp-item:not(.picked):not([disabled]) { opacity: .5; }
+.imp-item.picked { border-color: var(--tint); background: var(--tint-soft); }
+
+.imp-check {
+    flex: none;
+    width: 21px;
+    height: 21px;
+    margin-top: 1px;
+    border-radius: 50%;
+    border: 1.5px solid var(--label-4);
+    display: grid;
+    place-items: center;
+    color: #fff;
+}
+.imp-check .ic { width: 13px; height: 13px; opacity: 0; }
+.imp-item.picked .imp-check {
+    background: var(--tint);
+    border-color: var(--tint);
+}
+.imp-item.picked .imp-check .ic { opacity: 1; }
+
+.imp-item-body {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+.imp-item-name {
+    font-family: var(--serif);
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 1.25;
+    color: var(--label);
+}
+.imp-item-loc {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: var(--label-3);
+    /* One line: a long address must not make one card taller than the
+       rest and step the list as you read down it. */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.imp-item-loc .ic { width: 11px; height: 11px; flex: none; }
+.imp-item-desc {
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--label-2);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.imp-note {
+    margin-top: 14px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--label-3);
+}
+
+/* ==============================================================
+   SHORTCUT SETUP
+   ============================================================== */
+.shr-lead {
+    font-size: 15px;
+    line-height: 1.5;
+    color: var(--label-2);
+    margin-bottom: 18px;
+}
+
+.shr-steps {
+    margin: 0 0 18px;
+    padding: 0;
+    list-style: none;
+    counter-reset: shr;
+}
+.shr-steps li {
+    counter-increment: shr;
+    position: relative;
+    padding: 0 0 14px 34px;
+    font-size: 15px;
+    line-height: 1.45;
+    color: var(--label);
+}
+.shr-steps li::before {
+    content: counter(shr);
+    position: absolute;
+    left: 0;
+    top: -1px;
+    width: 23px;
+    height: 23px;
+    border-radius: 50%;
+    background: var(--tint-soft);
+    color: var(--tint);
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    display: grid;
+    place-items: center;
+}
+.shr-steps strong { font-weight: 600; }
+
+.shr-url {
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    border-radius: var(--r-ctl);
+    background: var(--fill-4);
+    border: 1px solid var(--separator);
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--label-2);
+    /* Selectable, because copying it is the point and the clipboard
+       API is refused in plenty of contexts. */
+    user-select: all;
+    -webkit-user-select: all;
+    word-break: break-all;
+}
+
+.shr-note {
+    margin-top: 16px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--label-3);
+}
+
+/* ==============================================================
+   SCREENSHOT IMPORT
+   ============================================================== */
+
+/* The picture being read, shown while it is read. Without it the
+   waiting state is an anonymous spinner and there is no way to tell
+   whether the right screenshot was picked. */
+.imp-shot-preview{
+  width: 100%;
+  max-height: 210px;
+  margin-bottom: 18px;
+  border-radius: var(--r-card);
+  overflow: hidden;
+  background: var(--fill-4);
+  box-shadow: var(--shadow-sm), 0 0 0 .5px var(--separator);
+}
+.imp-shot-preview img{
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-height: 210px;
+  object-fit: contain;
+}
+
+/* A result that looks like something already on a list. A note on the
+   row rather than a block on it — the row stays selectable, because
+   the match is a guess. Mono and small, so it reads as an annotation
+   and not as part of the imported name. */
+.imp-item-dupe{
+  display: block;
+  margin-top: 5px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--orange);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

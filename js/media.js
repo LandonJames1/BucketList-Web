@@ -77,8 +77,11 @@ function storageReady(){ return _storageReady===true; }
    photos called IMG_0001.jpg from the same camera roll would otherwise
    collide, and the second would silently overwrite the first. */
 function mediaKey(ext){
-  const rand=(crypto.randomUUID?crypto.randomUUID():String(Math.random()).slice(2)+Date.now());
-  return `${currentUser.id}/${rand}.${ext}`;
+  /* Shares uuidv4() with the row ids — a storage key would tolerate any
+     random string, but crypto.randomUUID() is undefined outside a
+     secure context and there is no reason to keep a second, weaker
+     fallback around for it. See js/utils.js. */
+  return `${currentUser.id}/${uuidv4()}.${ext}`;
 }
 
 async function uploadBlob(blob,ext,contentType){
@@ -113,9 +116,22 @@ function compressFile(file,maxD,q){
 
 async function uploadPhoto(file){
   const dataUrl=await compressFile(file,MAX_PHOTO_DIM,PHOTO_QUALITY);
-  if(!storageReady()) return{type:'photo',url:dataUrl,poster:''};
-  const url=await uploadBlob(dataURLToBlob(dataUrl),'jpg','image/jpeg');
-  return{type:'photo',url,poster:''};
+  /* Offline is the same answer as a missing bucket: keep the bytes
+     inline. The activity row itself is queued by js/offline.js and
+     syncs with the photo already embedded in it, so a completion
+     written on a plane arrives whole rather than arriving with its
+     photos missing. It costs table size, which is the trade the app
+     made for years before the bucket existed. */
+  if(!storageReady()||!navigator.onLine) return{type:'photo',url:dataUrl,poster:''};
+  try{
+    const url=await uploadBlob(dataURLToBlob(dataUrl),'jpg','image/jpeg');
+    return{type:'photo',url,poster:''};
+  }catch(e){
+    /* The connection dropped mid-upload. Falling back beats losing the
+       photo the user just picked. */
+    console.warn('[media] upload failed, keeping photo inline:',e);
+    return{type:'photo',url:dataUrl,poster:''};
+  }
 }
 
 /* ---- Video ----
@@ -157,6 +173,12 @@ function videoPoster(file){
 async function uploadVideo(file){
   if(!storageReady())
     throw new Error('Video needs the media storage bucket — see supabase/README.md.');
+  /* Video has no inline fallback: a phone clip is 5–20MB, and holding
+     one in the write queue waiting for a connection is a different
+     feature with its own storage budget. Refuse it clearly rather than
+     failing at save time. */
+  if(!navigator.onLine)
+    throw new Error('Video needs a connection. Add it once you’re back online — photos work offline.');
   if(file.size>MAX_VIDEO_BYTES)
     throw new Error('That video is too large. Trim it to under 100MB.');
 

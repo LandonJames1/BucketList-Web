@@ -89,6 +89,34 @@
       box-shadow: 0 2px 10px rgba(0,0,0,.35), 0 0 0 2px rgba(255,255,255,.24);
     }
 
+    /* A list more than one person can edit — whether you joined it or
+       you own it and invited someone in. It sits in the OPPOSITE
+       corner to the priority count so the two coexist: a shared list
+       is just as likely to have urgent work in it as any other, and
+       making them share a corner meant suppressing one of them.
+
+       Icon only, and a disc rather than a capsule. "SHARED" spelled
+       out is the widest thing on the card and competes with the title
+       underneath; the glyph is the same one the Share row uses
+       throughout the app, so it is already learned. The title
+       attribute and aria-label carry the word for anyone who needs it.
+
+       Violet rather than terracotta because it states a fact rather
+       than asking for action — terracotta means "tappable" everywhere
+       else, and the whole card is the tap target here. */
+    .coll-card-shared {
+      position: absolute; top: 11px; right: 11px;
+      width: 24px; height: 24px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--violet); color: #fff;
+      box-shadow: 0 2px 10px rgba(0,0,0,.35), 0 0 0 2px rgba(255,255,255,.24);
+    }
+    .coll-card-shared .ic { width: 12px; height: 12px; }
+    /* The completion tick already owns the top-right on a finished
+       list, so the shared disc steps down under it rather than
+       stacking on top. */
+    .coll-card-done ~ .coll-card-shared { top: 43px; }
+
     /* "New Collection" tile — dashed, matches the card footprint. */
     .coll-card-new {
       display: flex; flex-direction: column; align-items: center; justify-content: center;
