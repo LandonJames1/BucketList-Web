@@ -798,8 +798,18 @@ straight back on `handlePendingJoin()`, so a code and a link cannot
 disagree about what joining looks like, and `parseInviteCode()` accepts a
 whole pasted invite URL or share message as readily as a bare code,
 because what people have in their clipboard is whatever they were sent.
-The share sheet therefore shows the code beside the link, and
-`sendInviteLink()` puts it in the message body.
+The share sheet therefore shows the code beside the link, and **both Copy
+and Send produce one message carrying the link AND the code** —
+`inviteMessage()`, with the code on its own line so it can be selected
+without the URL coming with it. `sendInviteLink()` deliberately passes no
+`url:` field to `navigator.share`: given one, most targets send the URL and
+drop the text, which is precisely the half that fails.
+
+Joining by code is reachable from **Lists → Join a List**, a tile beside New
+List (and a button in the empty state, which is where someone invited into
+their first list actually lands). The You tab row remains. It is the floor
+under every link-based path, so it belongs on the screen the missing list was
+supposed to be on — not two taps away in a settings tab.
 
 #### An invite that survives creating an account
 

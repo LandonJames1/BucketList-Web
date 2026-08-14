@@ -15,6 +15,11 @@ async function renderCollections(){
     if(!lists.length){
       wrap.innerHTML='';
       $('collEmpty').style.display='';
+      /* The one place someone invited into their first list arrives:
+         no lists, so the grid — and the Join tile in it — is not drawn
+         at all. */
+      const j=$('collEmptyJoin');
+      if(j) j.style.display=sharingReady()?'':'none';
       return;
     }
     $('collEmpty').style.display='none';
@@ -61,7 +66,17 @@ async function renderCollections(){
         </div>
       </button>`;
     }).join('')+
-    `<button class="coll-card-new" onclick="openNewList()">${icon('plus')}<span>New List</span></button>`;
+    `<button class="coll-card-new" onclick="openNewList()">${icon('plus')}<span>New List</span></button>`+
+    /* Joining by code sits beside creating, not buried in the You tab.
+       Every link-based path can be eaten by something between the two
+       people — an in-app browser, a sign-in detour, a confirmation
+       email read on another phone — and when one is, this is where the
+       recipient looks: the screen their lists are supposed to be on.
+       Hidden when sharing is not set up on the project at all. */
+    (sharingReady()
+      ?`<button class="coll-card-new coll-card-join" onclick="openJoinByCode()">
+          ${icon('share')}<span>Join a List</span></button>`
+      :'');
   }catch(e){
     console.error('renderCollections:',e);
     wrap.innerHTML=`<div class="empty" style="grid-column:1/-1">${icon('folder')}

@@ -214,18 +214,19 @@ function renderShareList(l){
     h+= link
       ? `<div class="shr-url" id="shareListUrl">${esc(link)}</div>
          <button class="btn btn-filled btn-block" onclick="copyInviteLink()">
-           ${icon('link','ic-sm')}Copy invite link</button>
+           ${icon('link','ic-sm')}Copy link &amp; code</button>
          ${navigator.share?`<button class="btn btn-tinted btn-block" onclick="sendInviteLink()">
            ${icon('share','ic-sm')}Send it</button>`:''}
          <!-- The same invite, as something that can be typed. A link
               has to survive whatever app it is opened in; a code does
-              not. See JOINING BY CODE in this file. -->
-         <div class="shr-code-head">Or give them this code</div>
+              not. Both go into the message either button produces —
+              see inviteMessage(). -->
+         <div class="shr-code-head">The code, on its own</div>
          <button class="shr-code" onclick="copyInviteCode()"
                  aria-label="Copy the invite code">${esc(_shareInvite)}</button>
-         <p class="shr-note">They open ${esc(APP_NAME)} &rarr; You &rarr;
-           Join a shared list, and enter it. Useful when the link opens
-           somewhere unhelpful.</p>
+         <p class="shr-note">Both buttons above send the link and this code
+           together. If the link opens somewhere unhelpful, they go to
+           Lists &rarr; Join a List and enter it.</p>
          <button class="btn btn-plain btn-block" onclick="revokeInvite()">Turn the link off</button>`
       : `<p class="shr-note">Sharing is off for this list. Creating a link lets
            anyone who has it join.</p>
@@ -294,10 +295,23 @@ async function revokeInvite(){
   });
 }
 
+/* What actually gets pasted into a message. The link and the code, the
+   code on its own line so it can be selected without the URL coming
+   with it — the link path is the convenient one and the code is the one
+   that always works, so both travel together rather than the recipient
+   having to be sent a second message when the first one fails. */
+function inviteMessage(listName){
+  return (listName?`Join my “${listName}” list on ${APP_NAME}:`:`Join my list on ${APP_NAME}:`)+
+    `\n${inviteUrl(_shareInvite)}`+
+    `\n\nOr open ${APP_NAME} → Lists → Join a List and enter this code:`+
+    `\n${_shareInvite}`;
+}
+
 async function copyInviteLink(){
+  const l=await fetchCollection(_shareListId);
   try{
-    await navigator.clipboard.writeText(inviteUrl(_shareInvite));
-    showToast('Link copied');
+    await navigator.clipboard.writeText(inviteMessage(l&&l.name));
+    showToast('Link and code copied');
   }catch(e){
     /* Clipboard access is refused in plenty of contexts; the link is
        on screen either way, so this is a convenience not the
@@ -322,16 +336,13 @@ async function sendInviteLink(){
   if(!navigator.share) return copyInviteLink();
   const l=await fetchCollection(_shareListId);
   try{
+    /* No `url:` field. Given one, most share targets send the URL and
+       drop the text — which is exactly the half that fails, and the
+       code would go with it. Putting the link inside the text keeps
+       both in the message. See the JOINING BY CODE section. */
     await navigator.share({
       title:l?l.name:APP_NAME,
-      /* The code rides along in the text, not only inside the link.
-         Whatever the link does on the far end — an in-app browser, a
-         sign-in detour, a tab that got discarded — the recipient can
-         always open the app and type this instead. See the JOINING BY
-         CODE section. */
-      text:(l?`Join my “${l.name}” list on ${APP_NAME}`:`Join my list on ${APP_NAME}`)+
-           `\n\nOr open ${APP_NAME} → You → Join a shared list, and enter:\n${_shareInvite}`,
-      url:inviteUrl(_shareInvite),
+      text:inviteMessage(l&&l.name),
     });
   }catch(e){ /* the user dismissed the share sheet */ }
 }

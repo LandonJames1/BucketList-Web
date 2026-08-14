@@ -138,3 +138,10 @@
       border-radius: 50%; border: 1.5px solid var(--label-4);
     }
     .coll-card-new:active .ic { border-color: var(--tint); }
+
+    /* Joining sits beside creating and must not compete with it: same
+       tile, quieter ground and the secondary colour, so "New List"
+       stays the primary thing on the screen. */
+    .coll-card-join { color: var(--purple); }
+    .coll-card-join:active { background: var(--fill-3); border-color: var(--purple); }
+    .coll-card-join:active .ic { border-color: var(--purple); }

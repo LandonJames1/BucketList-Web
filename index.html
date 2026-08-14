@@ -265,6 +265,11 @@
     <div class="empty-title">No lists yet</div>
     <div class="empty-sub">A list is a set of things you want to do &mdash; places, milestones, anything.</div>
     <button class="btn btn-filled" onclick="openNewList()">Create a List</button>
+    <!-- Someone invited into their first list lands here with nothing on
+         screen. Shown by renderCollections() only where sharing is set
+         up. See openJoinByCode() in sharing.js. -->
+    <button class="btn btn-tinted" id="collEmptyJoin" style="display:none"
+            onclick="openJoinByCode()">Join a List</button>
   </div>
 </div>
 
