@@ -118,8 +118,35 @@ function bootKeepLong(key,value){
 }
 function bootReadLong(key){
   let raw;
-  try{ raw=localStorage.getItem(key); }catch(e){ return null; }
-  if(!raw) return null;
+  try{ raw=localStorage.getItem(key); }catch(e){ raw=null; }
+
+  /* ---- The upgrade itself used to eat the invite ----
+
+     This shelf was sessionStorage under the *same key* until the build
+     that introduced it here, and moving it opened a window exactly one
+     page load wide.
+
+     sw.js calls skipWaiting() on install and clients.claim() on
+     activate, so opening an invite link on a device that already had
+     the app cached runs the OLD code first: it captured the code into
+     sessionStorage and stripped the query string. The new worker then
+     took control, pwa.js reloaded the page — correctly, this is a real
+     update — and the NEW code looked for the code in localStorage,
+     found nothing, and the invite was gone. No URL left to retry with
+     and nothing on screen to say so.
+
+     So a miss falls through to the old location and promotes what it
+     finds. Worth keeping as the general rule rather than as this one
+     migration: any boot capture that changes where it lives has this
+     hazard, and the failure is silent at both ends. */
+  if(!raw){
+    let old=null;
+    try{ old=sessionStorage.getItem(key); }catch(e){}
+    if(!old) return null;
+    bootKeepLong(key,old);
+    try{ sessionStorage.removeItem(key); }catch(e){}
+    return old;
+  }
   let rec;
   try{ rec=JSON.parse(raw); }catch(e){ bootDropLong(key); return null; }
   if(!rec||typeof rec.v!=='string'||!rec.t||Date.now()-rec.t>BOOT_LONG_TTL){

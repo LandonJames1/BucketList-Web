@@ -819,6 +819,24 @@ clears both, at exactly the two points `bootDropLong()` was called before, so
 "a failure leaves the invite retryable" is unchanged; without the metadata
 half the join sheet would reopen on every launch for the life of the account.
 
+**Moving the shelf ate one release's invites, and `bootReadLong()` now
+carries the migration.** The join code lived in sessionStorage under the same
+key until `bootKeepLong` arrived, and `sw.js` calls `skipWaiting()` on install
+plus `clients.claim()` on activate — so opening an invite link on a device
+that already had the app cached ran the *old* code first. It captured the code
+into sessionStorage and stripped the query string; the new worker took over,
+`pwa.js` reloaded the page (correctly — a real update); and the new code looked
+in localStorage, found nothing, and the invite was gone with no URL left to
+retry from. So a miss falls through to the old location and promotes what it
+finds. **Keep that as the general rule, not as this one migration**: any boot
+capture that changes where it lives has the same one-page-load window, and it
+is silent at both ends.
+
+`handleAuth()` reads `pendingJoin || bootReadLong(JOIN_STASH)` for the same
+family of reasons — the global is emptied by any reload between opening the
+link and pressing Create Account. And `takePendingJoin()` logs which of the
+three copies answered, because every way this fails is invisible.
+
 That path was **unreachable until confirmation links started working
 cross-device** (see **Coming back through the confirmation email**) — before
 that a second-device confirmation simply failed, which shoved the recipient

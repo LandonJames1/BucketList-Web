@@ -456,10 +456,24 @@ function readPendingJoin(){
    in-memory one only; see dropPendingJoin() for why the durable copies
    outlive a read. */
 function takePendingJoin(){
-  if(pendingJoin){ const c=pendingJoin; pendingJoin=null; return c; }
-  const meta=currentUser&&currentUser.user_metadata;
-  const c=meta&&typeof meta.pending_join==='string'?meta.pending_join.trim():'';
-  return c||'';
+  let code='',from='';
+  if(pendingJoin){ code=pendingJoin; from='memory'; pendingJoin=null; }
+  if(!code){
+    /* readPendingJoin() normally puts this into the global at boot, but
+       reading it here too makes this function answer for itself rather
+       than for whatever ran before it. */
+    code=bootReadLong(JOIN_STASH)||''; if(code) from='shelf';
+  }
+  if(!code){
+    const meta=currentUser&&currentUser.user_metadata;
+    code=meta&&typeof meta.pending_join==='string'?meta.pending_join.trim():'';
+    if(code) from='account';
+  }
+  /* Every way this fails is silent — no URL left, nothing on screen —
+     so say which copy answered when one does. It cost a deploy to work
+     out that the answer was "none of them". */
+  if(code) console.log('[join] pending invite from',from);
+  return code;
 }
 
 /* Consume it for good — both copies. Called at exactly the two points
