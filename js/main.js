@@ -45,6 +45,8 @@ function paintStaticIcons(){
   set('meInstallChevron',icon('chevron-right'));
   set('meShareIcon',icon('link'));
   set('meShareChevron',icon('chevron-right'));
+  set('meJoinIcon',icon('share'));
+  set('meJoinChevron',icon('chevron-right'));
   const lead=document.querySelector('#page-me .li-blue');
   if(lead) lead.innerHTML=icon('share');
 }
@@ -109,12 +111,25 @@ function hasStoredSession(){ return !!readStoredSession(); }
      query string has to be captured and stripped before anything else
      can navigate away from it. showApp() picks both back up once there
      is a user. */
+  /* A confirmation link is the third thing that can arrive in the query
+     string, and it is read FIRST — the two below blank the whole search
+     string once they have taken what they came for, which would destroy
+     it. This one removes only its own keys and puts the rest back, so
+     running it ahead of them costs them nothing. See CONFIRMING AN
+     EMAIL ADDRESS in js/auth.js. */
+  readEmailConfirmation();
   readSharedInput();
   readPendingJoin();
   /* The offline banner reflects the queue, which may be non-empty from
      a previous session, so it is painted before anything can render. */
   updateSyncUI();
-  const user=await restoreSession();
+  /* A confirmation link is a session waiting to be claimed, and it is
+     tried *before* the stored one. Both orders matter: someone
+     confirming on a second device has no stored session to find, and
+     someone confirming on the first device has a stale one — for the
+     same account, but issued before the address was verified. */
+  const confirmed=await consumeEmailConfirmation();
+  const user=confirmed||await restoreSession();
   if(user){
     currentUser=user;
     /* Awaited so the splash holds until Home has actually painted.
@@ -125,6 +140,11 @@ function hasStoredSession(){ return !!readStoredSession(); }
        that long. Everything slow inside showApp() runs detached, so
        this waits on the paint and nothing else. */
     await showApp();
+    /* After the paint, not before: arriving from an email link is
+       otherwise indistinguishable from an ordinary launch, and the one
+       thing this person wants to know is whether the trip through their
+       inbox actually did anything. */
+    if(confirmed) showToast('Email confirmed — you’re signed in.');
   } else {
     showAuth();
   }

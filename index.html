@@ -94,22 +94,55 @@
       <p class="auth-sub" id="authSub">Sign in to reach your lists.</p>
     </div>
 
-    <div class="auth-fields">
-      <div id="authExtraFields" style="display:none">
-        <input id="authDisplayName" autocomplete="name" placeholder="Name" />
-        <input id="authUsername" autocomplete="username" autocapitalize="none" autocorrect="off" placeholder="Username" />
+    <!-- Filled in by updateAuthInviteNotice() when the app was opened on
+         an invite link while signed out. Without it the recipient has no
+         way to tell the invite survived the sign-in they are being asked
+         for, and the whole flow reads as "the link did nothing". -->
+    <div class="auth-invite" id="authInvite" style="display:none"></div>
+
+    <!-- What a confirmation link says when it lands and cannot be
+         honoured — expired, already used, or opened without the browser
+         that started the sign-up. Written by setAuthNotice() in
+         auth.js. Without it an expired link is indistinguishable from
+         the link having done nothing at all. -->
+    <div class="auth-notice" id="authNotice" style="display:none"></div>
+
+    <!-- The sign-in / sign-up form. Swapped against #authCheck below by
+         setAuthView(); a sign-up that has to be confirmed by email must
+         not leave a filled-in Create Account button on screen, because
+         pressing it again only earns "user already registered". -->
+    <div id="authForm">
+      <div class="auth-fields">
+        <div id="authExtraFields" style="display:none">
+          <input id="authDisplayName" autocomplete="name" placeholder="Name" />
+          <input id="authUsername" autocomplete="username" autocapitalize="none" autocorrect="off" placeholder="Username" />
+        </div>
+        <input id="authEmail" type="email" inputmode="email" autocomplete="email"
+               autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Email" />
+        <input id="authPass" type="password" autocomplete="current-password" placeholder="Password"
+               onkeydown="if(event.key==='Enter')handleAuth()" />
       </div>
-      <input id="authEmail" type="email" inputmode="email" autocomplete="email"
-             autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Email" />
-      <input id="authPass" type="password" autocomplete="current-password" placeholder="Password"
-             onkeydown="if(event.key==='Enter')handleAuth()" />
+
+      <div class="auth-error" id="authError"></div>
+      <button class="btn btn-filled auth-submit" id="authBtn" onclick="handleAuth()">Sign In</button>
+      <div class="auth-toggle">
+        <span id="authToggleText">Don&rsquo;t have an account?</span>
+        <button id="authToggleBtn" onclick="toggleAuthMode()">Create one</button>
+      </div>
     </div>
 
-    <div class="auth-error" id="authError"></div>
-    <button class="btn btn-filled auth-submit" id="authBtn" onclick="handleAuth()">Sign In</button>
-    <div class="auth-toggle">
-      <span id="authToggleText">Don&rsquo;t have an account?</span>
-      <button id="authToggleBtn" onclick="toggleAuthMode()">Create one</button>
+    <!-- Where a sign-up lands while it waits to be confirmed. -->
+    <div id="authCheck" style="display:none">
+      <p class="auth-check">
+        Open the link on any device and you&rsquo;ll be signed straight in.
+        If it hasn&rsquo;t arrived in a minute, check your spam folder.
+      </p>
+      <div class="auth-error" id="authCheckError"></div>
+      <button class="btn btn-filled auth-submit" id="authResendBtn" onclick="resendConfirmation()">Send it again</button>
+      <div class="auth-toggle">
+        <span>Wrong address?</span>
+        <button onclick="authBackToForm()">Start over</button>
+      </div>
     </div>
   </div>
 </div>
@@ -279,6 +312,15 @@
       <span class="row-leading li-purple" id="meShareIcon"></span>
       <span class="row-body"><span class="row-title">Share links into the app</span></span>
       <span class="row-chevron" id="meShareChevron"></span>
+    </button>
+    <!-- The floor tier of accepting an invite: a code typed in here.
+         An invite link has to survive whichever browser or in-app
+         webview the recipient's messaging app hands it to; this does
+         not. See JOINING BY CODE in sharing.js. -->
+    <button class="row tappable has-leading" onclick="openJoinByCode()">
+      <span class="row-leading li-green" id="meJoinIcon"></span>
+      <span class="row-body"><span class="row-title">Join a shared list</span></span>
+      <span class="row-chevron" id="meJoinChevron"></span>
     </button>
   </div>
 
@@ -811,6 +853,33 @@
       <span class="navbtn" style="pointer-events:none;opacity:0">Not now</span>
     </div>
     <div class="sheet-body" id="joinBody"></div>
+  </div>
+</div>
+
+<!-- Accepting an invite WITHOUT a link. The link is the convenient
+     path and it crosses apps we do not control; this one cannot be
+     eaten by a browser, an in-app webview or a sign-in detour.
+     See JOINING BY CODE in sharing.js. -->
+<div class="modal-overlay" id="joinCodeSheet">
+  <div class="modal">
+    <div class="sheet-grabber"></div>
+    <div class="sheet-bar">
+      <button class="navbtn" onclick="closeModal('joinCodeSheet')">Cancel</button>
+      <div class="sheet-title">Join a List</div>
+      <button class="navbtn strong" onclick="submitJoinCode()">Join</button>
+    </div>
+    <div class="sheet-body">
+      <p class="shr-lead">Enter the invite code you were sent. Pasting the
+        whole link works too.</p>
+      <div class="fg">
+        <input id="joinCodeInput" class="join-code-input" autocapitalize="none"
+               autocorrect="off" spellcheck="false" placeholder="Invite code"
+               onkeydown="if(event.key==='Enter')submitJoinCode()" />
+      </div>
+      <div class="auth-error" id="joinCodeError"></div>
+      <p class="shr-note">The person who shared the list can find the code in
+        the list&rsquo;s &hellip; menu, under Share.</p>
+    </div>
   </div>
 </div>
 

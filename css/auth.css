@@ -64,3 +64,60 @@
       color: var(--tint); font-weight: 600; font-size: 15px;
       min-height: 44px; padding: 0 8px;
     }
+
+    /* An invite opened while signed out. Tinted rather than plain body
+       copy: it is the reason this person is looking at a login form at
+       all, and it has to survive being read at a glance. */
+    .auth-invite {
+      margin: 4px 4px 0;
+      padding: 12px 14px;
+      border-radius: var(--r-ctl);
+      background: var(--tint-soft);
+      color: var(--label);
+      font-size: 14px;
+      line-height: 1.4;
+      text-align: center;
+    }
+    .auth-invite strong { display: block; margin-bottom: 2px; }
+
+    /* A confirmation link that could not be honoured. Shaped like
+       .auth-invite for the same reason — it is why this person is
+       looking at a login form — but it carries its own way out, because
+       "that link expired" with no way to get another one is the same
+       dead end the link itself was. */
+    .auth-notice {
+      margin: 4px 4px 0;
+      padding: 12px 14px;
+      border-radius: var(--r-ctl);
+      background: var(--tint-soft);
+      color: var(--label);
+      font-size: 14px;
+      line-height: 1.4;
+      text-align: center;
+    }
+    .auth-notice strong { display: block; margin-bottom: 2px; }
+    .auth-notice.ok { background: var(--green-soft); }
+    /* Padded to a real target: it sits inside a tinted block where a
+       bare line of text does not read as pressable. */
+    .auth-notice button {
+      display: block; width: 100%;
+      margin: 8px 0 -4px;
+      min-height: 40px;
+      color: var(--tint); font-weight: 600; font-size: 14px;
+    }
+    .auth-notice.ok button { color: var(--green); }
+
+    /* The waiting-for-confirmation state. Quieter than .auth-notice —
+       nothing has gone wrong, the title above is already carrying the
+       message, and this is only the detail under it. */
+    .auth-check {
+      margin: 4px 4px 0;
+      padding: 14px 16px;
+      border-radius: var(--r-ctl);
+      background: var(--bg-elevated);
+      box-shadow: var(--shadow-sm), 0 0 0 .5px var(--separator);
+      color: var(--label-2);
+      font-size: 14px;
+      line-height: 1.45;
+      text-align: center;
+    }

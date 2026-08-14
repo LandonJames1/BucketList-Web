@@ -23,12 +23,22 @@ const SUPABASE_KEY='sb_publishable_45ETmiEMgvWn3QAd58ck5Q_opy0TWnX';
 
    storageKey is pinned so the stored session survives a supabase-js
    upgrade that might otherwise change the key and silently sign
-   everyone out. */
+   everyone out.
+
+   detectSessionInUrl is OFF, which is the one setting here that is not
+   the default. supabase-js reads the URL inside createClient() — before
+   any of the app's own code has run — so a confirmation link would be
+   consumed by a background promise nothing can await, racing the boot
+   sequence in main.js and reporting its failures only to the console.
+   consumeEmailConfirmation() in auth.js does it explicitly instead, in
+   a known order and with somewhere to show the answer. Nothing else
+   relies on it: this project has no OAuth providers, only email and
+   password. See CONFIRMING AN EMAIL ADDRESS in js/auth.js. */
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{
   auth:{
     persistSession:true,        /* keep the session in localStorage */
     autoRefreshToken:true,      /* renew the access token before it lapses */
-    detectSessionInUrl:true,    /* handle magic-link / OAuth redirects */
+    detectSessionInUrl:false,   /* auth.js handles the landing itself */
     storageKey:'bucketlist-auth',
     flowType:'pkce',
   },

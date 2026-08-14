@@ -54,6 +54,9 @@ function resetAccountState(){
 function showAuth(){
   $('authPage').style.display='flex';
   $('appWrap').style.display='none';
+  /* An invite opened while signed out lands here. Say so, or signing
+     in looks like the only thing the link did. See js/sharing.js. */
+  updateAuthInviteNotice();
   pwaUpdateOnlineState();
 }
 async function showApp(){
@@ -144,6 +147,13 @@ async function showApp(){
 let authIsSignUp=false;
 function toggleAuthMode(){
   authIsSignUp=!authIsSignUp;
+  applyAuthMode();
+}
+/* Split out of toggleAuthMode() so the screen can be *restored* to a
+   mode as well as flipped into one — coming back from the check-your-
+   email state has to repaint every one of these without inverting the
+   flag underneath it. */
+function applyAuthMode(){
   $('authTitle').textContent=authIsSignUp?'Create Account':'Welcome Back';
   $('authSub').textContent=authIsSignUp
     ?'Start collecting the things you want to do.'
@@ -153,7 +163,33 @@ function toggleAuthMode(){
   $('authToggleBtn').textContent=authIsSignUp?'Sign in':'Create one';
   $('authExtraFields').style.display=authIsSignUp?'':'none';
   $('authPass').setAttribute('autocomplete',authIsSignUp?'new-password':'current-password');
+  /* A sign-up that went off to wait for an email left this disabled and
+     reading "…", because it returned before handleAuth() could put it
+     back. Coming back to the form is the moment that gets undone. */
+  $('authBtn').disabled=false;
   setAuthError('');
+}
+
+/* The form and the check-your-email panel are one screen in two states,
+   not two screens. */
+function setAuthView(view){
+  const check=view==='check';
+  $('authForm').style.display=check?'none':'';
+  $('authCheck').style.display=check?'':'none';
+}
+function showCheckEmail(email){
+  pendingConfirmEmail=email;
+  setAuthError('');
+  setAuthNotice('');
+  $('authCheckError').textContent='';
+  $('authTitle').textContent='Check your email';
+  $('authSub').textContent='We sent a confirmation link to '+email+'.';
+  setAuthView('check');
+}
+function authBackToForm(){
+  pendingConfirmEmail='';
+  setAuthView('form');
+  applyAuthMode();
 }
 function setAuthError(msg,ok){
   const el=$('authError');
@@ -193,14 +229,22 @@ async function handleAuth(){
          the row on the first sign-in that actually has a session.
 
          emailRedirectTo points the confirmation link back at wherever
-         the app is really being served. Supabase ignores it unless the
-         URL is allow-listed, falling back to the project's Site URL —
-         so it can only ever improve on the default. */
+         the app is really being served — see confirmRedirectUrl(). */
+      /* An invite the person is signing up *in order to accept* rides
+         along too. It is already on this device's shelf, but the shelf
+         is localStorage and the confirmation email is very often read
+         on a different phone — where the shelf is empty and the invite
+         would be silently lost. Metadata is the one thing that follows
+         an account through the email. See AN INVITE THAT OUTLIVES THE
+         DEVICE in js/sharing.js. */
+      const meta={display_name:displayName,username};
+      if(pendingJoin) meta.pending_join=pendingJoin;
+
       const{data,error}=await sb.auth.signUp({
         email,password,
         options:{
-          data:{display_name:displayName,username},
-          emailRedirectTo:location.origin+location.pathname,
+          data:meta,
+          emailRedirectTo:confirmRedirectUrl(),
         },
       });
       if(error)throw error;
@@ -211,9 +255,18 @@ async function handleAuth(){
         resetAccountState();
         currentUser=data.user;showApp();return;
       }
-      if(data.user&&!data.session){
-        setAuthError('Check your email to confirm your account.',true);
+      /* An email that already has a *confirmed* account comes back
+         looking exactly like a fresh sign-up — a user, no session — so
+         that signUp() cannot be used to test whether someone has an
+         account here. The one thing that differs is an empty identities
+         array. Without this check the person is sent to wait for an
+         email that was never sent, which is the same silent dead end
+         the rest of this section exists to close. */
+      if(data.user&&Array.isArray(data.user.identities)&&!data.user.identities.length){
+        setAuthError('That email already has an account. Sign in instead.');
+        throw{handled:true};
       }
+      if(data.user&&!data.session){ showCheckEmail(email); return; }
     } else {
       const{data,error}=await sb.auth.signInWithPassword({email,password});
       if(error)throw error;
@@ -225,6 +278,228 @@ async function handleAuth(){
   }
   btn.disabled=false;
   btn.textContent=label;
+}
+
+/* ==============================================================
+   CONFIRMING AN EMAIL ADDRESS
+
+   This project has email confirmation switched on, so an account does
+   not exist usefully until its owner has come back through a link in
+   their inbox. That round trip leaves the app entirely — through a mail
+   client, quite often onto a different device — and everything it has
+   to survive happens somewhere this code does not run. So, like
+   accepting an invite, it is built with a floor under it rather than
+   one happy path.
+
+   THE LINK ITSELF IS CONFIGURED IN THE DASHBOARD, NOT HERE. Two
+   settings, and getting either wrong looks identical from the outside
+   ("I clicked the link and it opened a broken page"):
+
+   - **Authentication → URL Configuration → Site URL** is where every
+     confirmation link goes. Left at the Supabase default it is
+     http://localhost:3000, so every recipient lands on a dead page.
+     emailRedirectTo below does *not* override this on its own —
+     Supabase silently ignores a redirect that is not allow-listed and
+     falls back to Site URL, which is exactly how this failure hides.
+   - **Redirect URLs** must therefore contain the app's real origin
+     before emailRedirectTo has any effect at all.
+
+   - **Authentication → Emails → Confirm signup** should point at
+     token_hash rather than the default ConfirmationURL:
+
+         {{ .SiteURL }}/index.html?token_hash={{ .TokenHash }}&type=email
+
+     That is what makes the link work on a *different device from the
+     one that signed up*, which is the common case: people sign up on a
+     laptop and read their mail on a phone. The default link comes back
+     as ?code=… and, because this client uses PKCE, redeeming it needs
+     the code verifier that signUp() wrote to localStorage in the
+     original browser. On any other device that exchange fails with
+     "both auth code and code verifier should be non-empty" and the
+     recipient lands on the sign-in screen having apparently done
+     nothing. verifyOtp() carries no such requirement.
+
+   The ?code= path is still handled below, because links already sent
+   are still in people's inboxes, and because password recovery uses the
+   same machinery.
+   ============================================================== */
+
+/* What the URL carried, read once at boot and consumed once after. */
+let pendingConfirm=null;
+/* Who "Send it again" is for. */
+let pendingConfirmEmail='';
+
+/* Where a confirmation link should come back to. Deliberately
+   location-derived rather than a constant: the app is served from
+   several places over its life (localhost, a LAN address, the real
+   host) and a hardcoded URL would send every developer's test sign-up
+   to production. */
+function confirmRedirectUrl(){ return location.origin+location.pathname; }
+
+/* Read at boot, before anything can navigate away from the URL.
+   Supabase has three ways of handing back the result and one of handing
+   back a failure, and which one arrives depends on the email template
+   and the client's flow type — so all four are read rather than
+   assuming the template is the one documented above. */
+function readEmailConfirmation(){
+  let q,h;
+  try{
+    q=new URLSearchParams(location.search);
+    /* An implicit-grant link puts everything after the # instead, where
+       it never reaches the server. */
+    h=new URLSearchParams((location.hash||'').replace(/^#/,''));
+  }catch(e){ return; }
+  const get=k=>(q.get(k)||h.get(k)||'').trim();
+
+  const c={
+    error:get('error_description')||get('error'),
+    errorCode:get('error_code'),
+    code:get('code'),
+    tokenHash:get('token_hash'),
+    accessToken:get('access_token'),
+    refreshToken:get('refresh_token'),
+    type:get('type')||'email',
+  };
+  if(!c.error&&!c.code&&!c.tokenHash&&!c.accessToken) return;
+  pendingConfirm=c;
+
+  /* Single-use credentials have no business staying in the address bar,
+     in the back/forward history, or in a URL someone might screenshot
+     to ask why it did not work.
+
+     Only our own keys are removed, and the rest of the query string is
+     put back: readPendingJoin() and readSharedInput() run against the
+     same URL, and blanking it wholesale here would eat an invite.
+
+     Those two do blank it wholesale, which is why main.js runs this one
+     *first*. Reading it last looked equivalent and was not: an invite
+     link followed to a sign-up puts ?join= and the confirmation keys on
+     the same URL, readPendingJoin() stripped the lot, and the
+     confirmation was gone with no notice to say so — the exact silent
+     failure the rest of this section exists to close. */
+  ['error','error_code','error_description','code','token_hash','type',
+   'access_token','refresh_token','expires_in','expires_at','token_type']
+    .forEach(k=>q.delete(k));
+  const rest=q.toString();
+  history.replaceState(null,'',location.pathname+(rest?'?'+rest:''));
+}
+
+/* Redeem whatever the link carried. Returns the signed-in user, or null
+   — and never throws: a link that cannot be honoured has to leave a
+   sign-in screen with an explanation on it, not a blank app. */
+async function consumeEmailConfirmation(){
+  const c=pendingConfirm;
+  pendingConfirm=null;
+  if(!c) return null;
+
+  if(c.error){ setAuthNotice(confirmFailureHTML(c.errorCode,c.error)); return null; }
+
+  try{
+    let res=null;
+    if(c.tokenHash){
+      res=await sb.auth.verifyOtp({type:c.type,token_hash:c.tokenHash});
+    } else if(c.code){
+      res=await sb.auth.exchangeCodeForSession(c.code);
+    } else if(c.accessToken&&c.refreshToken){
+      res=await sb.auth.setSession({
+        access_token:c.accessToken, refresh_token:c.refreshToken,
+      });
+    }
+    if(res&&res.error) throw res.error;
+    if(res&&res.data&&res.data.user) return res.data.user;
+    /* An access token with no refresh token beside it: nothing to
+       persist, so treat it as a link that did not work rather than
+       signing someone in for as long as one token lasts. */
+    setAuthNotice(confirmFailureHTML('','That link did not carry a sign-in.'));
+  }catch(e){
+    console.warn('[auth] confirmation link failed:',e);
+    setAuthNotice(confirmFailureHTML(e.code||e.error_code||'',e.message||''));
+  }
+  return null;
+}
+
+/* Every failure ends in the same offer, because every one of them is
+   fixed the same way: send another link. */
+function confirmFailureHTML(code,message){
+  const c=String(code||'').toLowerCase();
+  const m=String(message||'').toLowerCase();
+  let lead='That link didn’t work.';
+  let body='It may already have been used. Enter your email and we’ll send a new one.';
+  if(c.includes('expired')||m.includes('expired')){
+    lead='That link has expired.';
+    body='Confirmation links are good for 24 hours. Enter your email below and we’ll send a fresh one.';
+  } else if(m.includes('code verifier')){
+    /* The cross-device PKCE failure the token_hash template above
+       exists to prevent. Worth naming precisely: told only "that link
+       didn't work", someone will keep re-opening the same link on the
+       same phone. */
+    lead='That link needs the device you signed up on.';
+    body='Open it in the same browser you created the account in, or enter your email below for a fresh link.';
+  }
+  return '<strong>'+esc(lead)+'</strong>'+esc(body)
+    +'<button onclick="resendFromNotice()">Send a new link</button>';
+}
+
+function setAuthNotice(html,ok){
+  const el=$('authNotice');
+  if(!el) return;
+  el.innerHTML=html||'';
+  el.classList.toggle('ok',!!ok);
+  el.style.display=html?'':'none';
+}
+
+/* One request behind both resend buttons. The cooldown is not politeness
+   — Supabase rate-limits these per address, and a second press inside
+   the window comes back as an error that reads like the resend itself
+   failed. */
+let confirmResendAt=0;
+const RESEND_COOLDOWN=45000;
+async function sendConfirmationEmail(email,btn,errEl){
+  const say=msg=>{ if(errEl) errEl.textContent=msg; };
+  if(!email){ say('Enter your email first.'); return false; }
+  const wait=Math.ceil((confirmResendAt-Date.now())/1000);
+  if(wait>0){ say('Just a moment — try again in '+wait+'s.'); return false; }
+
+  const label=btn?btn.textContent:'';
+  if(btn){ btn.disabled=true; btn.textContent='…'; }
+  say('');
+  let ok=false;
+  try{
+    const{error}=await sb.auth.resend({
+      type:'signup', email,
+      options:{emailRedirectTo:confirmRedirectUrl()},
+    });
+    if(error) throw error;
+    confirmResendAt=Date.now()+RESEND_COOLDOWN;
+    ok=true;
+  }catch(e){
+    say(e.message||'Could not send that email.');
+  }
+  if(btn){ btn.disabled=false; btn.textContent=label; }
+  return ok;
+}
+
+async function resendConfirmation(){
+  const email=pendingConfirmEmail||$('authEmail').value.trim();
+  const ok=await sendConfirmationEmail(email,$('authResendBtn'),$('authCheckError'));
+  if(ok) $('authCheckError').textContent='Sent. Check your inbox.';
+}
+
+/* The same thing from the expired-link notice, where there is no
+   remembered address — whoever opened the link may never have had this
+   app open before. */
+async function resendFromNotice(){
+  const email=$('authEmail').value.trim();
+  if(!email){
+    setAuthError('Enter your email above, then press it again.');
+    $('authEmail').focus();
+    return;
+  }
+  const ok=await sendConfirmationEmail(email,null,$('authError'));
+  if(ok){
+    setAuthNotice('<strong>Sent.</strong>A new link is on its way to '+esc(email)+'.',true);
+    setAuthError('');
+  }
 }
 
 /* ==============================================================

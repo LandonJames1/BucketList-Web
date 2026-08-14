@@ -90,6 +90,48 @@ function bootDrop(key){
   try{ sessionStorage.removeItem(key); }catch(e){}
 }
 
+/* ==============================================================
+   THE SAME SHELF, BUT IT SURVIVES THE TAB CLOSING
+
+   sessionStorage is scoped to one tab and dies with it, which is the
+   right lifetime for a shared link and the WRONG one for an invite.
+
+   The difference is what the recipient does next. A shared link lands
+   on someone already signed in; an invite lands on someone who has to
+   sign in first, and signing in is precisely when people leave the
+   tab — to fetch the password out of a manager, to open the mail app
+   for a confirmation, to find which email they used. iOS Safari
+   discards background tabs aggressively under memory pressure, so
+   coming back means a fresh tab, an empty sessionStorage, and a URL
+   whose query string was stripped on the way in. The invite is gone,
+   and the symptom is "the link just opens the app and does nothing".
+
+   localStorage survives that. The property sessionStorage was giving
+   for free — that nothing can be re-run days later — is replaced by
+   an explicit stamp and TTL, which is the same guarantee written down
+   rather than inherited.
+   ============================================================== */
+const BOOT_LONG_TTL=7*24*60*60*1000;
+
+function bootKeepLong(key,value){
+  try{ localStorage.setItem(key,JSON.stringify({v:value,t:Date.now()})); }catch(e){}
+}
+function bootReadLong(key){
+  let raw;
+  try{ raw=localStorage.getItem(key); }catch(e){ return null; }
+  if(!raw) return null;
+  let rec;
+  try{ rec=JSON.parse(raw); }catch(e){ bootDropLong(key); return null; }
+  if(!rec||typeof rec.v!=='string'||!rec.t||Date.now()-rec.t>BOOT_LONG_TTL){
+    bootDropLong(key);
+    return null;
+  }
+  return rec.v;
+}
+function bootDropLong(key){
+  try{ localStorage.removeItem(key); }catch(e){}
+}
+
 function cap(s){return s.charAt(0).toUpperCase()+s.slice(1);}
 function todayISO(){return new Date().toISOString().split('T')[0];}
 

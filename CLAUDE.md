@@ -744,6 +744,99 @@ Two things fix it and both should stay, because they fail differently:
   on consume rather than on accept is what preserves the original
   property that a reload cannot re-run a join.
 
+#### Accepting an invite, and why it needs four answers
+
+The link is the convenient path and it is *not* the reliable one,
+because everything it has to survive happens in apps this code does not
+control. Three separate defects here all presented identically — "I sent
+the link, they opened it, and nothing happened" — which is why the
+mechanism now has a floor under it rather than one more fix.
+
+**A shared link dies with its tab; an invite must not.** `bootKeep` is
+sessionStorage, which is the right lifetime for `?share=` and the wrong
+one for `?join=`, and the difference is what the recipient does next. A
+shared link lands on someone already signed in. An invite lands on
+someone who has to sign in *first*, and signing in is exactly when people
+leave the tab — to open a password manager, to check which email they
+used, to fetch a confirmation. iOS Safari discards background tabs
+aggressively, so they come back to a fresh tab, an empty sessionStorage,
+and a URL whose query string was stripped on the way in. The invite was
+gone, and it looked like the link had never carried anything.
+**`bootKeepLong`/`bootReadLong`/`bootDropLong` (`utils.js`)** are the same
+shelf on localStorage, with an explicit stamp and a 7-day TTL replacing
+the "cannot be re-run days later" property sessionStorage gave for free.
+Only the join code uses them; a stale link import resurfacing a day later
+would be a regression, so `?share=` keeps the short shelf.
+
+**A failed join must not consume the invite.** `handlePendingJoin()`
+dropped the code from the shelf one line after reading it, and *three* of
+the paths below that can fail before the user has had any chance to join
+— the sharing probe answering false, the device being offline, the invite
+not reading back. Consuming it first meant a failure destroyed the invite
+permanently: the link had already stripped itself out of the URL, so
+there was nothing left to retry with. The code is now dropped once
+`peek_invite` has succeeded and the sheet is showing, which keeps the
+property the early drop existed for — a reload while the sheet is open
+finds no code and cannot re-run the join — and leaves every recoverable
+failure recoverable. A code that *cannot* be read is still consumed, or
+the same error sheet reopens on every launch.
+
+**The sign-in screen has to admit it is holding something.**
+`updateAuthInviteNotice()`, called from `showAuth()`. Without it the
+recipient sees an ordinary login form, and if anything downstream goes
+wrong they cannot tell whether the link ever carried an invite — which is
+precisely how this reads from the outside when it breaks.
+
+**And there is a path with no link in it at all.** `openJoinByCode()` /
+`submitJoinCode()` / `parseInviteCode()`, reachable from *Join a shared
+list* in the You tab and from the error state of a failed invite. The
+invite has always *been* an 18-character code; this just lets it be
+typed. Same shape as the reminder delivery tiers and the four ways a link
+gets shared in — the reliable floor exists so that the convenient path
+failing is an annoyance rather than the feature not existing. It lands
+straight back on `handlePendingJoin()`, so a code and a link cannot
+disagree about what joining looks like, and `parseInviteCode()` accepts a
+whole pasted invite URL or share message as readily as a bare code,
+because what people have in their clipboard is whatever they were sent.
+The share sheet therefore shows the code beside the link, and
+`sendInviteLink()` puts it in the message body.
+
+**An invite has to outlive the device, not just the tab.** `bootKeepLong`
+covers someone who already has an account: they sign in on the device the
+link opened on and the code is still in that device's localStorage. It does
+not cover someone signing up *in order to accept*, because that detours
+through a confirmation email — and mail gets read on phones. Confirm on a
+second device and the code is stranded in the first one's localStorage; the
+person is signed in, the invite is gone, and nothing says so.
+
+So the code **also rides on the auth user** (`options.data.pending_join` in
+`handleAuth()`), the same mechanism and for the same reason as the display
+name and username: `user_metadata` is the one piece of state that follows an
+account through the email onto any device. `takePendingJoin()` reads the
+shelf first — local, no round trip, and it covers everyone who does not have
+to sign up at all — then falls back to the metadata. `dropPendingJoin()`
+clears both, at exactly the two points `bootDropLong()` was called before, so
+"a failure leaves the invite retryable" is unchanged; without the metadata
+half the join sheet would reopen on every launch for the life of the account.
+
+That path was **unreachable until confirmation links started working
+cross-device** (see **Coming back through the confirmation email**) — before
+that a second-device confirmation simply failed, which shoved the recipient
+back to the browser that still had the code. Fixing the email link is what
+made this reachable, which is worth remembering as the general shape: the two
+mechanisms hold each other up, and repairing one exposed the gap in the other.
+
+**iOS cannot be made to open the PWA instead of Safari.** There is no
+API for it: Universal Links need a native app and an AASA file, and a
+manifest scope is a hint the OS is free to ignore. This is the same
+platform wall that makes the app unable to register as a share target.
+It matters less than it looks, though, and that is worth stating plainly
+in any future debugging: **joining is a server-side membership row**, so
+an invite accepted in Safari is already in effect in the installed PWA —
+the detour is cosmetically annoying, never the reason a list fails to
+appear. If a list is missing after a join, the join did not happen; look
+at the four mechanisms above, not at which browser it opened in.
+
 **A shared list is badged on the Lists tab in both directions** — one you
 joined and one you own and invited someone into. `isSharedWithMe()` answers
 the first from the row itself; `sharedCollectionIds()` answers the second
@@ -994,12 +1087,70 @@ RLS policies on `Users` — without an INSERT policy the client-side fallback
 is simply refused — a unique index on `lower(username)`, and a backfill for
 the accounts already stranded. **Run it.**
 
-`signUp()` also passes `emailRedirectTo`, so the confirmation link points at
-wherever the app is really being served rather than at whatever the
-dashboard's Site URL happens to say. Supabase ignores it unless the URL is
-allow-listed and falls back to the Site URL, so it can only improve on the
-default — but if confirmation links land somewhere wrong, the allowlist is
-the first place to look.
+#### Coming back through the confirmation email
+
+The other half of the same round trip, in the CONFIRMING AN EMAIL ADDRESS
+block of `auth.js`. Confirmation takes the person out of the app entirely —
+through a mail client, very often onto a different device — so like accepting
+an invite it is built with a floor under it rather than one happy path.
+
+**Three of the four things that decide whether the link works are in the
+Supabase dashboard, not in this repo**, and every one of them fails
+identically from the outside: *"I clicked the link and it opened a broken
+page"*.
+
+| Setting | What goes wrong |
+| --- | --- |
+| **Auth → URL Configuration → Site URL** | Left at the Supabase default it is `http://localhost:3000`, so every recipient lands on a dead page. This is where the link goes. |
+| **Auth → URL Configuration → Redirect URLs** | `emailRedirectTo` does **not** override Site URL on its own. Supabase silently ignores a redirect that is not allow-listed and falls back — which is exactly how the setting above hides. The app's real origin has to be listed before `confirmRedirectUrl()` has any effect at all. |
+| **Auth → Emails → Confirm signup** | Should be `{{ .SiteURL }}/index.html?token_hash={{ .TokenHash }}&type=email`. |
+
+**That template is what makes the link work on a device other than the one
+that signed up**, which is the common case — people sign up on a laptop and
+read their mail on a phone. `config.js` sets `flowType:'pkce'`, so the default
+`{{ .ConfirmationURL }}` comes back as `?code=…`, and redeeming that code
+needs the verifier `signUp()` wrote to **localStorage in the original
+browser**. Anywhere else the exchange fails with *"both auth code and code
+verifier should be non-empty"* and the recipient lands on the sign-in screen
+having apparently done nothing. `verifyOtp()` carries no such requirement.
+The `?code=` branch is still handled, for links already sitting in inboxes.
+
+`detectSessionInUrl` is **off**, and it is the one auth option in `config.js`
+that is not the default. supabase-js reads the URL inside `createClient()` —
+before any of the app's own code has run — so the landing would be consumed by
+a background promise nothing can await, racing the boot sequence and reporting
+its failures only to the console. `consumeEmailConfirmation()` does it
+explicitly instead, in a known order and with somewhere to show the answer.
+
+Things to keep:
+
+- **`readEmailConfirmation()` runs FIRST of the three boot readers**
+  (`main.js`). It removes only its own keys and puts the rest of the query
+  string back; `readSharedInput()` and `readPendingJoin()` blank the search
+  string wholesale once they have taken what they came for. Reading it last
+  looked equivalent and was not — an invite link followed to a sign-up puts
+  `?join=` and the confirmation keys on one URL, and the join reader took the
+  confirmation down with it, silently.
+- **The confirmation is tried before the stored session** (`main.js`). Both
+  orders matter: someone confirming on a second device has no stored session
+  to find, and someone confirming on the first has a stale one — same account,
+  issued before the address was verified.
+- **Every failure ends in the same offer**, because every one is fixed the
+  same way: send another link. `confirmFailureHTML()` names *which* failure
+  (expired, already used, wrong device) and then draws one button. An expired
+  link with no way to get another is the same dead end the link itself was.
+- **A sign-up that has to be confirmed swaps the form out for
+  `#authCheck`** — `setAuthView()`. Leaving a filled-in Create Account button
+  on screen only earns "user already registered" when it is pressed again.
+  `applyAuthMode()` was split out of `toggleAuthMode()` so coming back can
+  *restore* a mode rather than invert the flag underneath it.
+- **An already-registered email is caught.** Supabase deliberately returns a
+  user and no session for one, so `signUp()` cannot be used to test whether
+  someone has an account here; the only tell is an empty `identities` array.
+  Without that check the person waits for an email that was never sent.
+- **The resend cooldown is not politeness.** Supabase rate-limits per address,
+  and a second press inside the window returns an error that reads as though
+  the resend itself failed.
 
 #### Sorting a collection
 
@@ -1624,7 +1775,7 @@ Loaded in this order; **order matters**.
 | `base.css` | The design system: `color-scheme`, the three type tokens (`--serif`/`--sans`/`--mono`), the warm palette with a full `prefers-color-scheme: dark` variant, the `--shadow-*` depth scale, the priority scale (`--tint`/`--violet`/`--slate` and their `-soft` fills), layout metrics (`--gutter`, `--nav-h`, `--tab-h`), the iOS safe-area tokens (`--safe-*`, plus the `--gx-l`/`--gx-r` gutter+inset shorthands every screen uses for horizontal padding), the type scale (`.t-*`, including `.t-eyebrow` for the mono small-caps label), the reset, and the shared keyframes. Everything depends on it. |
 | `layout.css` | The app shell: the translucent `.navbar` and its `.condensed` state, `.large-title`, the `.tabbar`, and the `.page` show/hide system with its push/fade animations. |
 | `components.css` | The reusable iOS primitives every screen builds from: `.group`/`.row` inset grouped lists, `.seg` segmented controls, `.btn` styles, `.searchfield`, `.badge`/`.tag`, **`.list-chip`** (a collection's name on any row that could have come from any list — Home's Up Next, the Up Next screen, search results, the duplicate sheet; sized to match `.tag` so the capsules on one row line up), the `.pri-*` priority marks, `.seg-pri`/`.pri-swatch` (the priority chooser), `.media-tile`/`.media-play` (one tile for a photo or a video, used by three screens), `.empty`, `.progress`, `.spinner`. Look here before inventing a new component. |
-| `auth.css` | The signed-out screen — no nav bar, no tab bar, its own centring. |
+| `auth.css` | The signed-out screen — no nav bar, no tab bar, its own centring. Plus `.auth-invite`, the tinted note shown when an invite link was opened while signed out; `.auth-notice`, the same shape for a confirmation link that could not be honoured, but carrying its own way out (a resend button) because "that link expired" with no way to get another is the same dead end the link was; and `.auth-check`, the quieter waiting-for-confirmation panel — nothing has gone wrong there, and the title above is already carrying the message. |
 | `home.css` | The dashboard: the greeting, the SVG progress ring, the context-free quick-add composer, the Up Next list, and the two `.shelf` grids (recently accomplished, your lists). |
 | `collections.css` | The Lists tab: `.coll-card` photo cards and the "New List" tile. |
 | `detail.css` | A collection's screen: `.det-banner`, `.det-ctl-row`/`.det-sort` (the filter and sort controls sharing a line — the row owns the gutters so `.seg` can give up its own margins), `.act-row` list rows, `.composer` quick-add, `.act-card` grid cards, and the `.ad-*` activity detail sheet including `.ad-lists`/`.ad-list-chip`. |
@@ -1635,7 +1786,7 @@ Loaded in this order; **order matters**.
 | `import.css` | `.imp-*` — the sheet a shared link or screenshot opens into (its result checklist, the screenshot preview, the duplicate mark, the waiting and caption-fallback states) — plus `.shr-*`, the iOS Shortcut setup sheet, which `sharing.css` also borrows. |
 | `search.css` | `.srch-*` — the pinned search field over the results, the section headings, and the `<mark>` wash. The rows themselves are `.act-row` from `detail.css`. |
 | `dupes.css` | `.dupe-*` — the "you may already have this" sheet. Deliberately quiet: no red, no alert iconography, an ordinary tinted confirm. It interrupts the fastest path in the app, so it has to read as a question. |
-| `sharing.css` | `.shr-people-*`/`.shr-avatar`/`.shr-role` and `.join-*` — the invite sheet's roster and the accept-an-invite card. Reuses `.shr-lead`/`.shr-url`/`.shr-note` from `import.css` on purpose: both are "here is a link, here is what to do with it". |
+| `sharing.css` | `.shr-people-*`/`.shr-avatar`/`.shr-role` and `.join-*` — the invite sheet's roster and the accept-an-invite card — plus `.shr-code-head`/`.shr-code` (the invite as something that can be read off one screen and typed into another) and `.join-code-input`. Reuses `.shr-lead`/`.shr-url`/`.shr-note` from `import.css` on purpose: both are "here is a link, here is what to do with it". |
 | `pwa.css` | The offline banner, install bar, iOS Add-to-Home-Screen sheet. |
 | `responsive.css` | Only the two directions away from phone-first: <375px, and ≥700px where the app centres in a column instead of stretching. **Must load last.** |
 
@@ -1646,9 +1797,9 @@ Loaded in this order; **order matters**.
 
 | File | Domain |
 | --- | --- |
-| `config.js` | `SUPABASE_URL`/`SUPABASE_KEY`, the `sb` client, the `COVERS` array of default Unsplash covers, and `randCover(existingCovers)` (picks a cover the user isn't already using). |
+| `config.js` | `SUPABASE_URL`/`SUPABASE_KEY`, the `sb` client (auth options spelled out rather than defaulted — note `detectSessionInUrl:false`, the one that is *not* a default: `auth.js` handles the email-confirmation landing itself), the `COVERS` array of default Unsplash covers, and `randCover(existingCovers)` (picks a cover the user isn't already using). |
 | `state.js` | Every shared mutable global: `currentUser`, the navigation triple (`curTab`, `curPage`, `backTab`), `curListId`, `editingListId`, `editingActId`, `completingId`, `curFilter`, **`curSort`** (see **Sorting a collection**), `curView`, `upMedia`, `coverPhoto`, `userProfile`, `pendingShare` (a link shared in, held from boot until there is a signed-in user to file it for), and the map handles. Other files declare their own feature-local globals next to their code (`aLinks`, `bulkEntries`, `actMap`, `lbPhotos`, `locTimer`). |
-| `utils.js` | `$` (getElementById), `esc` (HTML-escape — **use it on every interpolated value**, all rendering is template strings), **`uuidv4`/`isUuid`** (client-minted row ids — read the warning under **Working offline** before touching them), `cap`, `todayISO`, `fmtDate(s, withYear)` (omits the year when it's the current one, unless `withYear` — a completed date is a record you look back on, so it always carries its year), `dateInfo(a)` (turns a target date like "This Year" into a `{label, cls}` urgency badge), `shakeEl`, `compress`, `confetti`, the priority pair `priClass`/`priTagHTML` (see **Showing priority**), **`ACT_SORTS`/`DEFAULT_ACT_SORT`/`sortActivities`** (see **Sorting a collection**), **`activityListLabel(a, lists)`** — what the `.list-chip` on a row says, now that an activity can be in several lists — and **`bootKeep`/`bootRead`/`bootDrop`**, the sessionStorage shelf that keeps `?join=`/`?share=` alive across a reload (see **Shared lists**; reading deliberately does not remove). |
+| `utils.js` | `$` (getElementById), `esc` (HTML-escape — **use it on every interpolated value**, all rendering is template strings), **`uuidv4`/`isUuid`** (client-minted row ids — read the warning under **Working offline** before touching them), `cap`, `todayISO`, `fmtDate(s, withYear)` (omits the year when it's the current one, unless `withYear` — a completed date is a record you look back on, so it always carries its year), `dateInfo(a)` (turns a target date like "This Year" into a `{label, cls}` urgency badge), `shakeEl`, `compress`, `confetti`, the priority pair `priClass`/`priTagHTML` (see **Showing priority**), **`ACT_SORTS`/`DEFAULT_ACT_SORT`/`sortActivities`** (see **Sorting a collection**), **`activityListLabel(a, lists)`** — what the `.list-chip` on a row says, now that an activity can be in several lists — and **`bootKeep`/`bootRead`/`bootDrop`**, the sessionStorage shelf that keeps `?join=`/`?share=` alive across a reload (see **Shared lists**; reading deliberately does not remove), plus **`bootKeepLong`/`bootReadLong`/`bootDropLong`** — the same shelf on localStorage with a 7-day TTL, so an invite survives the tab being closed while the recipient goes to find their password. |
 | `exif.js` | `exifReadLocation(file)` — the GPS fix out of a photo's EXIF, or null. Handles **JPEG and HEIC/HEIF/AVIF**, dispatching on magic bytes rather than `file.type`. Underneath: the JPEG walk (`exifFindTiff`), the HEIC box walk (`isoBoxes`, `isoType`, `heicReadLocation`, `heicExifExtent`, `heicExifItemId`, `heicItemExtent`, `heicTiffStart`, `isTiffAt`), and the shared TIFF reader both land on (`exifGpsFrom`, `exifTagValue`, `exifDMS`). Pure, no dependencies, every failure path returns null rather than throwing. **Must be called against the original `File`**: a canvas re-encode strips every tag. See **Where the photo was taken**. |
 | `fuzzy.js` | Approximate string matching, shared by duplicate detection and search. `similarity(a,b)` (symmetric — are these the same thing?) and `matchScore(q,text)` (asymmetric — does this row answer what is being typed?), plus `scoreFields()` and the primitives underneath: `fuzzyNorm`, `fuzzyTokens`, `fuzzyStem`, `fuzzyTokenSim`, `fuzzySoftDice`, `fuzzyTrigrams`, `fuzzyDice`, `fuzzyEditRatio`. Pure and synchronous. **See How the fuzzy matching works** — the constants are tuned, not derived. |
 | `icons.js` | `ICON_PATHS`, the app's own inline-SVG glyph set (`sort` is the newest), plus `ICON_FILLED` (glyphs already solid, which must not be stroked) and `icon(name, cls)`. Icons inherit `currentColor`. **Add new glyphs here**, not inline in a template string. |
@@ -1659,7 +1810,7 @@ Loaded in this order; **order matters**.
 
 | File | Domain |
 | --- | --- |
-| `auth.js` | **`resetAccountState()`** — everything belonging to one account, cleared on every auth transition (see **One account at a time**) — plus `showAuth`/`showApp` (swap `#authPage` against `#appWrap`; `showApp` boots into Home, loads the profile, triggers the iOS install hint, picks up any link shared in via `handleSharedInput()`, and starts the token auto-refresh). Also the `visibilitychange` handler that stops/starts auto-refresh — browsers suspend timers in a backgrounded PWA, and without restarting on resume the access token goes stale and the next request 401s, which reads to the user as being logged out — and the `onAuthStateChange` listener that keeps `currentUser` in step and only shows the login screen on a real `SIGNED_OUT`, `toggleAuthMode` (tracked by the `authIsSignUp` flag, not by reading the heading text), `setAuthError`, `handleAuth`, `handleSignOut`. Sign-up also inserts the `Users` profile row. |
+| `auth.js` | **`resetAccountState()`** — everything belonging to one account, cleared on every auth transition (see **One account at a time**) — plus `showAuth`/`showApp` (swap `#authPage` against `#appWrap`; `showApp` boots into Home, loads the profile, triggers the iOS install hint, picks up any link shared in via `handleSharedInput()`, and starts the token auto-refresh). Also the `visibilitychange` handler that stops/starts auto-refresh — browsers suspend timers in a backgrounded PWA, and without restarting on resume the access token goes stale and the next request 401s, which reads to the user as being logged out — and the `onAuthStateChange` listener that keeps `currentUser` in step and only shows the login screen on a real `SIGNED_OUT`, `toggleAuthMode`/`applyAuthMode` (tracked by the `authIsSignUp` flag, not by reading the heading text), `setAuthError`, `handleAuth`, `handleSignOut`. Sign-up also inserts the `Users` profile row. Plus **the confirmation-email landing** — `readEmailConfirmation` (boot; reads `token_hash`/`code`/implicit tokens/`error`, and strips only its own keys), `consumeEmailConfirmation`, `confirmFailureHTML`, `confirmRedirectUrl`, `setAuthNotice`, `setAuthView`/`showCheckEmail`/`authBackToForm`, and the resend pair `sendConfirmationEmail`/`resendConfirmation`/`resendFromNotice`. See **Coming back through the confirmation email**. |
 | `nav.js` | `nav(page, listId)` — the single entry point for changing screens (see **Screens and navigation**). Plus `PAGE_TAB`, `TAB_ROOT`, `selectTab`, `goBack`, `dismissOverlays`, **`refreshAfterChange(src)`** (the single answer to "something was written, what redraws?" — see **Refreshing after a change**), `updateNavbar` (**where each screen's bar buttons are defined**), `applyNavCondense`, a debounced `resize` handler, **`setBodyScrollLock(lock)`** — the single place that touches body overflow — and **`syncTabbarToKeyboard()`**, which keeps the tab bar behind the software keyboard instead of riding up on top of it (see **Mobile layout rules**). |
 | `gestures.js` | The two touch gestures, both delegated from `document`: **swipe a sheet down to dismiss it** (`.modal` and the action sheet) and **swipe sideways to change screen**. `overlayOpen`, `ownsHorizontal`/`ownsVertical` (surfaces with their own gesture), `SHEET_DISMISS_PX`/`SHEET_FLICK_PX`, `SWIPE_MIN`/`SWIPE_EDGE`, `TAB_ORDER` (in `nav.js`). See **Gestures** below. |
 | `modals.js` | `openModal` (**resets `.sheet-body` scrollTop** — see the note under *Sheets* below) / `closeModal` (they call `setBodyScrollLock`, so use them rather than toggling `.open` yourself), the scrim-click and Escape handlers, **`showActionSheet(opts)`** and `showConfirm` (iOS confirms destructive actions with an action sheet, not a dialog — `confirmDeleteCollection`/`confirmDeleteActivity` wrap it), the photo lightbox (swipe sideways to page, down to close), the list picker (`openListPicker`/`renderListPickerRows`/`listPickerPick`/`listPickerDone` — single- *and* multi-select, see **The list picker**), `ensurePickerRoom`/`releasePickerRoom` (see **Gestures**), and `showToast`. |
@@ -1677,7 +1828,7 @@ Loaded in this order; **order matters**.
 | File | Domain |
 | --- | --- |
 | `dupes.js` | **Fuzzy duplicate detection.** `dupeGuard(opts, proceed)` — the single gate every add path goes through — plus `dupeGuardBatch()` (returns a promise for the subset to keep), `findDupes`, `dupeScore`, `dupeHintFor` (the mark in the import sheet), the sheet's handlers (`dupeAddAnyway`/`dupeSkipDuplicates`/`dupeOpenExisting`/`dupeCancel`/`dupeCancelBatch`), and the `DUPE_LIKELY`/`DUPE_POSSIBLE` thresholds. Loads before every screen that adds an activity. See **Catching duplicates**. |
-| `sharing.js` | **Shared lists.** `probeSharing`/`sharingReady`/`resetSharingProbe`, `ownsCollection`/`isSharedWithMe` (which buttons to draw), the invite sheet (`openShareList`/`renderShareList`/`createInvite`/`revokeInvite`/`copyInviteLink`/`sendInviteLink`/`removeMember`), leaving (`confirmLeaveList`/`leaveList`), and accepting (`readPendingJoin` at boot, `handlePendingJoin`/`acceptJoin`/`declineJoin`), plus `makeInviteCode`/`inviteUrl`. See **Shared lists**. |
+| `sharing.js` | **Shared lists.** `probeSharing`/`sharingReady`/`resetSharingProbe`, `ownsCollection`/`isSharedWithMe` (which buttons to draw), the invite sheet (`openShareList`/`renderShareList`/`createInvite`/`revokeInvite`/`copyInviteLink`/`copyInviteCode`/`sendInviteLink`/`removeMember`), leaving (`confirmLeaveList`/`leaveList`), and accepting (`readPendingJoin` at boot, **`takePendingJoin`/`dropPendingJoin`** — the two copies of the code, this device's shelf and the auth user's metadata, so an invite survives a confirmation email opened on another phone — `handlePendingJoin`/`acceptJoin`/`declineJoin`, `updateAuthInviteNotice` for the signed-out case, and the link-free path `openJoinByCode`/`submitJoinCode`/`parseInviteCode`), plus `makeInviteCode`/`inviteUrl`. See **Shared lists**, and **Accepting an invite** for why that last group exists. |
 | `search.js` | The Search screen pushed from Home: one fuzzy field over every activity and collection. `openSearch`, `renderSearch` (the screen) / `renderSearchResults` (**only the results** — rebuilding the field would drop focus), `searchActivities`/`searchCollections`, `searchRowHTML`, and `searchMark` — **the one place a rendered string is not `esc()`'d wholesale**; it splits on raw text and escapes each piece. See **Finding things again**. |
 | `upnext.js` | The Up Next screen pushed from Home: every unfinished activity, bucketed by `targetBand()`. Borrows its rows and sort from `home.js`. |
 | `done.js` | The Accomplished screen pushed from Home: everything completed, grouped by the month it was finished. Reuses Home's photo tiles. |
@@ -1685,12 +1836,12 @@ Loaded in this order; **order matters**.
 | `collections.js` | `renderCollections()` (the Lists tab) plus the collection CRUD: `openNewList`, `openEditList`, `renderCoverPreview`, `clearCover`, `handleCoverUpload`, `saveList`, `delList`. `delList` deletes the collection's activities first — there is no DB cascade — and, once an activity can be in several lists, deletes only the ones with nowhere else to go and unlinks the rest. |
 | `detail.js` | One collection. Rendering is **deliberately split in two**: `renderDetail()` builds the banner and the controls, `renderActivitiesList()` rebuilds only the list. Search and filter call the second, so the search field never loses focus mid-typing. Also `activityRowHTML`/`activityCardHTML`, `sortButtonHTML()` (the sort control beside the filter), and the quick-add composer helpers (`composerHTML`, `onComposerKey`, `focusComposer`). |
 | `activities.js` | The whole activity flow. **Creating always goes through the sheet** — `quickAddActivity()` only takes the composer's text and opens `openNewActivity(name)` with it; nothing here inserts an activity directly except `commitSaveActivity()`, which is the sheet's own Save. `toggleComplete(id, isDone)` is the one-tap completion (see the note below). Then `openNewActivity`, `openEditAct`, `saveActivity`, `delActivity`, plus `renderActListPicker()`/`renderActListValue()`/`setTargetLists()` and the `targetListIds` global (with `targetListId` as a read-only alias for the home list) — the Lists row that lets an activity be filed from outside any collection, and which is hidden when there is no choice to make. Also `listFieldsFor()` and `removeActivityFromList()` — see **One activity, several lists**. Also `setPriorityChoice` (**the only way to set priority** — it keeps the swatched buttons and the hidden `#aPri` value in step), `openComp`/`openCompletedDate`/`confirmComplete` — the one completion sheet, every field on it (see **The two-speed activity flow**) — and `openActDetail` which builds the activity sheet. Plus `openCollectionMenu` (the ⋯ action sheet, which holds the view switcher and everything the old five-button hero row spelled out), `setFilter`, `setView`, and `openSortMenu`/`setSort`. |
-| `me.js` | `renderMe()` (stats), `renderMeIdentity()`, `openDeleteAccount`/`onDeleteAccountInput`/`deleteAccount` (see **Deleting an account**), `loadUserProfile()` (reads the `Users` row once per session into `userProfile` — **and creates it when missing**, via `createUserProfile`/`profileSeed`/`USERNAME_RE`; see **Signing up**), `confirmSignOut()`. The tab's two App rows are wired elsewhere: Add to Home Screen to `pwaShowInstallHelp()` in `pwa.js`, and Share links into the app to `openShareSetup()` in `share.js`. |
+| `me.js` | `renderMe()` (stats), `renderMeIdentity()`, `openDeleteAccount`/`onDeleteAccountInput`/`deleteAccount` (see **Deleting an account**), `loadUserProfile()` (reads the `Users` row once per session into `userProfile` — **and creates it when missing**, via `createUserProfile`/`profileSeed`/`USERNAME_RE`; see **Signing up**), `confirmSignOut()`. The tab's three App rows are wired elsewhere: Add to Home Screen to `pwaShowInstallHelp()` in `pwa.js`, Share links into the app to `openShareSetup()` in `share.js`, and Join a shared list to `openJoinByCode()` in `sharing.js`. |
 | `bulk.js` | The "add many at once" sheet, one card per row. Row values live in `bulkEntries[]` and the DOM is re-rendered from it wholesale, so **`saveBulkFieldValues()` must flush the inputs back into the array before any redraw** — every mutation helper does this. `_skipSaveBulk` suppresses that flush in `bulkApplyDown` (the "copy row 1" pills), which has already updated the array itself. `openBulkAdd(listId)` takes an explicit destination in `bulkListId`, defaulting to `curListId`: the sheet normally opens from a collection, but an import from Home has no collection context and passes the chosen list. |
 | `share.js` | **Turning a shared link or a screenshot into an activity.** `readSharedInput()` (boot; parses and strips the query param), `handleSharedInput()` (called from `showApp()`), `openImportSheet`/`runUnfurl`/`renderImportState`/`IMPORT_FAIL_STATE`, `pickScreenshot`/`handleScreenshot` (downscale and send to the vision path), `handOffSingle`/`handOffMany`/`shareSourceLinks`, `looksLikeUrl`/`importFromComposer`, and `openShareSetup`/`shareTargetUrl`/`copyShareTargetUrl` for the iOS Shortcut. Loads after `activities.js` and `bulk.js` because it hands drafts to both. See **Sharing a link in** below. |
 | `map.js` | All MapLibre GL. **`ensureMapLibre()`** — the library is loaded on demand here, not from `<head>`; at ~900KB it was the biggest single cost of a cold launch, blocking the parser on the way to a Home screen with no map on it. Both entry points await it and fall back to the "map unavailable" state if it cannot be fetched. Then `mapStyle()` (raster CARTO basemap + globe projection + sky), `webglOK()`, `actsToGeoJSON()`, and `attachActivityLayer()` — which adds the clustered GeoJSON source and syncs DOM markers (`makePinEl`, `makeClusterEl`) to the viewport. Then the two instances: the Map tab (`renderGlobalMap`, `fitGlobal`, `zoomGlobe`, `globeFillZoom`, `setGlobalMapFilter`) and the per-collection map (`renderMap`, `updateMapMarkers`). Plus `mapLoaded(map)` and `hasGeo`. Teardown is explicit — `destroyGlobalMap()`/`destroyDetailMap()` — because each map holds a WebGL context, but **only the detail map is torn down on navigation**. See **The immersive map** above for the traps. |
 | `pwa.js` | Service-worker registration and the install/offline UI: `isStandalone()`/`isIOS()` (which stamp `.standalone`/`.ios` on `<html>`), the `beforeinstallprompt` capture behind `pwaInstall()`, the iOS Add-to-Home-Screen sheet, `pwaShowInstallHelp()` (the Me tab row), and `pwaUpdateOnlineState()`. Dismissals persist in `localStorage` under `bl_*` keys. **It also calls `reg.update()` on foreground and on reconnect** — an installed PWA is rarely killed, and registration is the only moment the browser looks for a new `sw.js`, so without it a shipped fix can sit undelivered on the home-screen copy for days and look like it was never made. **`pwaHadController` gates the `controllerchange` reload** so it fires on an update and not on a first install — see **Shared lists**, where getting that wrong silently destroyed every invite link. |
-| `main.js` | Boot: `paintStaticIcons()` fills the empty icon placeholders left in `index.html` from the sprite map, then `readSharedInput()` captures any shared link (**before** the session restore — see **Sharing a link in**), then `restoreSession()` runs and `showApp()`/`showAuth()` follows. **Loads last.** See **Staying signed in** below — `restoreSession()` is deliberately more than one `getSession()` call. |
+| `main.js` | Boot: `paintStaticIcons()` fills the empty icon placeholders left in `index.html` from the sprite map, then the three query-string readers run in a **fixed order** — `readEmailConfirmation()`, `readSharedInput()`, `readPendingJoin()` — all **before** the session restore, because a link can be shared in, an invite opened, or an address confirmed while signed out. Then `consumeEmailConfirmation()` is tried ahead of `restoreSession()`, and `showApp()`/`showAuth()` follows. **Loads last.** See **Staying signed in** (why `restoreSession()` is more than one `getSession()` call) and **Coming back through the confirmation email** (why the reader order is not arbitrary). |
 
 ### The two-speed activity flow
 
@@ -2264,6 +2415,18 @@ Two things that will bite:
   folder listing**, which is capped at 1000 files. Someone with more
   than that leaves the remainder orphaned. Same sweeper problem as the
   one at the bottom of `storage.sql`.
+- **There is no password reset.** The confirmation landing already redeems
+  a `type=recovery` link — it goes through the same `verifyOtp()` — so
+  someone following one is signed in, but there is no "forgot password"
+  link on the auth screen to request one and no screen to set a new
+  password once they arrive. `sb.auth.resetPasswordForEmail()` plus a
+  sheet calling `sb.auth.updateUser({password})` is the whole of it.
+- **The confirmation email template is configured by hand.** Three
+  dashboard settings decide whether a signup link works at all (see
+  **Coming back through the confirmation email**), nothing in the repo
+  asserts them, and getting any of them wrong looks identical from the
+  outside. The app now says which failure it hit, which is the closest
+  thing to a check there is.
 - **`Users.icon` and `category_tag` (both tables) remain unused.**
 - **The map needs WebGL.** There is no 2D fallback — `webglOK()` shows a
   message instead. In practice every browser that can run the rest of the app

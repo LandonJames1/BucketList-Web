@@ -78,3 +78,48 @@
   text-transform: uppercase;
   color: var(--label-3);
 }
+
+/* ==============================================================
+   THE INVITE CODE
+
+   The same invite as the link above it, in the form that survives
+   being retyped. Mono and tracked out because it gets read off one
+   screen and typed into another — see JOINING BY CODE in sharing.js.
+   ============================================================== */
+.shr-code-head{
+  margin: 20px 0 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--label-3);
+  text-align: center;
+}
+.shr-code{
+  display: block;
+  width: 100%;
+  padding: 14px 12px;
+  border-radius: var(--r-ctl);
+  background: var(--fill-4);
+  border: 1px dashed var(--separator);
+  font-family: var(--mono);
+  /* Wraps rather than ellipsising: an 18-character code that has been
+     truncated is worse than useless, since it looks complete. */
+  font-size: 15px;
+  letter-spacing: .14em;
+  line-height: 1.5;
+  word-break: break-all;
+  color: var(--label);
+  text-align: center;
+  -webkit-user-select: text; user-select: text;
+}
+
+/* Tracked out to match the code it is receiving, so a mistyped
+   character is visible before Join is pressed. 16px minimum like every
+   other field — Safari zooms the page below that and stays zoomed. */
+.join-code-input{
+  font-family: var(--mono) !important;
+  font-size: max(16px, 17px) !important;
+  letter-spacing: .1em;
+  text-align: center;
+}

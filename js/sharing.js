@@ -217,6 +217,15 @@ function renderShareList(l){
            ${icon('link','ic-sm')}Copy invite link</button>
          ${navigator.share?`<button class="btn btn-tinted btn-block" onclick="sendInviteLink()">
            ${icon('share','ic-sm')}Send it</button>`:''}
+         <!-- The same invite, as something that can be typed. A link
+              has to survive whatever app it is opened in; a code does
+              not. See JOINING BY CODE in this file. -->
+         <div class="shr-code-head">Or give them this code</div>
+         <button class="shr-code" onclick="copyInviteCode()"
+                 aria-label="Copy the invite code">${esc(_shareInvite)}</button>
+         <p class="shr-note">They open ${esc(APP_NAME)} &rarr; You &rarr;
+           Join a shared list, and enter it. Useful when the link opens
+           somewhere unhelpful.</p>
          <button class="btn btn-plain btn-block" onclick="revokeInvite()">Turn the link off</button>`
       : `<p class="shr-note">Sharing is off for this list. Creating a link lets
            anyone who has it join.</p>
@@ -297,6 +306,15 @@ async function copyInviteLink(){
   }
 }
 
+async function copyInviteCode(){
+  try{
+    await navigator.clipboard.writeText(_shareInvite);
+    showToast('Code copied');
+  }catch(e){
+    showToast('Select the code above to copy it');
+  }
+}
+
 /* The OS share sheet, where there is one. This is the natural way to
    hand a link to someone on a phone, and it is the one place in the
    app where the platform's own sheet beats anything we could draw. */
@@ -306,7 +324,13 @@ async function sendInviteLink(){
   try{
     await navigator.share({
       title:l?l.name:APP_NAME,
-      text:l?`Join my “${l.name}” list on ${APP_NAME}`:`Join my list on ${APP_NAME}`,
+      /* The code rides along in the text, not only inside the link.
+         Whatever the link does on the far end — an in-app browser, a
+         sign-in detour, a tab that got discarded — the recipient can
+         always open the app and type this instead. See the JOINING BY
+         CODE section. */
+      text:(l?`Join my “${l.name}” list on ${APP_NAME}`:`Join my list on ${APP_NAME}`)+
+           `\n\nOr open ${APP_NAME} → You → Join a shared list, and enter:\n${_shareInvite}`,
       url:inviteUrl(_shareInvite),
     });
   }catch(e){ /* the user dismissed the share sheet */ }
@@ -385,29 +409,118 @@ function readPendingJoin(){
        captured a code and then been reloaded out from under it — most
        likely by the service worker taking control on a first visit.
        See the controllerchange handler in js/pwa.js. */
-    pendingJoin=bootRead(JOIN_STASH)||null;
+    pendingJoin=bootReadLong(JOIN_STASH)||null;
     return;
   }
   pendingJoin=code;
-  /* Held where a reload cannot destroy it. The recipient of an invite
-     usually has to sign in before there is anyone to join as, and that
-     is a long time to keep something in a global. */
-  bootKeep(JOIN_STASH,code);
+  /* Held where a reload cannot destroy it — and, unlike a shared link,
+     where closing the tab cannot destroy it either. See bootKeepLong()
+     in js/utils.js: the recipient of an invite is the one person
+     guaranteed to have to sign in first, and leaving the tab to go and
+     find a password is the single most likely thing they do next. */
+  bootKeepLong(JOIN_STASH,code);
   /* readSharedInput() may have stripped this already; doing it twice
      is harmless and neither can be made to depend on the other. */
   history.replaceState(null,'',location.pathname);
 }
 
+/* ==============================================================
+   AN INVITE THAT OUTLIVES THE DEVICE
+
+   bootKeepLong() survives the tab closing, which is enough for someone
+   who already has an account: they sign in on the device the link
+   opened on, and the code is still there.
+
+   It is not enough for someone who has to *create* one, because that
+   detours through a confirmation email — and mail gets read on phones.
+   Confirm on a second device and the join code is sitting in the first
+   device's localStorage, unreachable. The person is signed in, the
+   invite is gone, and nothing on screen says so: the exact failure the
+   whole capture mechanism exists to prevent, one layer further out.
+
+   That path was unreachable until confirmation links started working
+   cross-device (see CONFIRMING AN EMAIL ADDRESS in js/auth.js) — before
+   that, a second-device confirmation simply failed, which shoved the
+   recipient back to the browser that still had the code. Making the
+   link work everywhere is what made this reachable.
+
+   So the code also rides on the auth user, the same way the display
+   name and username do and for the same reason: user_metadata is the
+   one piece of state that follows an account through a confirmation
+   email onto any device. The shelf is still read first — it is local,
+   needs no round trip, and covers everyone who does not have to sign
+   up at all.
+   ============================================================== */
+
+/* Whichever copy of the code we can find. Reading consumes the
+   in-memory one only; see dropPendingJoin() for why the durable copies
+   outlive a read. */
+function takePendingJoin(){
+  if(pendingJoin){ const c=pendingJoin; pendingJoin=null; return c; }
+  const meta=currentUser&&currentUser.user_metadata;
+  const c=meta&&typeof meta.pending_join==='string'?meta.pending_join.trim():'';
+  return c||'';
+}
+
+/* Consume it for good — both copies. Called at exactly the two points
+   bootDropLong() was called before, so the "a failure leaves the invite
+   retryable" property is unchanged; this only widens what gets cleared
+   when it finally is consumed. Without the metadata half, the join
+   sheet would reopen on every launch for the life of the account. */
+function dropPendingJoin(){
+  bootDropLong(JOIN_STASH);
+  const meta=currentUser&&currentUser.user_metadata;
+  if(!meta||!meta.pending_join) return;
+  /* Detached: nothing is waiting on it, and the cost of it failing is
+     one repeat of a sheet the user just answered. */
+  sb.auth.updateUser({data:{pending_join:null}}).then(({data,error})=>{
+    if(error){ console.warn('[join] clearing pending_join:',error); return; }
+    if(data&&data.user) currentUser=data.user;
+  });
+}
+
+/* The sign-in screen's half of the same capture.
+
+   Someone who taps an invite link and has never opened the app before
+   is shown a login form, which says nothing about the invite. They
+   sign in, and if anything downstream then fails they have no way to
+   tell whether the link ever carried anything — which is exactly how
+   this reads when it goes wrong: "the link just opens the app". So
+   the invite is acknowledged on the screen that is holding it up. */
+function updateAuthInviteNotice(){
+  const el=$('authInvite');
+  if(!el) return;
+  if(!pendingJoin){ el.style.display='none'; el.innerHTML=''; return; }
+  el.innerHTML=`<strong>You&rsquo;ve been invited to a shared list.</strong>
+    Sign in or create an account and it&rsquo;ll open straight away.`;
+  el.style.display='block';
+}
+
 /* Called from showApp() once there is a signed-in user to join as. */
 async function handlePendingJoin(){
-  if(!pendingJoin) return;
-  const code=pendingJoin;
-  pendingJoin=null;
-  /* Consumed. Dropped here rather than in acceptJoin(), so that a
-     reload while the sheet is open cannot re-run the join — the same
-     property stripping the query string gives. */
-  bootDrop(JOIN_STASH);
+  /* Either the shelf this device wrote when the link was opened, or the
+     auth user's own metadata for someone who signed up from the link
+     and confirmed somewhere else. See takePendingJoin(). */
+  const code=takePendingJoin();
+  if(!code) return;
 
+  /* NOT dropped from the shelf yet.
+
+     It used to be dropped right here, one line after being read, and
+     three of the paths below can fail without the user ever having
+     had the chance to join — the probe says sharing is off, the
+     device is offline, the invite cannot be read. Consuming the code
+     before any of them meant a failure destroyed the invite for good:
+     the link had already stripped itself out of the URL, so there was
+     nothing left to retry with and no way to get back to it. The
+     recipient's only recourse was to ask for a whole new link, which
+     is exactly the failure this reads as from the outside.
+
+     So it is consumed once the invite has actually been read and the
+     sheet is showing it. That still gives the property the early drop
+     was there for — a reload while the sheet is open finds no code
+     and cannot re-run the join — and it costs nothing, because by
+     that point _joinCode is holding it in memory. */
   if(!sharingReady()){
     /* probeSharing() may not have answered yet — it is fired in the
        same tick. Give it a moment before deciding the feature is off,
@@ -419,7 +532,7 @@ async function handlePendingJoin(){
     return;
   }
   if(!navigator.onLine){
-    showToast('Joining a list needs a connection');
+    showToast('Joining a list needs a connection — the invite is saved');
     return;
   }
 
@@ -428,9 +541,15 @@ async function handlePendingJoin(){
 
   const{data,error}=await sb.rpc('peek_invite',{invite_code:code});
   if(error||!data||!data.ok){
+    /* A code that cannot be read is not going to become readable, so
+       this one IS consumed — leaving it would re-open the same error
+       sheet on every launch. */
+    dropPendingJoin();
+    console.error('peek_invite:',error||data);
     renderJoinError((data&&data.error)||'not_found');
     return;
   }
+  dropPendingJoin();
   _joinCode=code;
   $('joinBody').innerHTML=`
     <p class="shr-lead"><strong>${esc(data.owner)}</strong> shared a list with you.</p>
@@ -458,6 +577,7 @@ const JOIN_ERRORS={
 function renderJoinError(code){
   $('joinBody').innerHTML=`<div class="imp-status">
     <p>${esc(JOIN_ERRORS[code]||'That invite couldn’t be opened.')}</p>
+    <button class="btn btn-tinted btn-block" onclick="openJoinByCode()">Enter a code instead</button>
     <button class="btn btn-plain btn-block" onclick="closeModal('joinSheet')">Close</button>
   </div>`;
 }
@@ -484,4 +604,69 @@ async function acceptJoin(){
 function declineJoin(){
   _joinCode='';
   closeModal('joinSheet');
+}
+
+/* ==============================================================
+   JOINING BY CODE — the floor tier
+
+   Every other way in depends on a link surviving a journey the app
+   does not control: a messaging app that may open it in its own
+   in-app browser, iOS handing it to Safari rather than to the
+   installed PWA (there is no API to ask for the PWA — Universal Links
+   need a native app, and a manifest scope is only a hint), a sign-in
+   detour, a discarded tab. Each of those is individually survivable
+   and the app now survives them, but the list has no end, and the
+   recipient is the person least equipped to debug any of it.
+
+   So an invite is also just a code, typed into the app you are
+   already standing in. Nothing can eat it. This is the same shape as
+   the reminder delivery tiers and the four ways a link gets shared
+   in: the reliable floor exists so that the convenient path failing
+   is an annoyance rather than the feature not existing.
+
+   It takes a pasted link as readily as a bare code, because what
+   people have in their clipboard is whatever they were sent.
+   ============================================================== */
+function parseInviteCode(text){
+  const raw=(text||'').trim();
+  if(!raw) return '';
+  /* A whole invite URL, however it has been mangled — the code is the
+     one thing in it we can identify without parsing the rest. */
+  const inUrl=raw.match(/[?&#]join=([^&#\s]+)/i);
+  const candidate=inUrl?decodeURIComponent(inUrl[1]):raw;
+  /* Strip anything that cannot be in the alphabet rather than
+     rejecting it: a code read aloud and retyped picks up spaces, and
+     one pasted out of a chat app picks up invisible characters. */
+  const cleaned=candidate.toLowerCase().replace(/[^a-z0-9]/g,'');
+  return cleaned.length===INVITE_LEN?cleaned:'';
+}
+
+function openJoinByCode(){
+  closeModal('joinSheet');
+  $('joinCodeInput').value='';
+  $('joinCodeError').textContent='';
+  openModal('joinCodeSheet');
+  /* Not focused on open: the sheet is still sliding in, and a field
+     focused mid-animation is what ensurePickerRoom() has to defend
+     against elsewhere. */
+  setTimeout(()=>{const el=$('joinCodeInput');if(el)el.focus();},350);
+}
+
+async function submitJoinCode(){
+  const code=parseInviteCode($('joinCodeInput').value);
+  if(!code){
+    $('joinCodeError').textContent='That doesn’t look like an invite code. Paste the whole link if it’s easier.';
+    shakeEl($('joinCodeInput'));
+    return;
+  }
+  if(!navigator.onLine){
+    $('joinCodeError').textContent='Joining a list needs a connection.';
+    return;
+  }
+  closeModal('joinCodeSheet');
+  /* Straight back onto the ordinary invite path, so a code and a link
+     land on the same sheet and cannot disagree about what joining
+     looks like. */
+  pendingJoin=code;
+  await handlePendingJoin();
 }
