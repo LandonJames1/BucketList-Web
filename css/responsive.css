@@ -25,6 +25,14 @@
          absent. Priority and the deadline are the two things you are
          actually scanning for, and the collection is one tap away. */
       .up-meta .list-chip, .act-meta .list-chip { display: none; }
+
+      /* Same trade on the collection screen's control row: three filter
+         segments and a labelled sort button do not both fit, and the
+         segments are the ones you tap constantly. The sort glyph stands
+         alone; its aria-label still names the current order, and the
+         tint still says the order is not the default. */
+      .det-sort-label { display: none; }
+      .det-sort { padding: 0 11px; }
       .large-title h1 { font-size: 33px; }
       .home-greeting h1 { font-size: 32px; }
       .coll-grid { gap: 11px; }

@@ -1,9 +1,10 @@
 # Backend setup
 
-Five things live here: the SQL the app needs, the shared-lists schema,
-the storage bucket that holds completion photos and video, the Edge
-Function that delivers reminders as real push notifications, and the one
-that reads a shared link or a screenshot into an activity.
+Everything the backend needs: the SQL the app runs on, the shared-lists
+schema, the multi-list column, the storage bucket that holds completion
+photos and video, and three Edge Functions — one that delivers reminders
+as real push notifications, one that reads a shared link or a screenshot
+into an activity, and one that erases an account.
 
 Everything is optional, and each piece probes for itself at boot rather
 than assuming it is there:
@@ -14,7 +15,9 @@ than assuming it is there:
 | `sharing.sql` | `probeSharing()` in `js/sharing.js` | No Share entry in the ⋯ menu; the app is single-user, exactly as before |
 | `storage.sql` | `probeStorage()` in `js/media.js` | Photos stay inline as base64; video is refused with an explanation |
 | `functions/send-reminders` | — | Reminders still show on Home and on next open, just not as background push |
-| `functions/unfurl` | — | A shared link still opens the activity sheet with the URL attached; screenshot import says it needs the key |
+| `functions/unfurl` | — | A shared link still opens the activity sheet with the URL attached; screenshot import says it needs the key; the location guess stays quiet |
+| `multilist.sql` | `probeMultiList()` in `js/api.js` | An activity belongs to exactly one list; the Lists row stays single-select |
+| `functions/delete-account` | — | **Delete Account reports an error rather than half-deleting.** Deploy this if you offer the button at all |
 
 Note that **offline needs nothing here.** The write queue and the row
 snapshot live in the browser's IndexedDB (`js/offline.js`); there is no
@@ -239,3 +242,25 @@ there. The app detects this and points you at Add to Home Screen rather than
 appearing to hang.
 
 Requires iOS 16.4 or later.
+
+---
+
+## Deleting an account
+
+```
+supabase functions deploy delete-account
+```
+
+No secrets: `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are injected
+into every function by the platform.
+
+**Do not deploy this with `--no-verify-jwt`.** It runs as `service_role`
+and identifies the caller by verifying their JWT; without that check it
+would erase accounts for anyone who can reach the URL. There is
+deliberately no "which user" parameter — the uid comes from the token
+and nowhere else.
+
+Until it is deployed, Delete Account in the You tab reports a failure
+rather than doing part of the job. That is the intended degradation: a
+half-deleted account is worse than one that is still there.
+

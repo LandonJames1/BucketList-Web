@@ -287,6 +287,9 @@
     <button class="row tappable destructive" onclick="confirmSignOut()">
       <span class="row-body"><span class="row-title">Sign Out</span></span>
     </button>
+    <button class="row tappable destructive" onclick="openDeleteAccount()">
+      <span class="row-body"><span class="row-title">Delete Account</span></span>
+    </button>
   </div>
 
   <div class="me-version">From essential to extraordinary</div>
@@ -355,8 +358,12 @@
            app, so the field states what it holds. -->
       <div class="fg fg-hero">
         <label>Activity</label>
+        <!-- `change` rather than `input`: this fires a model call, and
+             one per keystroke is absurd. On blur, only when the value
+             actually moved. See maybeGuessLocation() in location.js. -->
         <input id="aName" placeholder="What do you want to do?" maxlength="100"
-               autocapitalize="sentences" enterkeyhint="done" />
+               autocapitalize="sentences" enterkeyhint="done"
+               onchange="maybeGuessLocation()" />
       </div>
 
       <!-- Target date and list share a line. Both are one-tap choices
@@ -386,8 +393,10 @@
         </div>
         <!-- Which list this belongs to. Hidden when there are no lists;
              populated by renderActListPicker(). -->
+        <!-- "List" becomes "Lists" once the schema can hold more than
+             one — see renderActListPicker() in activities.js. -->
         <div class="fg" id="actListRow" style="display:none">
-          <label>List</label>
+          <label id="actListLabel">List</label>
           <button type="button" class="picker-btn" id="actListBtn">
             <span class="picker-btn-value" id="actListName"></span>
             <span class="picker-btn-chevron" id="actListChevron"></span>
@@ -433,10 +442,16 @@
         <label>Location<span class="opt"> optional</span></label>
         <div class="loc-wrap">
           <input id="aLoc" placeholder="Search for a place" maxlength="200" autocomplete="off"
-                 oninput="locSearch(this,'aLocResults')" onfocus="locSearch(this,'aLocResults')" />
+                 oninput="onActLocInput();locSearch(this,'aLocResults')"
+                 onfocus="locSearch(this,'aLocResults')" />
           <input type="hidden" id="aLocLat" /><input type="hidden" id="aLocLng" />
           <div class="loc-results" id="aLocResults"></div>
         </div>
+        <!-- Shown when maybeGuessLocation() has written the field from
+             the activity's name. Unlike the EXIF chip on the completion
+             sheet this marks a value already in the box rather than
+             offering one — the ✕ takes it back out. See location.js. -->
+        <div class="loc-guess" id="aLocGuess" hidden></div>
       </div>
 
       <!-- 4: the reminder. A row that opens its own sheet, sitting right
@@ -576,24 +591,24 @@
         <div class="loc-suggest" id="compLocSuggest" hidden></div>
       </div>
 
-      <button class="more-toggle" id="compMoreToggle" aria-expanded="false" onclick="toggleCompMore()">
-        <span id="compMoreLabel">Add photos, video &amp; notes</span><span id="compMoreChevron"></span>
-      </button>
-
-      <div class="more-fields" id="compMore">
-        <div class="fg">
-          <label>Photos &amp; video<span class="opt"> optional</span></label>
-          <button class="photo-zone" onclick="$('photoInput').click()">
-            <span id="photoZoneIcon"></span>
-            <span>Add</span>
-          </button>
-          <input type="file" id="photoInput" multiple accept="image/*,video/*" hidden onchange="handleMedia(event)" />
-          <div class="photo-previews" id="photoPrev"></div>
-        </div>
-        <div class="fg">
-          <label>How it went<span class="opt"> optional</span></label>
-          <textarea id="compNotes" placeholder="Tell the story&hellip;" autocapitalize="sentences"></textarea>
-        </div>
+      <!-- Photos and notes are on the sheet outright. They sat behind an
+           "Add photos, video & notes" disclosure, which is one tap in
+           front of the single thing people most want to attach at the
+           moment they tick something off — and a collapsed field is one
+           most people never open. The whole sheet still fits a 320px
+           screen, which is why the disclosure could go. -->
+      <div class="fg">
+        <label>Photos &amp; video<span class="opt"> optional</span></label>
+        <button class="photo-zone" onclick="$('photoInput').click()">
+          <span id="photoZoneIcon"></span>
+          <span>Add</span>
+        </button>
+        <input type="file" id="photoInput" multiple accept="image/*,video/*" hidden onchange="handleMedia(event)" />
+        <div class="photo-previews" id="photoPrev"></div>
+      </div>
+      <div class="fg">
+        <label>How it went<span class="opt"> optional</span></label>
+        <textarea id="compNotes" placeholder="Tell the story&hellip;" autocapitalize="sentences"></textarea>
       </div>
     </div>
   </div>
@@ -622,16 +637,55 @@
   </div>
 </div>
 
+<!-- Delete account. A sheet rather than the action sheet every other
+     destructive action uses: this one is unrecoverable and takes
+     everything with it, so it has to be typed rather than tapped, and
+     an action sheet is dismissed by a stray tap on the scrim. See
+     openDeleteAccount() in me.js. -->
+<div class="modal-overlay" id="delAcctSheet">
+  <div class="modal">
+    <div class="sheet-grabber"></div>
+    <div class="sheet-bar">
+      <button class="navbtn" onclick="closeModal('delAcctSheet')">Cancel</button>
+      <div class="sheet-title">Delete Account</div>
+      <span class="navbtn" style="pointer-events:none;opacity:0">Cancel</span>
+    </div>
+    <div class="sheet-body">
+      <div class="del-acct-summary" id="delAcctSummary"></div>
+      <div class="fg">
+        <label>Type DELETE to confirm</label>
+        <input id="delAcctConfirm" placeholder="DELETE" maxlength="10"
+               autocomplete="off" autocapitalize="characters" autocorrect="off"
+               spellcheck="false" oninput="onDeleteAccountInput()" />
+      </div>
+      <div class="del-acct-error" id="delAcctError"></div>
+      <div class="sheet-actions">
+        <button class="btn btn-destructive btn-block" id="delAcctBtn"
+                disabled onclick="deleteAccount()">Delete My Account</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- List picker — used anywhere an activity needs a home. An action
      sheet was here first; it stacks one full-width row per list and
-     becomes an unusable tower once you have more than a handful. -->
+     becomes an unusable tower once you have more than a handful.
+
+     Two modes: single-select, where a tap picks and closes, and
+     multi-select for the activity sheet's Lists row, where rows toggle
+     and Done commits. See openListPicker() in modals.js. -->
 <div class="modal-overlay" id="listPickerSheet">
   <div class="modal">
     <div class="sheet-grabber"></div>
     <div class="sheet-bar">
       <button class="navbtn" onclick="closeModal('listPickerSheet')">Cancel</button>
       <div class="sheet-title" id="listPickerTitle">Add to List</div>
-      <span class="navbtn" style="pointer-events:none;opacity:0">Cancel</span>
+      <!-- Done exists only in multi mode; the spacer keeps the title
+           centred in single mode, where there is nothing to confirm. -->
+      <button class="navbtn strong" id="listPickerDone"
+              style="display:none" onclick="listPickerDone()">Done</button>
+      <span class="navbtn" id="listPickerDoneSpacer"
+            style="pointer-events:none;opacity:0">Cancel</span>
     </div>
     <div class="lp-sub" id="listPickerSub"></div>
     <div class="searchbar" id="listPickerSearchWrap" style="display:none">

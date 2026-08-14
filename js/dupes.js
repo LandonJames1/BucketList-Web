@@ -123,7 +123,7 @@ function renderDupeSheet(name,hits){
         :`${hits.length} things you already have`}. Have a look before adding it.`;
 
   $('dupeList').innerHTML=hits.map(({a,score})=>{
-    const l=lists.find(c=>c.id===a.listId);
+    const chip=activityListLabel(a,lists);
     const di=dateInfo(a);
     const thumb=a.photos&&a.photos.length
       ? `<img class="act-thumb" src="${a.photos[0]}" alt="" loading="lazy"/>` : '';
@@ -132,7 +132,7 @@ function renderDupeSheet(name,hits){
       <span class="dupe-main">
         <span class="dupe-name">${esc(a.name)}</span>
         <span class="dupe-meta">
-          ${l?`<span class="list-chip">${esc(l.name)}</span>`:''}
+          ${chip?`<span class="list-chip">${esc(chip)}</span>`:''}
           ${a.completed?'<span class="badge b-done">Done</span>'
             :di.label?`<span class="badge b-${di.cls}">${esc(di.label)}</span>`:''}
         </span>
@@ -203,14 +203,14 @@ function dupeGuardBatch(entries){
       already on your lists.`;
 
     $('dupeList').innerHTML=flagged.map(({e,hits})=>{
-      const l=lists.find(c=>c.id===hits[0].a.listId);
+      const where=activityListLabel(hits[0].a,lists);
       return `<div class="dupe-row static">
         <span class="dupe-score${hits[0].score>=DUPE_LIKELY?' strong':''}">${Math.round(hits[0].score*100)}%</span>
         <span class="dupe-main">
           <span class="dupe-name">${esc(e.name)}</span>
           <span class="dupe-meta">
             <span class="dupe-vs">matches</span>
-            <span class="dupe-listname">${esc(hits[0].a.name)}${l?' · '+esc(l.name):''}</span>
+            <span class="dupe-listname">${esc(hits[0].a.name)}${where?' · '+esc(where):''}</span>
           </span>
         </span>
       </div>`;

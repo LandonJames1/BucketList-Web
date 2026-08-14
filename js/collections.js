@@ -24,7 +24,10 @@ async function renderCollections(){
     const sharedOut=await sharedCollectionIds();
 
     wrap.innerHTML=lists.map(l=>{
-      const acts=allActs.filter(a=>a.listId===l.id);
+      /* Membership, not home list: an activity added to this list from
+         another one counts towards its total and its progress exactly
+         as anything created here does. */
+      const acts=allActs.filter(a=>a.listIds.includes(l.id));
       const total=acts.length,done=acts.filter(a=>a.completed).length;
       const pct=total?Math.round(done/total*100):0;
       const cover=l.cover||randCover();
@@ -153,9 +156,34 @@ async function delList(id){
   try{
     /* No DB cascade — the activities have to go first. Queued in this
        order too, so a replay after being offline cannot leave orphaned
-       activities behind a deleted collection. */
-    const r1=await dbDelete('Activities',{collection_id:id});
-    if(r1.error)throw r1.error;
+       activities behind a deleted collection.
+
+       With multiple lists per activity, "the activities" is no longer
+       one equality match. An activity that also lives somewhere else
+       must survive with this list taken out of it — deleting a list is
+       not a claim on anything that is only partly in it — so the two
+       groups are handled separately, and only the ones with nowhere
+       else to go are destroyed.
+
+       That costs a round trip per activity, where the single-list case
+       is one call for the whole list. Deleting a collection is rare
+       and already behind a destructive confirmation, so the trade is
+       worth it — but it is why the old bulk path is kept verbatim for
+       anyone who has not run supabase/multilist.sql, where no activity
+       can have a second list and the loop could only ever be a slower
+       way to do exactly the same thing. */
+    if(multiListReady()){
+      for(const a of await fetchActivitiesFor(id)){
+        const rest=(a.listIds||[]).filter(x=>x!==id);
+        const r=rest.length
+          ? await dbUpdate('Activities',listFieldsFor(rest),{id:a.id})
+          : await dbDelete('Activities',{id:a.id});
+        if(r.error)throw r.error;
+      }
+    } else {
+      const r1=await dbDelete('Activities',{collection_id:id});
+      if(r1.error)throw r1.error;
+    }
     const r2=await dbDelete('Collections',{id});
     if(r2.error)throw r2.error;
     nav('lists');

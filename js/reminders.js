@@ -256,14 +256,14 @@ function renderHomeReminders(acts,lists){
   sec.style.display='';
 
   $('homeReminders').innerHTML=due.map(a=>{
-    const l=lists.find(c=>c.id===a.listId);
+    const chip=activityListLabel(a,lists);
     const when=a.remindAt===todayISO()?'Today':fmtDate(a.remindAt);
     return `<div class="rem-row" onclick="openActDetail('${a.id}')">
       <span class="rem-icon">${icon('clock')}</span>
       <button class="rem-main">
         <span class="rem-name">${esc(a.name)}</span>
         ${a.remindNote?`<span class="rem-note">${esc(a.remindNote)}</span>`:''}
-        <span class="rem-meta">${esc(when)}${l?' · '+esc(l.name):''}</span>
+        <span class="rem-meta">${esc(when)}${chip?' · '+esc(chip):''}</span>
       </button>
       <button class="rem-dismiss" onclick="event.stopPropagation();clearReminder('${a.id}')"
               aria-label="Dismiss reminder">${icon('x')}</button>

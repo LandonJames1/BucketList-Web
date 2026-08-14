@@ -246,7 +246,8 @@ const SCHEMA = {
             type: 'string',
             description:
               'Geocodable place name, e.g. "Fushimi Inari Taisha, Kyoto, Japan". Empty string if the source names no place. ' +
-              'Only when the activity is tied to that place; leave empty for something doable anywhere.',
+              'Only when the activity is tied to that place; leave empty for something doable anywhere. ' +
+              'Read it from the source — never infer one from an association, and never a whole country.',
           },
           description: {
             type: 'string',
@@ -485,6 +486,153 @@ async function structureFromImage(
 const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
 /* ==============================================================
+   PREDICTING A LOCATION FROM A NAME
+
+   The third way in, and the smallest: `{activity:{name,description}}`
+   comes back as `{location,lat,lng}` or as nothing at all.
+
+   It exists because an activity with no location never appears on the
+   map, and typing one in is the step everybody skips. But most
+   activity names do not name a place, and the failure this has to
+   avoid is worse than the gap it fills: a place written into a record
+   on a guess is a wrong fact the user will believe later, and they
+   will not remember that a model put it there.
+
+   So the bar is not "can you think of somewhere plausible" — a model
+   asked that will always answer. It is: **does the name itself
+   identify one specific place, such that any reader would agree?**
+
+     "Go on a hike"              → nothing. Anywhere on earth.
+     "Go to Arches National Park" → Arches National Park, Utah, USA.
+
+   Three gates, and all three have to pass:
+
+     1. the model says so, under the prompt below;
+     2. it sets `certain`, which the prompt defines narrowly;
+     3. Nominatim can actually find the place. Somewhere the map
+        cannot plot is worthless here — putting the activity on the
+        map is the entire reason to guess.
+
+   A fourth gate lives on the client, in js/location.js: the predicted
+   place has to share a word with the activity name. That is what
+   stops an invented answer, and it is on the client because it is
+   cheap, needs no model, and belongs next to the code that writes
+   the value into the field.
+   ============================================================== */
+const PLACE_SCHEMA = {
+  type: 'object',
+  properties: {
+    place: {
+      type: 'string',
+      description:
+        'A specific, geocodable place named by the activity itself — "Arches National Park, Utah, USA". ' +
+        'Empty string unless the activity plainly identifies one particular place.',
+    },
+    certain: {
+      type: 'boolean',
+      description:
+        'True only when the activity names one specific place that could not reasonably be anywhere else. ' +
+        'False for anything general, anything with several plausible answers, and anything you inferred.',
+    },
+  },
+  required: ['place', 'certain'],
+  additionalProperties: false,
+} as const;
+
+const PLACE_SYSTEM = `You are given the name of an item on someone's bucket list. Decide whether that
+name identifies ONE specific, real, findable place — and if it does, name it.
+
+Almost always the answer is no. Return {"place": "", "certain": false} unless you
+are sure. A wrong guess is written silently into someone's records and believed
+later; a missing guess costs them one search box. These are not close to equal,
+so refuse whenever there is any doubt at all.
+
+## Say yes only when the NAME ITSELF names the place
+
+- A named landmark, park, building, trail, restaurant, museum, mountain, island,
+  venue or event with one well-known location.
+- A named city, region or country, when the activity is about being there.
+
+## Say no to everything else. In particular:
+
+- Generic activities: "Go on a hike", "Learn to surf", "See the sunrise",
+  "Take a hot air balloon ride", "Go skydiving". These happen in a thousand
+  places and the user has not said which.
+- Categories of place: "Visit a vineyard", "Stay in an overwater bungalow",
+  "Eat at a Michelin-starred restaurant".
+- Ambiguous names with several real answers: "Visit Springfield",
+  "See the cathedral", "Go to Portland".
+- Anything where you are reasoning from an association rather than reading a
+  name. "See the Northern Lights" is not Tromsø. "Run a marathon" is not
+  Boston. "Try authentic ramen" is not Tokyo.
+- Activities about a person, an object or a skill rather than a place:
+  "Learn Spanish", "Read Ulysses", "Meet my hero".
+
+## Worked examples
+
+  "Go on a hike"                        → {"place": "", "certain": false}
+  "Go to Arches National Park"          → {"place": "Arches National Park, Utah, USA", "certain": true}
+  "Hike the Inca Trail to Machu Picchu" → {"place": "Machu Picchu, Peru", "certain": true}
+  "Eat at Noma"                         → {"place": "Noma, Copenhagen, Denmark", "certain": true}
+  "See a Broadway show"                 → {"place": "", "certain": false}
+  "Watch the sunset from Santorini"     → {"place": "Santorini, Greece", "certain": true}
+  "Swim with sharks"                    → {"place": "", "certain": false}
+  "Visit the Louvre"                    → {"place": "Musée du Louvre, Paris, France", "certain": true}
+  "Take a cooking class in Italy"       → {"place": "", "certain": false}
+
+That last one is the line worth studying. Italy is named, but "in Italy" is
+where the activity happens, not a place to put a pin — a whole country is not a
+location. Say no to anything larger than a city unless the activity is about
+visiting that country as such.
+
+Write the place as a geocoder would want it: the specific name first, then the
+city or region, then the country. Never a street address.`;
+
+async function predictPlace(
+  name: string, description: string,
+): Promise<{ location: string; lat: number | null; lng: number | null }> {
+  const empty = { location: '', lat: null, lng: null };
+  const key = Deno.env.get('ANTHROPIC_API_KEY');
+  /* No key means no prediction and no error: the client treats an empty
+     answer and a missing backend identically, because the user-visible
+     result is the same — the field is left for them to fill in. */
+  if (!key || name.trim().length < 3) return empty;
+
+  try {
+    const client = new Anthropic({ apiKey: key });
+    const res = await client.messages.create({
+      model: MODEL,
+      max_tokens: 1024,
+      system: PLACE_SYSTEM,
+      output_config: { effort: 'medium', format: { type: 'json_schema', schema: PLACE_SCHEMA } },
+      messages: [{
+        role: 'user',
+        content: `Activity: ${name.trim()}` +
+          (description.trim() ? `\nNotes: ${description.trim()}` : ''),
+      }],
+    });
+
+    if (res.stop_reason === 'refusal') return empty;
+    const text = res.content.find((b: any) => b.type === 'text');
+    if (!text) return empty;
+    const parsed = JSON.parse((text as any).text);
+    /* `certain` is the gate, not a score to weigh: the prompt defines
+       when it is allowed to be true, and anything less than true is a
+       no. */
+    if (!parsed.certain || !parsed.place) return empty;
+
+    /* Gate three. A place the geocoder cannot find cannot go on the
+       map, which is the only reason to have guessed it. */
+    const geo = await geocode(parsed.place);
+    if (!geo) return empty;
+    return { location: parsed.place, lat: geo.lat, lng: geo.lng };
+  } catch (e) {
+    console.error('predictPlace:', e);
+    return empty;
+  }
+}
+
+/* ==============================================================
    STAGE 3 — GEOCODE
 
    Same public Nominatim endpoint js/location.js uses, so an imported
@@ -511,8 +659,22 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'POST only' }, 405);
 
-  let body: { url?: string; text?: string; image?: string; mediaType?: string };
+  let body: {
+    url?: string; text?: string; image?: string; mediaType?: string;
+    activity?: { name?: string; description?: string };
+  };
   try { body = await req.json(); } catch { return json({ error: 'bad json' }, 400); }
+
+  /* ---- Predict a location from an activity name ----
+     Checked first because it is the cheapest branch and shares none of
+     the plumbing below: no URL to guard, no image to size, no drafts to
+     geocode in bulk. See predictPlace. */
+  if (body.activity) {
+    return json(await predictPlace(
+      (body.activity.name || '').slice(0, 200),
+      (body.activity.description || '').slice(0, 500),
+    ));
+  }
 
   /* ---- Screenshot ----
      Checked before the URL, so a caller can send both (an image plus

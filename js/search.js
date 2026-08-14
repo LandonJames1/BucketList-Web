@@ -96,10 +96,15 @@ function setSearchFilter(f){
 function searchActivities(q,acts,lists){
   const byId={};
   lists.forEach(l=>{byId[l.id]=l.name;});
+  /* Every list an activity is in, not just its home one — searching
+     "Japan" has to find something filed into the Japan list from
+     somewhere else, or the list name stops being a reliable way to
+     find things the moment an activity is in two. */
+  const listNames=a=>(a.listIds||[a.listId]).map(id=>byId[id]||'').filter(Boolean).join(' ');
   const out=[];
   for(const a of acts){
     const fields=SEARCH_ACT_WEIGHTS.map(([k,w])=>
-      [k==='collection'?(byId[a.listId]||''):a[k],w]);
+      [k==='collection'?listNames(a):a[k],w]);
     /* Links are searched as a group: people do remember "that tiktok
        one", and the URL is the only place that shows up. */
     if(a.links&&a.links.length) fields.push([a.links.join(' '),.4]);
@@ -181,12 +186,12 @@ function searchIdleHTML(){
    difference from the per-collection search, and without it two
    similarly named activities are indistinguishable. */
 function searchRowHTML(a,lists,q){
-  const l=lists.find(c=>c.id===a.listId);
+  const chip=activityListLabel(a,lists);
   const di=dateInfo(a);
   const thumb=a.photos&&a.photos.length
     ? `<img class="act-thumb" src="${a.photos[0]}" alt="" loading="lazy"/>` : '';
   const bits=[];
-  if(l) bits.push(`<span class="list-chip">${esc(l.name)}</span>`);
+  if(chip) bits.push(`<span class="list-chip">${esc(chip)}</span>`);
   if(di.label) bits.push(`<span class="badge b-${di.cls}">${esc(di.label)}</span>`);
   if(a.location) bits.push(`<span class="act-loc">${icon('pin','ic-xs')}<span>${searchMark(a.location,q)}</span></span>`);
 

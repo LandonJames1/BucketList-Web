@@ -77,6 +77,10 @@ const ICON_PATHS = {
   'target':   '<circle cx="12" cy="12" r="8.8"/><circle cx="12" cy="12" r="4.4"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/>',
   'locate':   '<circle cx="12" cy="12" r="3.4"/><path d="M12 2.6v3.2M12 18.2v3.2M2.6 12h3.2M18.2 12h3.2"/><circle cx="12" cy="12" r="8"/>',
   'layers':   '<path d="M12 3.2 2.8 8 12 12.8 21.2 8z"/><path d="M2.8 13.2 12 18l9.2-4.8"/>',
+  /* Sort — descending bars. No dot accent here on purpose: at the 16px
+     this is drawn at on the detail screen's control row, a fourth mark
+     beside three short lines just reads as noise. */
+  'sort':     '<path d="M4.4 6.4h15.2M4.4 12h9.6M4.4 17.6h4.8"/>',
 };
 
 /* Icons whose art is already solid and must not be given a stroke. */

@@ -191,32 +191,14 @@
     .fg-stack textarea { min-height: 62px; padding: 12px 16px; }
     .fg-stack > *:not(:last-child) { border-bottom: .5px solid var(--separator); }
 
-    /* Disclosure for the optional half of a form. The completion sheet
-       is the only user left — the activity sheet shows every field
-       outright now — and it keeps one because a fresh completion is
-       meant to be two taps, check then Done.
-
-       Sized up and given a fill: as a bare 10px mono line it read as a
-       caption rather than a control, and the fields behind it are most
-       of what that sheet can do. */
-    .more-toggle {
-      display: flex; align-items: center; justify-content: center; gap: 7px;
-      width: calc(100% - var(--gx-l) - var(--gx-r));
-      /* 24px of air underneath. With none, the first field's label sat
-         flush against the button and read as its caption rather than as
-         the label for the box below it. */
-      margin: 4px var(--gx-r) 24px var(--gx-l);
-      min-height: 48px; padding: 0 18px; border-radius: var(--r-row);
-      background: var(--tint-soft); color: var(--tint);
-      font-family: var(--mono); font-size: 11px; font-weight: 600;
-      letter-spacing: .11em; text-transform: uppercase;
-      transition: opacity .15s;
-    }
-    .more-toggle:active { opacity: .65; }
-    .more-toggle .ic { width: 16px; height: 16px; transition: transform .25s var(--ease); }
-    .more-toggle[aria-expanded="true"] .ic { transform: rotate(180deg); }
-    .more-fields { display: none; }
-    .more-fields.open { display: block; animation: fadeIn .2s linear; }
+    /* There is no disclosure left in the app. The activity sheet lost
+       its "More options" first, and the completion sheet lost "Add
+       photos, video & notes" after it, for the same reason both times:
+       a collapsed field is one most people never open, and on the
+       completion sheet the collapsed half held the photos — the thing
+       you have in your hand at the exact moment you tick something off.
+       Don't reintroduce one; both sheets fit a 320px screen as they
+       are. (.more-toggle / .more-fields lived here.) */
 
     .sheet-actions {
       margin: 26px var(--gx-r) 0 var(--gx-l);
@@ -454,6 +436,29 @@
     row so lists are recognisable at a glance, and a search field that
     appears only once there are enough lists to need it.
     ============================================================ */
+/*  ============================================================
+    DELETE ACCOUNT
+
+    Body copy, not a warning box. A red-bordered alert panel would be
+    the obvious move and it is the wrong one: this sheet is already
+    titled "Delete Account", the button is already red, and a third
+    alarm makes the paragraph people actually need to READ look like
+    boilerplate to tap past.
+    ============================================================ */
+    .del-acct-summary {
+      margin: 4px var(--gx-r) 22px var(--gx-l);
+      font-size: 15.5px; line-height: 1.5; color: var(--label-2);
+      letter-spacing: -.006em;
+    }
+    .del-acct-summary p { margin: 0 0 10px; }
+    .del-acct-summary p:last-child { margin-bottom: 0; }
+    .del-acct-summary strong { color: var(--label); font-weight: 600; }
+    .del-acct-error {
+      margin: 10px var(--gx-r) 0 var(--gx-l);
+      font-size: 14px; line-height: 1.45; color: var(--red);
+    }
+    .del-acct-error:empty { display: none; }
+
     .lp-sub {
       padding: 12px var(--gx-r) 0 var(--gx-l);
       font-size: 15px; color: var(--label-2); text-align: center;
@@ -493,6 +498,17 @@
     .lp-check { flex-shrink: 0; color: var(--tint); display: none; }
     .lp-row.current .lp-check { display: block; }
     .lp-check .ic { width: 20px; height: 20px; stroke-width: 2.6; }
+
+    /* Multi-select only, and only past one list: which of the chosen
+       lists is the activity's home — the one named wherever the app has
+       room for exactly one list. Sized as a .tag rather than shouting,
+       because it is an answer to a question most people will not ask. */
+    .lp-home {
+      flex-shrink: 0; padding: 3px 7px; border-radius: 6px;
+      background: var(--fill-3); color: var(--label-2);
+      font-family: var(--mono); font-size: 9px; font-weight: 600;
+      letter-spacing: .1em; text-transform: uppercase;
+    }
 
     .lp-empty {
       padding: 26px 16px; text-align: center;

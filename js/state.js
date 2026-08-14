@@ -19,7 +19,12 @@ let curListId=null,editingListId=null,editingActId=null;
    sheet is open — see js/media.js. It was upPhotos, an array of base64
    data URLs, before photos moved into Supabase Storage and video existed
    at all. */
-let curFilter='all',curView='list',upMedia=[],coverPhoto='';
+/* curSort is the order the collection screen lists its activities in —
+   a key into ACT_SORTS (utils.js). It persists for the session rather
+   than resetting on entry, the way curFilter does and unlike curView:
+   filter and sort sit on the same control row, and having one of the
+   two forget itself between visits reads as a bug. */
+let curFilter='all',curSort='added',curView='list',upMedia=[],coverPhoto='';
 let globalMapFilter='all',globalMapObj=null,globalMapHomeBounds=null;
 let detMapHomeBounds=null;
 

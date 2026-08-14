@@ -61,6 +61,39 @@
     .det-controls { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
 
 /*  ============================================================
+    FILTER + SORT ROW
+
+    The row owns the gutters so .seg can give up the margins it carries
+    by default and become a flex child; putting them on both would
+    double the inset on the left and leave the sort button hanging off
+    the right.
+    ============================================================ */
+    .det-ctl-row {
+      display: flex; align-items: center; gap: 9px;
+      margin: 0 var(--gx-r) 0 var(--gx-l);
+    }
+    .det-ctl-row .seg { flex: 1; min-width: 0; margin: 0; }
+
+    /* 38px matches the segmented control beside it (3px padding + a
+       32px button), so the two sit on one baseline. */
+    .det-sort {
+      flex: none; display: inline-flex; align-items: center; gap: 6px;
+      height: 38px; padding: 0 12px; border-radius: 11px;
+      background: var(--fill-3); color: var(--label-2);
+      font-family: var(--mono); font-size: 11px; font-weight: 500;
+      letter-spacing: .09em; text-transform: uppercase;
+      white-space: nowrap;
+      transition: opacity .15s, background .18s, color .18s;
+    }
+    .det-sort .ic { width: 16px; height: 16px; }
+    .det-sort:active { opacity: .6; }
+    /* Anything but the default order is tinted, so a list that is not in
+       the order you expect always says so. */
+    .det-sort.custom {
+      background: var(--tint-soft); color: var(--tint); font-weight: 600;
+    }
+
+/*  ============================================================
     ACTIVITY ROWS (list view)
     ============================================================ */
     .acts { margin-top: 14px; }
@@ -348,6 +381,23 @@
       max-height: 240px; overflow-y: auto;
       overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
     }
+    /* The lists an activity belongs to, when there is more than one.
+       Wrapping chips rather than a .group of rows: there is no ordering
+       to read here and no per-row action, so a stack of full-width rows
+       would give the section more weight on the sheet than the photos
+       above it. Each one navigates to that list. */
+    .ad-lists { display: flex; flex-wrap: wrap; gap: 7px; }
+    .ad-list-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      max-width: 100%; min-height: 34px; padding: 0 12px;
+      border-radius: 999px;
+      background: var(--tint-soft); color: var(--tint);
+      font-size: 14px; font-weight: 500; letter-spacing: -.004em;
+    }
+    .ad-list-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ad-list-chip .ic { flex-shrink: 0; }
+    .ad-list-chip:active { opacity: .6; }
+
     .ad-links { display: flex; flex-direction: column; gap: 0; }
     .ad-link {
       display: flex; align-items: center; gap: 10px; min-height: 46px;

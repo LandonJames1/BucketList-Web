@@ -2,6 +2,55 @@
    AUTH — sign in, sign up, sign out, and the auth screen toggle.
    ============================================================== */
 
+/* ==============================================================
+   EVERYTHING THAT BELONGS TO ONE ACCOUNT
+
+   Called on every auth transition, in both directions — not only when
+   someone presses Sign Out.
+
+   That distinction is the whole bug this exists for. The caches were
+   cleared in handleSignOut() and nowhere else, so a sign-in that
+   followed any *other* kind of session ending — a lapsed token, which
+   onAuthStateChange handles by quietly showing the login screen —
+   started with the previous account's rows still in memory and served
+   them. A fresh sign-up was the worst case, because a new account has
+   no disk snapshot, so showApp()'s `if(warm)` skipped the revalidate
+   that would eventually have corrected it.
+
+   js/api.js now refuses to hand its cache to a user it was not filled
+   for, which is the backstop and the thing that makes this
+   structurally safe. This is the belt to that pair of braces: it
+   clears the per-account state living in the other files, which the
+   cache guard cannot see.
+
+   Two things it deliberately leaves alone:
+
+   - **The disk snapshot.** It is keyed by user id already (snapKey in
+     offline.js), so it cannot leak across accounts, and a session
+     lapsing in a tunnel is not a reason to destroy someone's offline
+     copy of their own data. Explicit sign-out still clears it.
+   - **The schema probes** (remind_at, the media bucket) are facts
+     about the database, identical for everyone, so re-probing them
+     per account would be a round trip for a known answer.
+     probeSharing() is reset anyway because _sharedIds beside it is
+     per-user, and separating them is not worth one cheap query.
+   ============================================================== */
+function resetAccountState(){
+  cancelPendingStats();
+  invalidateAll();
+  invalidateSharedIds();
+  resetSharingProbe();
+  userProfile=null;
+  /* The globe is kept alive across navigation, so nothing else would
+     dispose it — and its pins are the previous account's places. */
+  destroyGlobalMap();
+  destroyDetailMap();
+  curTab='home';curPage='home';backTab='lists';
+  curListId=null;editingListId=null;editingActId=null;
+  curFilter='all';curSort=DEFAULT_ACT_SORT;curView='list';
+  upMedia=[];coverPhoto='';
+}
+
 function showAuth(){
   $('authPage').style.display='flex';
   $('appWrap').style.display='none';
@@ -53,6 +102,12 @@ async function showApp(){
      fetched as "mine" or as "everything RLS lets me see" — probed
      early for the same reason as the media bucket. See js/sharing.js. */
   probeSharing();
+  /* And whether an activity can belong to more than one list. Armed
+     here rather than only in the revalidate chain below, because the
+     *write* path needs the answer even on a cold launch that never
+     revalidates — sending a column the table does not have fails the
+     whole insert. See probeMultiList() in js/api.js. */
+  probeMultiList();
   /* A link shared into the app is held from boot until there is
      somewhere to file it. See js/share.js. */
   handleSharedInput();
@@ -73,13 +128,17 @@ async function showApp(){
      then. Only when it was actually painted from the snapshot: without
      one, nav('home') above already went to the network.
 
-     probeSharing() is awaited first, and only here. Nothing is waiting
-     on this — the screen is already up — so letting the probe answer
-     before the refetch costs nothing visible and guarantees the
-     collections query runs with the right scope the first time. Run in
-     parallel it would sometimes fetch owned-only, discover sharing was
-     on, and have to do the whole thing again. */
-  if(warm) probeSharing().then(revalidate).then(()=>refreshAfterChange());
+     The two scope probes are awaited first, and only here. Nothing is
+     waiting on this — the screen is already up — so letting them
+     answer before the refetch costs nothing visible and guarantees
+     both queries run with the right scope the first time. Run in
+     parallel, the collections fetch would sometimes come back
+     owned-only, discover sharing was on, and have to do the whole
+     thing again; the activities fetch would ask for the home list
+     alone and miss anything shared into one of your lists from
+     outside it. See probeMultiList() in js/api.js. */
+  if(warm) Promise.all([probeSharing(),probeMultiList()])
+    .then(revalidate).then(()=>refreshAfterChange());
 }
 
 let authIsSignUp=false;
@@ -146,6 +205,10 @@ async function handleAuth(){
       });
       if(error)throw error;
       if(data.user&&data.session){
+        /* Before currentUser moves, not after: everything cleared here
+           is keyed off who is signed in, and showApp() starts reading
+           it immediately. */
+        resetAccountState();
         currentUser=data.user;showApp();return;
       }
       if(data.user&&!data.session){
@@ -154,6 +217,7 @@ async function handleAuth(){
     } else {
       const{data,error}=await sb.auth.signInWithPassword({email,password});
       if(error)throw error;
+      resetAccountState();
       currentUser=data.user;showApp();return;
     }
   }catch(err){
@@ -204,36 +268,45 @@ window.addEventListener('offline',()=>updateSyncUI());
    login screen is correct. */
 sb.auth.onAuthStateChange((event,session)=>{
   if(event==='SIGNED_OUT'){
-    if(currentUser){ currentUser=null;userProfile=null;showAuth(); }
+    if(currentUser){
+      /* A lapsed token lands here, not in handleSignOut(), and used to
+         leave every cache filled with the departing account's rows for
+         whoever signed in next. */
+      currentUser=null;
+      resetAccountState();
+      showAuth();
+    }
     return;
   }
-  if(session?.user) currentUser=session.user;
+  /* A different user arriving on an existing page — the confirmation
+     link opened in a tab that still has the old session, or a token
+     refresh that resolves to another account. Reset before the id
+     moves, for the same reason handleAuth() does. */
+  if(session?.user){
+    if(currentUser&&currentUser.id!==session.user.id) resetAccountState();
+    currentUser=session.user;
+  }
 });
 
 async function handleSignOut(){
   /* Unsent writes belong to the account that made them, so give the
      queue one last chance to drain before the session goes. */
   await flushQueue();
-  /* Collection recounts run detached and debounced now (see
-     updateCollectionStats), so one can still be queued up when the
-     session goes. */
-  cancelPendingStats();
-  /* The cache is per-account. Leaving it behind would show the next
-     person to sign in on this device the previous one's lists — and
-     that now means the on-disk snapshot as well as the in-memory one. */
-  invalidateAll();
+  /* Every per-account cache, the debounced recounts, the live maps and
+     the navigation state. Shared with the two paths in
+     onAuthStateChange, so a deliberate sign-out and a lapsed session
+     leave the app in exactly the same state. */
+  resetAccountState();
+  /* Explicit sign-out is the one case that also clears the on-disk
+     snapshot. It is keyed by user id so it cannot leak, but someone
+     signing out of a shared device means it, and resetAccountState()
+     deliberately keeps it for a session that merely lapsed. */
   await offlineSignOut();
-  /* The globe is kept alive across navigation, so signing out has to be
-     the thing that actually disposes it — otherwise the next account
-     inherits the previous one's pins. */
-  destroyGlobalMap();
-  destroyDetailMap();
   /* Before the session goes: a shared device should stop receiving this
      account's reminders. */
   await unsubscribeFromPush();
   sb.auth.stopAutoRefresh();
   await sb.auth.signOut();
-  currentUser=null;userProfile=null;
-  curTab='home';curPage='home';curListId=null;
+  currentUser=null;
   showAuth();
 }

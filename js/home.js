@@ -92,7 +92,7 @@ function renderHomeUpNext(acts,lists){
 /* Shared by Home and the Up Next screen so the two cannot drift.
    `source` tells toggleCompleteFrom which screen to re-render. */
 function upNextRowHTML(a,lists,source){
-  const l=lists.find(c=>c.id===a.listId);
+  const chip=activityListLabel(a,lists);
   const di=dateInfo(a);
   /* Row-level handler, so the chevron and the whole row open the activity
      — see the note in activityRowHTML(). */
@@ -103,7 +103,7 @@ function upNextRowHTML(a,lists,source){
       <span class="up-name">${esc(a.name)}</span>
       <span class="up-meta">
         ${priTagHTML(a)}
-        <span class="list-chip">${esc(l?l.name:'')}</span>
+        <span class="list-chip">${esc(chip)}</span>
         ${di.label?`<span class="badge b-${di.cls}">${esc(di.label)}</span>`:''}
       </span>
     </button>

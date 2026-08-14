@@ -151,3 +151,97 @@ function confirmSignOut(){
     items:[{label:'Sign Out',role:'destructive',onSelect:handleSignOut}],
   });
 }
+
+/* ==============================================================
+   DELETING THE ACCOUNT
+
+   Every other destructive action in the app is one action sheet, and
+   that is right for them: deleting a list costs you a list, and you
+   still have the app. This one ends the account, takes every list,
+   activity, photo and completion with it, and there is no undo and no
+   support channel to ask for it back — so it is the one place the app
+   makes you type something. An action sheet is dismissed by a stray
+   tap on the scrim, which is not a bar this should clear.
+
+   The sheet is explicit about the two things people get wrong:
+
+   - **Lists you own that you have shared with other people are
+     deleted too**, for them as well. There is nobody to hand ownership
+     to without asking, and the alternative — silently keeping a dead
+     account's list alive — is worse.
+   - **Lists you joined are only left.** They are not yours to destroy
+     and the other members keep them intact.
+
+   The erase itself is supabase/functions/delete-account, because
+   removing the auth user needs the service_role key. Without that
+   function deployed this reports the failure rather than half-doing
+   it — the local sign-out only happens after the server says it is
+   done.
+   ============================================================== */
+const DELETE_PHRASE='DELETE';
+
+async function openDeleteAccount(){
+  const lists=await fetchCollections();
+  const owned=lists.filter(l=>ownsCollection(l));
+  const joined=lists.length-owned.length;
+  const acts=(await fetchAllActivities(lists)).filter(a=>
+    owned.some(l=>a.listIds.includes(l.id)));
+
+  const bits=[];
+  if(owned.length) bits.push(`${owned.length} list${owned.length===1?'':'s'}`);
+  if(acts.length)  bits.push(`${acts.length} activit${acts.length===1?'y':'ies'}`);
+
+  $('delAcctSummary').innerHTML=
+    `<p>This permanently deletes your account${bits.length?' and its '+bits.join(' and '):''},
+        including every photo, note and completion. It cannot be undone.</p>`+
+    (joined?`<p>${joined} list${joined===1?'':'s'} shared with you
+        ${joined===1?'is':'are'} only left, not deleted — the other members keep
+        ${joined===1?'it':'them'}.</p>`:'')+
+    `<p><strong>Any list you own and have shared is deleted for everyone on it.</strong></p>`;
+
+  $('delAcctConfirm').value='';
+  onDeleteAccountInput();
+  $('delAcctError').textContent='';
+  openModal('delAcctSheet');
+}
+
+/* The button stays disabled until the word is right, so the tap that
+   destroys the account cannot be the same reflex tap that opened the
+   sheet. */
+function onDeleteAccountInput(){
+  const ok=$('delAcctConfirm').value.trim().toUpperCase()===DELETE_PHRASE;
+  $('delAcctBtn').disabled=!ok;
+}
+
+async function deleteAccount(){
+  if($('delAcctConfirm').value.trim().toUpperCase()!==DELETE_PHRASE) return;
+  if(!navigator.onLine){
+    $('delAcctError').textContent='You need to be online to delete your account.';
+    return;
+  }
+  const btn=$('delAcctBtn');
+  btn.disabled=true;btn.textContent='Deleting…';
+  $('delAcctError').textContent='';
+  try{
+    const{data,error}=await sb.functions.invoke('delete-account',{body:{}});
+    if(error) throw error;
+    if(data&&data.error) throw new Error(data.error);
+
+    /* Only now. Signing out first would leave no session to authorise
+       the call, and clearing the device before the server has agreed
+       would look like success after a failure. */
+    closeModal('delAcctSheet');
+    /* The session is already gone server-side, so this is about the
+       device: it drops the caches, the on-disk snapshot and the push
+       registration, and lands on the sign-in screen. */
+    await handleSignOut();
+    showToast('Your account has been deleted');
+  }catch(err){
+    console.error('deleteAccount:',err);
+    $('delAcctError').textContent=
+      (err&&err.message)||'Couldn’t delete your account. Nothing was changed.';
+  }finally{
+    btn.textContent='Delete My Account';
+    onDeleteAccountInput();
+  }
+}

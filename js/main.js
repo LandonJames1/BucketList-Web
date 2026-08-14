@@ -21,7 +21,6 @@ function paintStaticIcons(){
 
   set('coverZoneIcon',icon('photo','ic-lg'));
   set('photoZoneIcon',icon('camera','ic-sm'));
-  set('compMoreChevron',icon('chevron-down'));
   set('bulkAddIcon',icon('plus','ic-sm'));
 
   set('lbCloseBtn',icon('x'));

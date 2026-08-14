@@ -151,16 +151,28 @@ async function snapshotClear(){
    ============================================================== */
 let _queueCount=0,_flushing=null;
 
+/* Counts only what the signed-in account can actually send. The banner
+   reads off this, and another user's stranded writes are not something
+   to tell this one they have waiting — flushQueue() will not send them
+   either. Ops with no uid predate the field and count as ours. */
 async function queueLoadCount(){
   const all=await idbAll(STORE_QUEUE);
-  _queueCount=all?all.length:0;
+  const uid=(currentUser&&currentUser.id)||null;
+  _queueCount=all?all.filter(op=>!op.uid||op.uid===uid).length:0;
   updateSyncUI();
   return _queueCount;
 }
 function pendingWrites(){ return _queueCount; }
 
 async function queueWrite(op){
-  const ok=await idbPut(STORE_QUEUE,{...op,at:Date.now()});
+  /* Stamped with whose write it is. The queue is one shared store —
+     unlike the snapshot, which is keyed by user — so without this a
+     different account signing in on the same device would pick up the
+     previous one's unsent writes and replay them under its own
+     session. RLS refuses them, so flushQueue() would then drop them as
+     unreplayable and the original owner would lose the work silently.
+     See the owner check in flushQueue(). */
+  const ok=await idbPut(STORE_QUEUE,{...op,uid:(currentUser&&currentUser.id)||null,at:Date.now()});
   if(ok===null){
     /* No persistence available. The write is lost on reload, which is
        worth saying out loud rather than pretending it is safe. */
@@ -361,6 +373,14 @@ async function flushQueue(){
     let sent=0,dropped=0;
 
     for(const op of ops){
+      /* Somebody else's unsent writes. Left exactly where they are —
+         not replayed, and emphatically not dropped: they belong to an
+         account that may well sign back in on this device, and RLS
+         would reject every one of them under this session anyway.
+         Ops queued before this field existed have no uid and are
+         replayed as before, which is the old behaviour and correct for
+         the single-account device they were written on. */
+      if(op.uid&&op.uid!==currentUser.id) continue;
       try{
         let error;
         if(op.action==='insert'){

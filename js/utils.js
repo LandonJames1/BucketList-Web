@@ -219,6 +219,87 @@ function priorityRank(a){
   return p!==undefined?p:1;
 }
 
+/* What the .list-chip on a row says — Home's Up Next, the Up Next
+   screen, a search result, a duplicate match. Every one of those is a
+   row that could have come from any list, so it has to name one.
+
+   An activity can be in several (supabase/multilist.sql), and there is
+   room for exactly one name on those rows, so: the home list, plus a
+   count of the others. Two details:
+
+   - **Only lists this user can actually see are counted.** An activity
+     shared into one of your lists is homed in a list of someone
+     else's, which you cannot name and should not be told the number of.
+   - **The first *visible* list is named**, which is the home list
+     whenever it is one of yours and the next one along when it is not.
+     Returning '' there would leave the chip empty, which is what the
+     old `lists.find(c=>c.id===a.listId)` did. */
+function activityListLabel(a,lists){
+  const ids=(a.listIds&&a.listIds.length?a.listIds:[a.listId]).filter(Boolean);
+  const named=ids.map(id=>lists.find(c=>c.id===id)).filter(Boolean);
+  if(!named.length) return '';
+  return named[0].name+(named.length>1?` +${named.length-1}`:'');
+}
+
+/* ==============================================================
+   ORDERING A COLLECTION
+
+   The orders the detail screen offers, keyed by the value held in
+   curSort. `label` is what the sort menu says; `short` is the chip on
+   the control row, which has three filter segments beside it and very
+   little width on a 320px phone.
+
+   Two rules the comparators share:
+
+   1. **A finished activity sorts to the end of an unfinished order,
+      and vice versa.** Ordering by target date puts what to do next in
+      front of you, and something already done has no next — burying it
+      among live rows by the deadline it no longer has is noise. The
+      same argument runs backwards for "date completed", where a row
+      with no completion has nothing to be ordered by at all.
+   2. **Every comparator ends in a total order**, falling through to
+      createdAt. Without that, the many rows sharing a preset band —
+      every "This Year" resolves to the same 31 December — would come
+      out in whatever order the array happened to be in, and shuffle
+      between renders of the same list.
+   ============================================================== */
+const ACT_SORTS={
+  added:{
+    label:'Date added',short:'Newest',
+    cmp:(a,b)=>new Date(b.createdAt)-new Date(a.createdAt),
+  },
+  target:{
+    label:'Target date',short:'Target',
+    /* Soonest first, on actual days rather than the band — the same
+       reason sortUpNext() uses daysToTarget(). A flight next week and
+       something three weeks out are both "urgent"; only the day count
+       tells them apart. */
+    cmp:(a,b)=>(a.completed?1:0)-(b.completed?1:0)
+            || daysToTarget(a)-daysToTarget(b)
+            || new Date(a.createdAt)-new Date(b.createdAt),
+  },
+  completed:{
+    label:'Date completed',short:'Finished',
+    cmp:(a,b)=>{
+      if(!!a.completedDate!==!!b.completedDate) return a.completedDate?-1:1;
+      /* Both ISO date strings, so a lexicographic compare is a
+         chronological one and needs no Date objects. */
+      if(a.completedDate&&a.completedDate!==b.completedDate)
+        return a.completedDate<b.completedDate?1:-1;
+      return new Date(b.createdAt)-new Date(a.createdAt);
+    },
+  },
+};
+const DEFAULT_ACT_SORT='added';
+
+/* Sorts a copy — callers pass arrays that came out of the shared
+   activity cache, and sorting one in place would reorder the cache
+   itself for every other screen reading it. */
+function sortActivities(acts,key){
+  const s=ACT_SORTS[key]||ACT_SORTS[DEFAULT_ACT_SORT];
+  return [...acts].sort(s.cmp);
+}
+
 /* ==============================================================
    SHOWING PRIORITY
 

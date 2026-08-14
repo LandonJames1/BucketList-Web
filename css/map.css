@@ -79,6 +79,38 @@
     }
     .loc-suggest-x:active { background: var(--fill-4); }
 
+    /* The mark under the activity sheet's location field, saying the
+       value in the box above was filled in from the activity's name
+       rather than typed.
+
+       Deliberately quieter than .loc-suggest and shaped differently:
+       that one is an *offer* and has to be tappable across its whole
+       width, this one is a caption on a field that already has its
+       answer. A second full-width tinted block here would read as a
+       second value to choose between. */
+    .loc-guess {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; margin-top: 7px; padding-left: 2px;
+    }
+    .loc-guess[hidden] { display: none; }
+    .loc-guess-cap {
+      display: inline-flex; align-items: center; gap: 5px; min-width: 0;
+      font-family: var(--mono); font-size: 9px; font-weight: 500;
+      letter-spacing: .1em; text-transform: uppercase;
+      color: var(--tint);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .loc-guess-cap .ic { width: 12px; height: 12px; flex-shrink: 0; }
+    /* 44px of target on a 12px glyph: it is small, but undoing a value
+       written on the user's behalf is the one thing here that must not
+       be fiddly to hit. */
+    .loc-guess-x {
+      flex-shrink: 0; width: 44px; height: 32px; margin: -6px -10px -6px 0;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--label-2);
+    }
+    .loc-guess-x:active { opacity: .55; }
+
 /*  ============================================================
     MAP CONTAINER
 

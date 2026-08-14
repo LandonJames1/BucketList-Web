@@ -45,13 +45,34 @@ async function renderDetail(){
         <button class="search-clear" onclick="clearDetailSearch()" aria-label="Clear search">${icon('x','ic-xs')}</button>
       </div>
     </div>
-    <div class="seg" id="detFilter">
-      <button class="${curFilter==='all'?'active':''}" onclick="setFilter('all')">All</button>
-      <button class="${curFilter==='pending'?'active':''}" onclick="setFilter('pending')">To Do</button>
-      <button class="${curFilter==='completed'?'active':''}" onclick="setFilter('completed')">Done</button>
+    <div class="det-ctl-row">
+      <div class="seg" id="detFilter">
+        <button class="${curFilter==='all'?'active':''}" onclick="setFilter('all')">All</button>
+        <button class="${curFilter==='pending'?'active':''}" onclick="setFilter('pending')">To Do</button>
+        <button class="${curFilter==='completed'?'active':''}" onclick="setFilter('completed')">Done</button>
+      </div>
+      ${sortButtonHTML()}
     </div>`;
 
   renderActivitiesList();
+}
+
+/* The sort control sits beside the filter rather than becoming a fourth
+   segment of it: the segments answer "which subset", sort answers "in
+   what order", and four segments across a 320px phone leaves each one
+   too narrow to read. It carries its current order as a label so the
+   screen says how it is sorted without being opened, and goes tinted on
+   anything but the default so a non-obvious order is never silent.
+   Below 375px the label drops and the glyph stands alone — the same
+   trade responsive.css makes for the collection name on an Up Next
+   row. */
+function sortButtonHTML(){
+  const s=ACT_SORTS[curSort]||ACT_SORTS[DEFAULT_ACT_SORT];
+  return `<button class="det-sort${curSort!==DEFAULT_ACT_SORT?' custom':''}"
+      id="detSortBtn" onclick="openSortMenu()"
+      aria-label="Sort by ${esc(s.label.toLowerCase())}">
+    ${icon('sort','ic-sm')}<span class="det-sort-label">${esc(s.short)}</span>
+  </button>`;
 }
 
 function onDetailSearch(){
@@ -78,7 +99,7 @@ async function renderActivitiesList(){
     a.name.toLowerCase().includes(search)||
     (a.description||'').toLowerCase().includes(search)||
     (a.location||'').toLowerCase().includes(search));
-  acts.sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+  acts=sortActivities(acts,curSort);
 
   const listEl=$('actsWrap'),mapEl=$('mapContainer');
 

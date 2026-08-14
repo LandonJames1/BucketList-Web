@@ -51,6 +51,16 @@
    ============================================================== */
 let _sharingReady=null,_sharingProbe=null;
 
+/* Forget the answer so the next sign-in probes again.
+
+   Whether `collection_members` exists is a fact about the schema and
+   the same for everyone, so this is not strictly necessary — but
+   `_sharedIds` right below it is emphatically per-user, the two are
+   reset together by resetAccountState(), and one cheap query per
+   sign-in is not worth the risk of someone later assuming this probe
+   survives an account change when the ids beside it must not. */
+function resetSharingProbe(){ _sharingReady=null;_sharingProbe=null; }
+
 function probeSharing(){
   if(_sharingReady!==null) return Promise.resolve(_sharingReady);
   /* showApp() and handlePendingJoin() can both reach this in the same
