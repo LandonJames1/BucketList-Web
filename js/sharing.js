@@ -424,75 +424,6 @@ function readPendingJoin(){
   history.replaceState(null,'',location.pathname);
 }
 
-/* ==============================================================
-   AN INVITE THAT OUTLIVES THE DEVICE
-
-   bootKeepLong() survives the tab closing, which is enough for someone
-   who already has an account: they sign in on the device the link
-   opened on, and the code is still there.
-
-   It is not enough for someone who has to *create* one, because that
-   detours through a confirmation email — and mail gets read on phones.
-   Confirm on a second device and the join code is sitting in the first
-   device's localStorage, unreachable. The person is signed in, the
-   invite is gone, and nothing on screen says so: the exact failure the
-   whole capture mechanism exists to prevent, one layer further out.
-
-   That path was unreachable until confirmation links started working
-   cross-device (see CONFIRMING AN EMAIL ADDRESS in js/auth.js) — before
-   that, a second-device confirmation simply failed, which shoved the
-   recipient back to the browser that still had the code. Making the
-   link work everywhere is what made this reachable.
-
-   So the code also rides on the auth user, the same way the display
-   name and username do and for the same reason: user_metadata is the
-   one piece of state that follows an account through a confirmation
-   email onto any device. The shelf is still read first — it is local,
-   needs no round trip, and covers everyone who does not have to sign
-   up at all.
-   ============================================================== */
-
-/* Whichever copy of the code we can find. Reading consumes the
-   in-memory one only; see dropPendingJoin() for why the durable copies
-   outlive a read. */
-function takePendingJoin(){
-  let code='',from='';
-  if(pendingJoin){ code=pendingJoin; from='memory'; pendingJoin=null; }
-  if(!code){
-    /* readPendingJoin() normally puts this into the global at boot, but
-       reading it here too makes this function answer for itself rather
-       than for whatever ran before it. */
-    code=bootReadLong(JOIN_STASH)||''; if(code) from='shelf';
-  }
-  if(!code){
-    const meta=currentUser&&currentUser.user_metadata;
-    code=meta&&typeof meta.pending_join==='string'?meta.pending_join.trim():'';
-    if(code) from='account';
-  }
-  /* Every way this fails is silent — no URL left, nothing on screen —
-     so say which copy answered when one does. It cost a deploy to work
-     out that the answer was "none of them". */
-  if(code) console.log('[join] pending invite from',from);
-  return code;
-}
-
-/* Consume it for good — both copies. Called at exactly the two points
-   bootDropLong() was called before, so the "a failure leaves the invite
-   retryable" property is unchanged; this only widens what gets cleared
-   when it finally is consumed. Without the metadata half, the join
-   sheet would reopen on every launch for the life of the account. */
-function dropPendingJoin(){
-  bootDropLong(JOIN_STASH);
-  const meta=currentUser&&currentUser.user_metadata;
-  if(!meta||!meta.pending_join) return;
-  /* Detached: nothing is waiting on it, and the cost of it failing is
-     one repeat of a sheet the user just answered. */
-  sb.auth.updateUser({data:{pending_join:null}}).then(({data,error})=>{
-    if(error){ console.warn('[join] clearing pending_join:',error); return; }
-    if(data&&data.user) currentUser=data.user;
-  });
-}
-
 /* The sign-in screen's half of the same capture.
 
    Someone who taps an invite link and has never opened the app before
@@ -512,11 +443,9 @@ function updateAuthInviteNotice(){
 
 /* Called from showApp() once there is a signed-in user to join as. */
 async function handlePendingJoin(){
-  /* Either the shelf this device wrote when the link was opened, or the
-     auth user's own metadata for someone who signed up from the link
-     and confirmed somewhere else. See takePendingJoin(). */
-  const code=takePendingJoin();
-  if(!code) return;
+  if(!pendingJoin) return;
+  const code=pendingJoin;
+  pendingJoin=null;
 
   /* NOT dropped from the shelf yet.
 
@@ -558,12 +487,12 @@ async function handlePendingJoin(){
     /* A code that cannot be read is not going to become readable, so
        this one IS consumed — leaving it would re-open the same error
        sheet on every launch. */
-    dropPendingJoin();
+    bootDropLong(JOIN_STASH);
     console.error('peek_invite:',error||data);
     renderJoinError((data&&data.error)||'not_found');
     return;
   }
-  dropPendingJoin();
+  bootDropLong(JOIN_STASH);
   _joinCode=code;
   $('joinBody').innerHTML=`
     <p class="shr-lead"><strong>${esc(data.owner)}</strong> shared a list with you.</p>

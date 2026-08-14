@@ -230,26 +230,10 @@ async function handleAuth(){
 
          emailRedirectTo points the confirmation link back at wherever
          the app is really being served — see confirmRedirectUrl(). */
-      /* An invite the person is signing up *in order to accept* rides
-         along too. It is already on this device's shelf, but the shelf
-         is localStorage and the confirmation email is very often read
-         on a different phone — where the shelf is empty and the invite
-         would be silently lost. Metadata is the one thing that follows
-         an account through the email. See AN INVITE THAT OUTLIVES THE
-         DEVICE in js/sharing.js. */
-      const meta={display_name:displayName,username};
-      /* The shelf, not just the in-memory global. pendingJoin is a plain
-         variable and any reload between opening the link and pressing
-         this button empties it — a service-worker update, a tab the OS
-         discarded, a manual refresh. The durable copy is the one that
-         has actually survived to this moment. */
-      const joinCode=pendingJoin||bootReadLong(JOIN_STASH);
-      if(joinCode) meta.pending_join=joinCode;
-
       const{data,error}=await sb.auth.signUp({
         email,password,
         options:{
-          data:meta,
+          data:{display_name:displayName,username},
           emailRedirectTo:confirmRedirectUrl(),
         },
       });

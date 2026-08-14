@@ -801,23 +801,13 @@ because what people have in their clipboard is whatever they were sent.
 The share sheet therefore shows the code beside the link, and
 `sendInviteLink()` puts it in the message body.
 
-**An invite has to outlive the device, not just the tab.** `bootKeepLong`
-covers someone who already has an account: they sign in on the device the
-link opened on and the code is still in that device's localStorage. It does
-not cover someone signing up *in order to accept*, because that detours
-through a confirmation email — and mail gets read on phones. Confirm on a
-second device and the code is stranded in the first one's localStorage; the
-person is signed in, the invite is gone, and nothing says so.
-
-So the code **also rides on the auth user** (`options.data.pending_join` in
-`handleAuth()`), the same mechanism and for the same reason as the display
-name and username: `user_metadata` is the one piece of state that follows an
-account through the email onto any device. `takePendingJoin()` reads the
-shelf first — local, no round trip, and it covers everyone who does not have
-to sign up at all — then falls back to the metadata. `dropPendingJoin()`
-clears both, at exactly the two points `bootDropLong()` was called before, so
-"a failure leaves the invite retryable" is unchanged; without the metadata
-half the join sheet would reopen on every launch for the life of the account.
+**An invite still does not survive a sign-up that needs email confirmation.**
+`bootKeepLong` covers someone who already has an account: they sign in on the
+device the link opened on and the code is still in that device's localStorage.
+It does not cover someone signing up *in order to accept*, because that
+detours through a confirmation email, and mail gets read on phones — the code
+is stranded on the first device. **This is open, and an attempt to close it
+client-side was reverted**; see the backlog entry.
 
 **Moving the shelf ate one release's invites, and `bootReadLong()` now
 carries the migration.** The join code lived in sessionStorage under the same
@@ -831,18 +821,6 @@ retry from. So a miss falls through to the old location and promotes what it
 finds. **Keep that as the general rule, not as this one migration**: any boot
 capture that changes where it lives has the same one-page-load window, and it
 is silent at both ends.
-
-`handleAuth()` reads `pendingJoin || bootReadLong(JOIN_STASH)` for the same
-family of reasons — the global is emptied by any reload between opening the
-link and pressing Create Account. And `takePendingJoin()` logs which of the
-three copies answered, because every way this fails is invisible.
-
-That path was **unreachable until confirmation links started working
-cross-device** (see **Coming back through the confirmation email**) — before
-that a second-device confirmation simply failed, which shoved the recipient
-back to the browser that still had the code. Fixing the email link is what
-made this reachable, which is worth remembering as the general shape: the two
-mechanisms hold each other up, and repairing one exposed the gap in the other.
 
 **iOS cannot be made to open the PWA instead of Safari.** There is no
 API for it: Universal Links need a native app and an AASA file, and a
@@ -1846,7 +1824,7 @@ Loaded in this order; **order matters**.
 | File | Domain |
 | --- | --- |
 | `dupes.js` | **Fuzzy duplicate detection.** `dupeGuard(opts, proceed)` — the single gate every add path goes through — plus `dupeGuardBatch()` (returns a promise for the subset to keep), `findDupes`, `dupeScore`, `dupeHintFor` (the mark in the import sheet), the sheet's handlers (`dupeAddAnyway`/`dupeSkipDuplicates`/`dupeOpenExisting`/`dupeCancel`/`dupeCancelBatch`), and the `DUPE_LIKELY`/`DUPE_POSSIBLE` thresholds. Loads before every screen that adds an activity. See **Catching duplicates**. |
-| `sharing.js` | **Shared lists.** `probeSharing`/`sharingReady`/`resetSharingProbe`, `ownsCollection`/`isSharedWithMe` (which buttons to draw), the invite sheet (`openShareList`/`renderShareList`/`createInvite`/`revokeInvite`/`copyInviteLink`/`copyInviteCode`/`sendInviteLink`/`removeMember`), leaving (`confirmLeaveList`/`leaveList`), and accepting (`readPendingJoin` at boot, **`takePendingJoin`/`dropPendingJoin`** — the two copies of the code, this device's shelf and the auth user's metadata, so an invite survives a confirmation email opened on another phone — `handlePendingJoin`/`acceptJoin`/`declineJoin`, `updateAuthInviteNotice` for the signed-out case, and the link-free path `openJoinByCode`/`submitJoinCode`/`parseInviteCode`), plus `makeInviteCode`/`inviteUrl`. See **Shared lists**, and **Accepting an invite** for why that last group exists. |
+| `sharing.js` | **Shared lists.** `probeSharing`/`sharingReady`/`resetSharingProbe`, `ownsCollection`/`isSharedWithMe` (which buttons to draw), the invite sheet (`openShareList`/`renderShareList`/`createInvite`/`revokeInvite`/`copyInviteLink`/`copyInviteCode`/`sendInviteLink`/`removeMember`), leaving (`confirmLeaveList`/`leaveList`), and accepting (`readPendingJoin` at boot, `handlePendingJoin`/`acceptJoin`/`declineJoin`, `updateAuthInviteNotice` for the signed-out case, and the link-free path `openJoinByCode`/`submitJoinCode`/`parseInviteCode`), plus `makeInviteCode`/`inviteUrl`. See **Shared lists**, and **Accepting an invite** for why that last group exists. |
 | `search.js` | The Search screen pushed from Home: one fuzzy field over every activity and collection. `openSearch`, `renderSearch` (the screen) / `renderSearchResults` (**only the results** — rebuilding the field would drop focus), `searchActivities`/`searchCollections`, `searchRowHTML`, and `searchMark` — **the one place a rendered string is not `esc()`'d wholesale**; it splits on raw text and escapes each piece. See **Finding things again**. |
 | `upnext.js` | The Up Next screen pushed from Home: every unfinished activity, bucketed by `targetBand()`. Borrows its rows and sort from `home.js`. |
 | `done.js` | The Accomplished screen pushed from Home: everything completed, grouped by the month it was finished. Reuses Home's photo tiles. |
@@ -2433,6 +2411,21 @@ Two things that will bite:
   folder listing**, which is capped at 1000 files. Someone with more
   than that leaves the remainder orphaned. Same sweeper problem as the
   one at the bottom of `storage.sql`.
+- **An invite is lost if the recipient has to create an account.** The
+  join code lives in the localStorage of the device the link opened on,
+  and a sign-up detours through a confirmation email that is usually
+  read on a different device. Carrying the code in `options.data` at
+  `signUp()` — so it rides on the auth user the way `display_name` does
+  — was built, shipped and **reverted**: it did not work in testing and
+  the failure was never isolated, which is itself the lesson. The chain
+  has too many client-side links (in-memory global → localStorage →
+  auth metadata → a probe race → a sheet), every one of them silent.
+  The next attempt should move the state to the **server**: an RPC the
+  recipient can call *before* signing up that records "this code
+  intends to be joined by this email", and a trigger on `auth.users`
+  that acts on it. That has no device, no storage and no code-version
+  dependency. Until then, the working paths are opening the invite link
+  again once signed in, and **You → Join a shared list** with the code.
 - **There is no password reset.** The confirmation landing already redeems
   a `type=recovery` link — it goes through the same `verifyOtp()` — so
   someone following one is signed in, but there is no "forgot password"
