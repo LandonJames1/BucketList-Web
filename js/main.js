@@ -118,7 +118,14 @@ function hasStoredSession(){ return !!readStoredSession(); }
   const user=await restoreSession();
   if(user){
     currentUser=user;
-    showApp();
+    /* Awaited so the splash holds until Home has actually painted.
+       showApp() primes the cache from the disk snapshot before its
+       first render (see the note there), which is a few milliseconds
+       of IndexedDB rather than a network round trip — but dropping the
+       splash before it resolved would show an empty shell for exactly
+       that long. Everything slow inside showApp() runs detached, so
+       this waits on the paint and nothing else. */
+    await showApp();
   } else {
     showAuth();
   }

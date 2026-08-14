@@ -58,6 +58,31 @@ async function geocodeOnce(q){
   }catch(e){ console.warn('geocodeOnce:',e); return null; }
 }
 
+/* Coordinates back to a place name — used for the location a photo
+   carries in its EXIF (see js/exif.js), where we have a precise fix
+   and need something a person would recognise.
+
+   zoom=14 asks Nominatim for roughly neighbourhood/village level. The
+   default returns a full postal address, which is both too precise to
+   be useful as a bucket-list location and slightly unnerving to be
+   shown back to you. */
+async function reverseGeocode(lat,lng){
+  if(!isFinite(lat)||!isFinite(lng)) return null;
+  try{
+    const res=await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${encodeURIComponent(lat)}`+
+      `&lon=${encodeURIComponent(lng)}&format=json&zoom=14&addressdetails=1`,
+      {headers:{'Accept-Language':'en'}});
+    if(!res.ok) return null;
+    const d=await res.json();
+    if(!d||!d.display_name) return null;
+    /* The first three parts are about as much as fits a location field
+       and reads as a place rather than an address. */
+    const short=d.display_name.split(',').slice(0,3).join(',').trim();
+    return{display:short||d.display_name,lat,lng};
+  }catch(e){ console.warn('reverseGeocode:',e); return null; }
+}
+
 /* Inside the bulk sheet the dropdown is position:fixed so it can escape
    the sheet's scroll container; it therefore has to be placed by hand. */
 function positionLocBox(box,input){

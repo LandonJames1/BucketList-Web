@@ -35,6 +35,50 @@
     }
     .loc-empty { padding: 14px; text-align: center; font-size: 15px; color: var(--label-2); }
 
+/*  ------------------------------------------------------------
+    "From your photo" — the location an attached photo's EXIF
+    carries, offered under the completion sheet's location field.
+    See suggestLocationFromPhoto() in js/media.js.
+
+    Deliberately a tinted suggestion rather than a filled control:
+    it is an offer to accept, not a value that has been set, and it
+    must not read as though the field is already answered. The
+    dismiss target sits apart from the accept target so a decline
+    can never be a mis-tap onto accept.
+    ------------------------------------------------------------ */
+    .loc-suggest {
+      display: flex; align-items: stretch; gap: 2px; margin-top: 8px;
+      background: var(--tint-soft); border-radius: var(--r-row);
+      overflow: hidden;
+    }
+    .loc-suggest[hidden] { display: none; }
+    .loc-suggest-main {
+      flex: 1; min-width: 0;
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 12px; min-height: 44px; text-align: left;
+      color: var(--tint);
+    }
+    .loc-suggest-main:active { background: var(--fill-4); }
+    .loc-suggest-main .ic { width: 17px; height: 17px; flex-shrink: 0; }
+    .loc-suggest-body { min-width: 0; }
+    .loc-suggest-cap {
+      display: block;
+      font-family: var(--mono); font-size: 9px; font-weight: 500;
+      letter-spacing: .1em; text-transform: uppercase;
+      color: var(--tint); opacity: .75;
+    }
+    .loc-suggest-name {
+      display: block; font-size: 15px; letter-spacing: -.007em;
+      color: var(--label); margin-top: 1px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .loc-suggest-x {
+      flex-shrink: 0; width: 44px;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--label-2);
+    }
+    .loc-suggest-x:active { background: var(--fill-4); }
+
 /*  ============================================================
     MAP CONTAINER
 

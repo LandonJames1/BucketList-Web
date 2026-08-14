@@ -7,11 +7,31 @@ function showAuth(){
   $('appWrap').style.display='none';
   pwaUpdateOnlineState();
 }
-function showApp(){
+async function showApp(){
   $('authPage').style.display='none';
   $('appWrap').style.display='block';
+
+  /* ---- Paint before the network ----
+
+     readRows() only reaches for the on-disk snapshot when the network
+     cannot answer, which is right for any single fetch and wrong for a
+     cold launch: a complete copy of the user's data is already sitting
+     in IndexedDB, and Home was nonetheless waiting on two *serialised*
+     round trips — collections, then the activities that depend on
+     their ids — before it drew a single row.
+
+     So prime the cache off the disk snapshot first. nav('home') then
+     renders from memory with no request at all, and revalidate()
+     refreshes behind the painted screen. A genuinely first-ever launch
+     has no snapshot, returns false, and waits exactly as before. */
+  const warm=await primeFromSnapshot();
+
   /* Boot into the dashboard. */
   nav('home');
+
+  /* Everything past this point is deliberately not awaited: none of it
+     gates the first paint, and awaiting any of it would put it back on
+     the critical path this function exists to keep clear. */
   loadUserProfile();
   pwaUpdateOnlineState();
   /* Only offer the iOS install walkthrough once someone is signed in;
@@ -46,6 +66,20 @@ function showApp(){
        visit — push subscriptions can be rotated by the browser. */
     if(ok&&notificationState()==='granted') subscribeToPush();
   });
+
+  /* Home was drawn from disk, so it may be behind what the server has
+     — another device, or someone else editing a shared list. Pull
+     fresh behind the painted screen and redraw whatever is showing by
+     then. Only when it was actually painted from the snapshot: without
+     one, nav('home') above already went to the network.
+
+     probeSharing() is awaited first, and only here. Nothing is waiting
+     on this — the screen is already up — so letting the probe answer
+     before the refetch costs nothing visible and guarantees the
+     collections query runs with the right scope the first time. Run in
+     parallel it would sometimes fetch owned-only, discover sharing was
+     on, and have to do the whole thing again. */
+  if(warm) probeSharing().then(revalidate).then(()=>refreshAfterChange());
 }
 
 let authIsSignUp=false;
@@ -80,12 +114,38 @@ async function handleAuth(){
   try{
     if(authIsSignUp){
       const displayName=$('authDisplayName').value.trim();
-      const username=$('authUsername').value.trim();
+      const username=$('authUsername').value.trim().toLowerCase();
       if(!displayName||!username){setAuthError('Name and username are required.');throw{handled:true};}
-      const{data,error}=await sb.auth.signUp({email,password});
+      if(!USERNAME_RE.test(username)){
+        setAuthError('Usernames are 3–30 characters: letters, numbers, dots or underscores.');
+        throw{handled:true};
+      }
+      /* The name and username ride along on the auth user rather than
+         being written to `Users` here.
+
+         This project has email confirmation switched on, which means
+         signUp() comes back with a user and NO session — so there was
+         never anything signed in to write that row with, and the two
+         values the user had just typed were dropped on the floor. Every
+         account created that way ended up with no profile at all: no
+         name in the You tab, and nothing to show them by on a shared
+         list. Handing them to auth means they survive the round trip
+         through the confirmation email, and ensureUserProfile() writes
+         the row on the first sign-in that actually has a session.
+
+         emailRedirectTo points the confirmation link back at wherever
+         the app is really being served. Supabase ignores it unless the
+         URL is allow-listed, falling back to the project's Site URL —
+         so it can only ever improve on the default. */
+      const{data,error}=await sb.auth.signUp({
+        email,password,
+        options:{
+          data:{display_name:displayName,username},
+          emailRedirectTo:location.origin+location.pathname,
+        },
+      });
       if(error)throw error;
       if(data.user&&data.session){
-        await sb.from('Users').insert({id:data.user.id,display_name:displayName,username});
         currentUser=data.user;showApp();return;
       }
       if(data.user&&!data.session){
@@ -154,6 +214,10 @@ async function handleSignOut(){
   /* Unsent writes belong to the account that made them, so give the
      queue one last chance to drain before the session goes. */
   await flushQueue();
+  /* Collection recounts run detached and debounced now (see
+     updateCollectionStats), so one can still be queued up when the
+     session goes. */
+  cancelPendingStats();
   /* The cache is per-account. Leaving it behind would show the next
      person to sign in on this device the previous one's lists — and
      that now means the on-disk snapshot as well as the in-memory one. */

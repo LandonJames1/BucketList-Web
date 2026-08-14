@@ -54,6 +54,60 @@ function mapStyle(){
   };
 }
 
+/* ==============================================================
+   LOADING MAPLIBRE ON DEMAND
+
+   maplibre-gl.js is ~900KB and used to sit in <head> as an ordinary
+   parser-blocking <script> — so every cold launch downloaded, parsed
+   and executed the entire GL map engine before the browser would look
+   at a single one of the app's own files, on the way to a Home screen
+   that has no map on it.
+
+   Now it is fetched the first time a map is actually asked for. The
+   two entry points below await this; nothing else in the app touches
+   `maplibregl`.
+
+   The stylesheet comes with it. Loading the CSS eagerly and the script
+   lazily would leave MapLibre's control styles applying to nothing on
+   every screen, and it is small enough that splitting them buys
+   nothing.
+
+   `false` here means the script could not be fetched — offline on a
+   cold cache, most likely — and the callers show the same "map
+   unavailable" state they already show for missing WebGL, rather than
+   throwing inside a render.
+   ============================================================== */
+const MAPLIBRE_JS='https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js';
+const MAPLIBRE_CSS='https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css';
+let _maplibreP=null;
+
+function ensureMapLibre(){
+  if(window.maplibregl) return Promise.resolve(true);
+  if(_maplibreP) return _maplibreP;
+
+  _maplibreP=new Promise(resolve=>{
+    if(!document.querySelector(`link[href="${MAPLIBRE_CSS}"]`)){
+      const link=document.createElement('link');
+      link.rel='stylesheet';link.href=MAPLIBRE_CSS;
+      document.head.appendChild(link);
+    }
+    const s=document.createElement('script');
+    s.src=MAPLIBRE_JS;
+    s.async=true;
+    s.onload=()=>resolve(!!window.maplibregl);
+    s.onerror=()=>{
+      console.warn('[map] could not load maplibre-gl');
+      /* Cleared rather than left resolved-false, so coming back to the
+         tab once the connection returns tries again instead of being
+         permanently stuck on the error state. */
+      _maplibreP=null;
+      resolve(false);
+    };
+    document.head.appendChild(s);
+  });
+  return _maplibreP;
+}
+
 /* MapLibre needs WebGL. Without it, say so rather than showing a blank
    rectangle. */
 function webglOK(){
@@ -421,6 +475,16 @@ async function renderGlobalMap(){
     }
   }
 
+  /* Awaited here rather than at the top of the function so it overlaps
+     the data query started above, the same way the style and tile
+     fetches already do. */
+  if(!await ensureMapLibre()){
+    mapEl.innerHTML=emptyMapHTML('Map unavailable',
+      'The map couldn’t be loaded. Check your connection and try again.');
+    $('globalMapBar').innerHTML='';$('globalMapActions').innerHTML='';
+    return;
+  }
+
   mapEl.innerHTML='';
   globalMapObj=new maplibregl.Map({
     container:mapEl,
@@ -536,7 +600,7 @@ function destroyGlobalMap(){
    ============================================================== */
 let detMapState={};
 
-function renderMap(acts){
+async function renderMap(acts){
   const mapEl=$('mapContainer');
   const geo=acts.filter(hasGeo);
 
@@ -546,6 +610,16 @@ function renderMap(acts){
     mapEl.innerHTML=emptyMapHTML('Map unavailable','This browser has WebGL turned off.');
     return;
   }
+  if(!await ensureMapLibre()){
+    mapEl.innerHTML=emptyMapHTML('Map unavailable',
+      'The map couldn’t be loaded. Check your connection and try again.');
+    return;
+  }
+  /* The view can change while the script is in flight — this is the
+     first visit to a collection's map, so it is a real wait. Bail
+     rather than building a map into a container that has since been
+     re-rendered or navigated away from. */
+  if(curPage!=='detail'||curView!=='map') return;
 
   mapEl.innerHTML='';
   actMap=new maplibregl.Map({

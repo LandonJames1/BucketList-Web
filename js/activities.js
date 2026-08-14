@@ -109,6 +109,10 @@ async function openComp(id,source){
   $('compLocLat').value=a.locationLat||'';
   $('compLocLng').value=a.locationLng||'';
   $('compNotes').value=a.completionNotes||'';
+  /* Clear any chip left over from the last activity completed this
+     session, and un-stick a dismissal so it can be offered again for
+     this one. See suggestLocationFromPhoto() in js/media.js. */
+  resetLocationSuggestion();
   renderThumbs();
 
   $('compSheetTitle').textContent=compNew?'Accomplished':'Edit';

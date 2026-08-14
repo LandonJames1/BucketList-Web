@@ -101,7 +101,7 @@ CLAUDE.md             This guide
 README.md             Human-facing setup + structure overview
 manifest.webmanifest  PWA metadata (name, icons, standalone display, theme color)
 sw.js                 Service worker — offline app shell + runtime caching. Must stay at the root.
-supabase/             Backend — schema.sql (reminders), sharing.sql (shared lists), storage.sql (the media bucket), cron.sql, and two Edge Functions: send-reminders and unfurl (shared links *and* screenshots). All optional; each piece probes for itself and the UI that needs it hides when it is absent.
+supabase/             Backend — schema.sql (reminders + reminder_deliveries), profiles.sql (the Users row, its RLS and the sign-up trigger), sharing.sql (shared lists), storage.sql (the media bucket), cron.sql, and two Edge Functions: send-reminders and unfurl (shared links *and* screenshots). All optional except profiles.sql; each other piece probes for itself and the UI that needs it hides when it is absent.
 css/                  One stylesheet per concern (see CSS file map)
 js/                   One script per concern (see JS file map)
 icons/                App icon PNGs + generate.py, the script that draws them
@@ -222,23 +222,43 @@ load, and it is what every other feature below reads from: duplicate
 detection, search, and offline all run against it rather than the
 network.
 
-Four rules, and the first one is the one that bites:
+Five rules, and the first one is the one that bites:
 
-1. **Every write must invalidate.** `invalidateActivities()` /
-   `invalidateCollections()` are called at each mutation site. Miss one
-   and the screen renders stale rows until something else happens to
-   refetch. `updateCollectionStats()` invalidates collections itself and
-   deliberately reads *past* the cache, since it runs against rows that
-   have just changed.
-2. **In-flight requests are shared.** Home renders four sections from the
+1. **Every write must keep the cache honest.** `dbInsert`/`dbUpdate`/
+   `dbDelete` handle this themselves via `applyOp()`; nothing else
+   should have to. Miss it and the screen renders stale rows until
+   something else happens to refetch.
+2. **A write patches the cache, it does not drop it.** `applyOp()` has
+   to compute the new row set for the on-disk snapshot anyway, so it
+   hands that same result to `primeActivities()`/`primeCollections()`
+   rather than nulling the cache and making the re-render fetch the
+   whole table back to learn something the client just wrote. **Both
+   refuse a cold cache** — priming one that has never been filled would
+   make `cacheWarm()` true off the back of a single write — and fall
+   through to the invalidate, which is the old behaviour and still
+   correct.
+3. **In-flight requests are shared.** Home renders four sections from the
    same two fetches; without this they raced into duplicate round trips.
-3. **A failed request is never cached** — it returns `[]` as before but
+4. **A failed request is never cached** — it returns `[]` as before but
    leaves the cache empty, so the next call retries instead of pinning an
    empty list for the session.
-4. **`fetchActivitiesFor()` filters the shared cache** rather than
+5. **`fetchActivitiesFor()` filters the shared cache** rather than
    issuing its own query. Entering a collection used to fetch the same
    rows twice, because `renderDetail()` and `renderActivitiesList()` each
    called it.
+
+**`updateCollectionStats()` is not on the critical path and must not go
+back on it.** `number_activities`/`activites_completed` are written but
+never read — every count the UI shows is derived client-side. They were
+nonetheless costing two serialised round trips on *every* mutation (a
+select to recount, an update to store it), both awaited before the screen
+was allowed to redraw, plus a third from the `invalidateCollections()`
+they ended with. So it now returns immediately, does the work detached
+and debounced per collection (`recountCollection`), and invalidates
+nothing. `cancelPendingStats()` drops anything still queued at sign-out.
+
+Together, rules 2 and that change took completing an activity from **five
+serialised round trips to one**.
 
 `cacheWarm()` is what lets a screen skip its spinner: blanking a screen
 that is about to paint from memory turns an instant redraw into a visible
@@ -257,6 +277,38 @@ inherits the previous one's lists.
 `readRows()` is the one helper behind both fetches and the only place
 that decides between network and disk. Offline it does not attempt a
 request at all — a tunnel should cost nothing, not a timeout.
+
+#### Painting before the network answers
+
+`readRows()` only reaches for the snapshot when the network *cannot*
+answer, which is right for any single fetch and wrong for a cold launch:
+a complete copy of the user's data is already on disk, and Home was
+nonetheless waiting on two **serialised** round trips — collections, then
+the activities that depend on their ids — before drawing a row.
+
+So `showApp()` calls **`primeFromSnapshot()`** before its first `nav('home')`.
+The screen paints from IndexedDB, and the network refresh happens behind
+it. Four things about that sequence are load-bearing:
+
+- **`main.js` awaits `showApp()`.** The splash has to hold until Home has
+  actually painted; dropping it first shows an empty shell for the few
+  milliseconds the IndexedDB read takes.
+- **Everything else in `showApp()` stays un-awaited.** The probes, the
+  profile load, the queue flush — none of them gate the first paint, and
+  awaiting any of them puts it straight back on the critical path.
+- **`probeSharing()` is awaited before `revalidate()`, and only there.**
+  Nothing is waiting on that refresh, so letting the probe answer first
+  costs nothing visible and guarantees the collections query runs with
+  the right scope the first time.
+- **A first-ever launch has no snapshot**, `primeFromSnapshot()` returns
+  false, and the boot waits exactly as it always did.
+
+`probeSharing()` no longer invalidates unconditionally when it comes back
+true. It checks **`collectionsScope()`** — which records whether the
+cached collections were fetched under RLS (`true`), under the client-side
+`user_id` filter (`false`), or came off the snapshot and are correct by
+construction (`null`). Only `false` needs the refetch. Unconditional, it
+was a second full fetch of both tables on every single launch.
 
 #### Refreshing after a change
 
@@ -347,6 +399,73 @@ un-completing writes has to preserve that.
 Deleting a photo drops the URL from the row; it does not delete the
 object. There is no reference counting here to make deletion safe, and
 storage is cheap — `storage.sql` carries a sweeper query in a comment.
+
+#### Where the photo was taken
+
+`js/exif.js` reads the GPS block out of a JPEG, and `handleMedia()`
+offers it as the activity's location when there isn't one already.
+
+The case: an activity with no location never appears on the map, and the
+completion sheet is exactly where that gets missed — you have just done
+the thing, you are attaching the photos of it, and the one field that
+would put it on the map is the one you skip. The photos already know.
+
+Three things that are not negotiable:
+
+- **It reads the original `File`, before anything re-encodes it.**
+  `compress()` in `utils.js` draws to a canvas and reads back with
+  `toDataURL()`, and a canvas knows nothing about EXIF — every tag is
+  gone from the result. So the read happens in `handleMedia()` on the
+  file as picked, never on anything `uploadPhoto()` has touched. Moving
+  it downstream silently returns null for every photo.
+- **It suggests, it never fills.** `suggestLocationFromPhoto()` draws a
+  `.loc-suggest` chip under the field; `acceptPhotoLocation()` is what
+  writes. EXIF can be wrong — a photo of the poster advertising the
+  thing, a screenshot someone sent you, a stale fix — and writing a place
+  into the record of something you did on that evidence is worse than not
+  offering. Same rule the import sheet follows.
+- **Only when the field is empty** (`needsLocationSuggestion()`), and a
+  dismissal is sticky for the life of the sheet so the next photo does
+  not bring the offer back. `openComp()` calls `resetLocationSuggestion()`
+  so that stickiness cannot leak into the next activity.
+
+The parser is hand-rolled because it is a fixed walk over a specified
+binary layout, and that is smaller than the smallest library. It handles
+both byte orders, tolerates junk segments ahead of APP1, and returns null
+on anything malformed rather than throwing.
+
+**Two containers, because a phone produces both:**
+
+| | EXIF lives in | Reads |
+| --- | --- | --- |
+| JPEG | an APP1 segment near the front | one slice |
+| HEIC / HEIF / AVIF | an addressable *item*, via the ISOBMFF box tree | two |
+
+HEIC is what an iPhone shoots by default. Safari *usually* converts it to
+JPEG on the way through a file input — but "usually" is doing real work
+there: it depends on the iOS version and how the picker was opened, and
+when it does not convert, the feature silently does nothing. Which is
+what it did. The box walk is
+`ftyp → meta → iinf` (which item id has type `Exif`) `→ iloc` (where in
+the file those bytes are), then a second targeted slice. **The payload
+lands on an ordinary TIFF header, so everything downstream is reused
+unchanged** — HEIC support is a new way to *find* the same block, not a
+second parser. `iloc` is the awkward part: the width of every offset
+field is declared inside the box and the layout shifts across its three
+versions, all of which are handled.
+
+**Dispatch is on the magic bytes, never on `file.type`.** iOS reports the
+type inconsistently and sometimes not at all, and that mislabelling was
+itself a way the feature silently failed. The bytes cannot be wrong.
+
+**What it will not find:** screenshots, anything shot with the in-app
+camera, and anything that has been through a messaging app (most strip
+metadata on send, which is a feature). A real PNG is left alone rather
+than guessed at.
+
+`reverseGeocode()` in `location.js` turns the fix into a name, at
+`zoom=14` — the default returns a full postal address, which is both too
+precise to be useful and slightly unnerving to be shown back to you.
 
 #### Working offline
 
@@ -650,6 +769,43 @@ Worth knowing: **an installed PWA has its own storage partition on iOS**, so
 signing in inside Safari and then installing to the home screen means signing
 in once more. That is the platform, not a bug.
 
+#### Signing up
+
+**This project has email confirmation switched on** (`mailer_autoconfirm` is
+false — check with `GET /auth/v1/settings`), which means `signUp()` returns a
+user and **no session**. That single fact broke profile creation for every
+account made here: `handleAuth()` wrote the `Users` row inline right after
+`signUp`, which can only work with a session, so the name and username the
+person had just typed were dropped and no row was ever created. They
+confirmed their email, signed in, and had no name in the You tab and nothing
+to be identified by on a shared list.
+
+The fix has two halves and both should stay:
+
+- **The values ride on the auth user.** `signUp()` passes them as
+  `options.data`, so they survive the round trip through the confirmation
+  email — including the common case where it is opened on a different
+  device from the one that signed up.
+- **`loadUserProfile()` creates the row when it is missing**, via
+  `createUserProfile()`. Running on every sign-in rather than only after
+  sign-up is deliberate: it also repairs accounts created while this was
+  broken. Username collisions are an expected outcome there, not an error —
+  it suffixes and retries.
+
+`supabase/profiles.sql` is the server half and the better one: a trigger on
+`auth.users` writes the row inside the sign-up transaction, so it exists
+whether or not the person ever comes back to confirm. It also carries the
+RLS policies on `Users` — without an INSERT policy the client-side fallback
+is simply refused — a unique index on `lower(username)`, and a backfill for
+the accounts already stranded. **Run it.**
+
+`signUp()` also passes `emailRedirectTo`, so the confirmation link points at
+wherever the app is really being served rather than at whatever the
+dashboard's Site URL happens to say. Supabase ignores it unless the URL is
+allow-listed and falls back to the Site URL, so it can only improve on the
+default — but if confirmation links land somewhere wrong, the allowlist is
+the first place to look.
+
 #### Target dates
 
 Opening a collection always resets `curView` to `list`. It is keyed on
@@ -841,12 +997,45 @@ mean a reminder that silently never arrives for anyone missing one of its four
 prerequisites — and the failure would look like the feature not existing.
 
 The backend lives in **`supabase/`**: `schema.sql` (columns, the
-`push_subscriptions` table with RLS, and a trigger that re-arms a reminder when
-its date moves), `functions/send-reminders/` (the daily sweep, which groups by
-user so five due reminders are one notification, and prunes endpoints that
+`push_subscriptions` table with RLS, the `reminder_deliveries` table, and a
+trigger that re-arms a reminder when its date moves),
+`functions/send-reminders/` (the daily sweep, which groups by recipient so
+five due reminders are one notification, and prunes endpoints that
 return 404/410), and `cron.sql`. `supabase/README.md` has the deploy steps.
 The function requires an `x-cron-secret` header — without it, anyone could
 trigger a send to every user's devices.
+
+**A reminder on a shared list goes to everyone on it.** The sweep used to
+select `Collections!inner(user_id)` and notify that one person, which on a
+shared list is both wrong and quiet: three people share a list, one sets a
+reminder to book the campsite, and it fires at whoever happens to *own* the
+list — possibly not even the person who set it. The audience is now the
+owner plus every `collection_members` row.
+
+That forced the delivery marker apart from the activity.
+`Activities.reminder_sent_at` is one column for what is now several
+recipients, so the first successful send silently consumed the notification
+for the whole list. **`reminder_deliveries` is keyed on
+`(activity_id, user_id, remind_at)`** instead. Two consequences worth
+keeping: the date being part of the key means moving a reminder re-arms it
+for everybody with no trigger needed, and a user with **no** registered
+device is deliberately *not* recorded as delivered, so they still get the
+reminder on the day they turn notifications on. `reminder_sent_at` is still
+written, but only so anything reading it directly sees what it expects —
+nothing consults it.
+
+The function tolerates `collection_members` not existing (sharing is
+optional; the audience is then just the owner) but **refuses to run without
+`reminder_deliveries`**, because with no way to tell who has already been
+told it would re-notify everyone every day.
+
+There is still **one `remind_at` per activity, not one per person** — a
+reminder on a shared list is the list's reminder. That is the right default
+("book the campsite" is not a private thought when three people are going)
+but it is surprising to discover afterwards, so `updateRemindAudience()`
+says so in the sheet, on shared lists only. It deliberately does not
+promise a *push*: whether each person gets one depends on their permission
+and install state, which this client cannot see.
 
 **A reminder can count back from the target date** — "1 month before"
 is how people actually think about a permit window. `REMIND_OFFSETS` in
@@ -1130,7 +1319,7 @@ Loaded in this order; **order matters**.
 | `detail.css` | A collection's screen: `.det-banner`, `.act-row` list rows, `.composer` quick-add, `.act-card` grid cards, and the `.ad-*` activity detail sheet. |
 | `me.css` | The Me tab: the stats card, the progress card, the identity row. |
 | `modals.css` | The three presentation styles — `.modal`/`.sheet-*` bottom sheets, `.action-sheet`, `.lightbox` — plus the form controls that live inside a sheet: `.fg` and its `.fg-hero` (the field a sheet is *about* — only the activity name) and `.fg-pair` (two short choices on one line), `.picker-btn` (a value that opens a picker, sized to match a `<select>` beside it), `.chip-field`, `.photo-*`, and `.toast`. |
-| `map.css` | Map containers (the full-bleed `.page-map` and the inset detail map), the CSS sky gradient behind the globe, the floating `.map-filter`/`.map-count`/`.map-fab` chrome, `.map-pin`/`.map-cluster` markers, MapLibre's own controls restyled, and the `.loc-*` autocomplete dropdown. |
+| `map.css` | Map containers (the full-bleed `.page-map` and the inset detail map), the CSS sky gradient behind the globe, the floating `.map-filter`/`.map-count`/`.map-fab` chrome, `.map-pin`/`.map-cluster` markers, MapLibre's own controls restyled, the `.loc-*` autocomplete dropdown, and `.loc-suggest-*` — the "from your photo" chip, deliberately a tinted *offer* rather than a filled control, since it must not read as though the field is already answered. |
 | `bulk.css` | `.bulk-*` — the "add many at once" sheet, one card per row. |
 | `import.css` | `.imp-*` — the sheet a shared link or screenshot opens into (its result checklist, the screenshot preview, the duplicate mark, the waiting and caption-fallback states) — plus `.shr-*`, the iOS Shortcut setup sheet, which `sharing.css` also borrows. |
 | `search.css` | `.srch-*` — the pinned search field over the results, the section headings, and the `<mark>` wash. The rows themselves are `.act-row` from `detail.css`. |
@@ -1149,17 +1338,18 @@ Loaded in this order; **order matters**.
 | `config.js` | `SUPABASE_URL`/`SUPABASE_KEY`, the `sb` client, the `COVERS` array of default Unsplash covers, and `randCover(existingCovers)` (picks a cover the user isn't already using). |
 | `state.js` | Every shared mutable global: `currentUser`, the navigation triple (`curTab`, `curPage`, `backTab`), `curListId`, `editingListId`, `editingActId`, `completingId`, `curFilter`, `curView`, `upMedia`, `coverPhoto`, `userProfile`, `pendingShare` (a link shared in, held from boot until there is a signed-in user to file it for), and the map handles. Other files declare their own feature-local globals next to their code (`aLinks`, `bulkEntries`, `actMap`, `lbPhotos`, `locTimer`). |
 | `utils.js` | `$` (getElementById), `esc` (HTML-escape — **use it on every interpolated value**, all rendering is template strings), **`uuidv4`/`isUuid`** (client-minted row ids — read the warning under **Working offline** before touching them), `cap`, `todayISO`, `fmtDate(s, withYear)` (omits the year when it's the current one, unless `withYear` — a completed date is a record you look back on, so it always carries its year), `dateInfo(a)` (turns a target date like "This Year" into a `{label, cls}` urgency badge), `shakeEl`, `compress`, `confetti`, and the priority pair `priClass`/`priTagHTML` (see **Showing priority**). |
+| `exif.js` | `exifReadLocation(file)` — the GPS fix out of a photo's EXIF, or null. Handles **JPEG and HEIC/HEIF/AVIF**, dispatching on magic bytes rather than `file.type`. Underneath: the JPEG walk (`exifFindTiff`), the HEIC box walk (`isoBoxes`, `isoType`, `heicReadLocation`, `heicExifExtent`, `heicExifItemId`, `heicItemExtent`, `heicTiffStart`, `isTiffAt`), and the shared TIFF reader both land on (`exifGpsFrom`, `exifTagValue`, `exifDMS`). Pure, no dependencies, every failure path returns null rather than throwing. **Must be called against the original `File`**: a canvas re-encode strips every tag. See **Where the photo was taken**. |
 | `fuzzy.js` | Approximate string matching, shared by duplicate detection and search. `similarity(a,b)` (symmetric — are these the same thing?) and `matchScore(q,text)` (asymmetric — does this row answer what is being typed?), plus `scoreFields()` and the primitives underneath: `fuzzyNorm`, `fuzzyTokens`, `fuzzyStem`, `fuzzyTokenSim`, `fuzzySoftDice`, `fuzzyTrigrams`, `fuzzyDice`, `fuzzyEditRatio`. Pure and synchronous. **See How the fuzzy matching works** — the constants are tuned, not derived. |
 | `icons.js` | `ICON_PATHS`, the app's own inline-SVG glyph set, plus `ICON_FILLED` (glyphs already solid, which must not be stroked) and `icon(name, cls)`. Icons inherit `currentColor`. **Add new glyphs here**, not inline in a template string. |
 | `offline.js` | **Reading from disk, queueing writes, syncing on reconnect.** The IndexedDB wrapper (`idbOpen`/`idbGet`/`idbAll`/`idbPut`/`idbDelete`/`idbClear`), the row snapshot (`snapshotSave`/`snapshotLoad`/`snapshotAge`/`snapshotClear`), the write queue (`queueWrite`/`queueLoadCount`/`pendingWrites`/`flushQueue`), **`dbInsert`/`dbUpdate`/`dbDelete` — which every mutation site calls instead of `sb.from(...)`** — plus `applyOp`, `stampRow`, `isNetworkError`, `updateSyncUI` (the offline banner's text), `offlineSignOut` and `offlineInit`. Loads before `api.js`. See **Working offline**. |
-| `api.js` | **Every Supabase read, and the cache in front of them.** `mapCollection`/`mapActivity` translate snake_case columns into the camelCase shapes the UI uses; `normMedia`/`denormMedia` do the same for the two shapes the `photos` column holds. Then `readRows` (network or disk — the one place that chooses), `fetchCollections`, `fetchActivitiesFor`, `fetchAllActivities`, `fetchActivity`, `fetchCollection`, `updateCollectionStats`, and the cache: `invalidateCollections`/`invalidateActivities`/`invalidateAll`, `cacheWarm`, `cachedActivities`/`cachedCollections` (synchronous reads, for the duplicate check), `revalidate`. New queries belong here, not inline in a screen file. **Writes go through `offline.js`.** |
+| `api.js` | **Every Supabase read, and the cache in front of them.** `mapCollection`/`mapActivity` translate snake_case columns into the camelCase shapes the UI uses; `normMedia`/`denormMedia` do the same for the two shapes the `photos` column holds. Then `readRows` (network or disk — the one place that chooses), `fetchCollections`, `fetchActivitiesFor`, `fetchAllActivities`, `fetchActivity`, `fetchCollection`, and the cache: `invalidateCollections`/`invalidateActivities`/`invalidateAll`, **`primeActivities`/`primeCollections`** (patch it from a computed row set instead of dropping it — called by `applyOp`), **`primeFromSnapshot`** (paint before the network; called once, by `showApp`), `collectionsScope`, `cacheWarm`, `cachedActivities`/`cachedCollections` (synchronous reads, for the duplicate check), `revalidate`. Plus `updateCollectionStats`/`recountCollection`/`cancelPendingStats` — deliberately **off** the critical path, see the cache section. New queries belong here, not inline in a screen file. **Writes go through `offline.js`.** |
 
 **Shell and shared UI**
 
 | File | Domain |
 | --- | --- |
 | `auth.js` | `showAuth`/`showApp` (swap `#authPage` against `#appWrap`; `showApp` boots into Home, loads the profile, triggers the iOS install hint, picks up any link shared in via `handleSharedInput()`, and starts the token auto-refresh). Also the `visibilitychange` handler that stops/starts auto-refresh — browsers suspend timers in a backgrounded PWA, and without restarting on resume the access token goes stale and the next request 401s, which reads to the user as being logged out — and the `onAuthStateChange` listener that keeps `currentUser` in step and only shows the login screen on a real `SIGNED_OUT`, `toggleAuthMode` (tracked by the `authIsSignUp` flag, not by reading the heading text), `setAuthError`, `handleAuth`, `handleSignOut`. Sign-up also inserts the `Users` profile row. |
-| `nav.js` | `nav(page, listId)` — the single entry point for changing screens (see **Screens and navigation**). Plus `PAGE_TAB`, `TAB_ROOT`, `selectTab`, `goBack`, `dismissOverlays`, **`refreshAfterChange(src)`** (the single answer to "something was written, what redraws?" — see **Refreshing after a change**), `updateNavbar` (**where each screen's bar buttons are defined**), `applyNavCondense`, a debounced `resize` handler, and **`setBodyScrollLock(lock)`** — the single place that touches body overflow. |
+| `nav.js` | `nav(page, listId)` — the single entry point for changing screens (see **Screens and navigation**). Plus `PAGE_TAB`, `TAB_ROOT`, `selectTab`, `goBack`, `dismissOverlays`, **`refreshAfterChange(src)`** (the single answer to "something was written, what redraws?" — see **Refreshing after a change**), `updateNavbar` (**where each screen's bar buttons are defined**), `applyNavCondense`, a debounced `resize` handler, **`setBodyScrollLock(lock)`** — the single place that touches body overflow — and **`syncTabbarToKeyboard()`**, which keeps the tab bar behind the software keyboard instead of riding up on top of it (see **Mobile layout rules**). |
 | `gestures.js` | The two touch gestures, both delegated from `document`: **swipe a sheet down to dismiss it** (`.modal` and the action sheet) and **swipe sideways to change screen**. `overlayOpen`, `ownsHorizontal`/`ownsVertical` (surfaces with their own gesture), `SHEET_DISMISS_PX`/`SHEET_FLICK_PX`, `SWIPE_MIN`/`SWIPE_EDGE`, `TAB_ORDER` (in `nav.js`). See **Gestures** below. |
 | `modals.js` | `openModal` (**resets `.sheet-body` scrollTop** — see the note under *Sheets* below) / `closeModal` (they call `setBodyScrollLock`, so use them rather than toggling `.open` yourself), the scrim-click and Escape handlers, **`showActionSheet(opts)`** and `showConfirm` (iOS confirms destructive actions with an action sheet, not a dialog — `confirmDeleteCollection`/`confirmDeleteActivity` wrap it), the photo lightbox (swipe sideways to page, down to close), `ensurePickerRoom`/`releasePickerRoom` (see **Gestures**), and `showToast`. |
 
@@ -1168,8 +1358,8 @@ Loaded in this order; **order matters**.
 | File | Domain |
 | --- | --- |
 | `links.js` | The URL chip input: `aLinks`, `handleTagKey`, `removeTag`, `renderTagChips`. ⚠️ `getChipArr(which)` ignores its argument and always returns `aLinks` — vestigial from when there were two chip fields. Adding a second means fixing this first. |
-| `location.js` | `locSearch(input, resultsId)` — debounced (350ms) place search against the public **OpenStreetMap Nominatim** API — plus `geocodeOnce(q)` (one-shot, no debounce, no DOM: resolves a place name we already have — an imported link's location — to `{display, lat, lng}` or null), `positionLocBox` (the bulk sheet's dropdown is `position:fixed` so it can escape the sheet's scroll container, and therefore has to be placed by hand) and `locPick`. |
-| `media.js` | Photos **and video**. `probeStorage()`/`storageReady()`, `uploadPhoto`/`uploadVideo` (→ the `media` Supabase Storage bucket), `videoPoster` (grabs a still so thumbnails and map pins have an image), `handleMedia`, `rmMedia`, `mediaTileHTML`, `renderThumbs`, and the ordering set — `coverIndex`, `moveMedia`, `makeCover`, `openMediaMenu`. Working list is the `upMedia` global. Replaced `photos.js`; see **Media** below. |
+| `location.js` | `locSearch(input, resultsId)` — debounced (350ms) place search against the public **OpenStreetMap Nominatim** API — plus `geocodeOnce(q)` (one-shot, no debounce, no DOM: resolves a place name we already have — an imported link's location — to `{display, lat, lng}` or null), `reverseGeocode(lat, lng)` (the other direction, for a photo's EXIF fix — `zoom=14`, so a place rather than a postal address), `positionLocBox` (the bulk sheet's dropdown is `position:fixed` so it can escape the sheet's scroll container, and therefore has to be placed by hand) and `locPick`. |
+| `media.js` | Photos **and video**. `probeStorage()`/`storageReady()`, `uploadPhoto`/`uploadVideo` (→ the `media` Supabase Storage bucket), `videoPoster` (grabs a still so thumbnails and map pins have an image), `handleMedia`, `rmMedia`, `mediaTileHTML`, `renderThumbs`, and the ordering set — `coverIndex`, `moveMedia`, `makeCover`, `openMediaMenu`. Also the photo→location offer: `needsLocationSuggestion`, `suggestLocationFromPhoto`, `acceptPhotoLocation`, `dismissPhotoLocation`, `resetLocationSuggestion` (see **Where the photo was taken**). Working list is the `upMedia` global. Replaced `photos.js`; see **Media** below. |
 
 **Screens and features**
 
@@ -1184,10 +1374,10 @@ Loaded in this order; **order matters**.
 | `collections.js` | `renderCollections()` (the Lists tab) plus the collection CRUD: `openNewList`, `openEditList`, `renderCoverPreview`, `clearCover`, `handleCoverUpload`, `saveList`, `delList`. `delList` deletes the collection's activities first — there is no DB cascade. |
 | `detail.js` | One collection. Rendering is **deliberately split in two**: `renderDetail()` builds the banner and the controls, `renderActivitiesList()` rebuilds only the list. Search and filter call the second, so the search field never loses focus mid-typing. Also `activityRowHTML`/`activityCardHTML` and the quick-add composer helpers (`composerHTML`, `onComposerKey`, `focusComposer`). |
 | `activities.js` | The whole activity flow. **Creating always goes through the sheet** — `quickAddActivity()` only takes the composer's text and opens `openNewActivity(name)` with it; nothing here inserts an activity directly except `commitSaveActivity()`, which is the sheet's own Save. `toggleComplete(id, isDone)` is the one-tap completion (see the note below). Then `openNewActivity`, `openEditAct`, `saveActivity`, `delActivity`, plus `renderActListPicker()` and the `targetListId` global — the List row that lets an activity be filed from outside any collection, and which is hidden when there is no choice to make. Also `setPriorityChoice` (**the only way to set priority** — it keeps the swatched buttons and the hidden `#aPri` value in step), `openComp`/`openCompletedDate`/`confirmComplete`/`setCompMore` — the one completion sheet (see **The two-speed activity flow**) — and `openActDetail` which builds the activity sheet. Plus `openCollectionMenu` (the ⋯ action sheet, which holds the view switcher and everything the old five-button hero row spelled out), `setFilter`, `setView`. |
-| `me.js` | `renderMe()` (stats), `renderMeIdentity()`, `loadUserProfile()` (reads the `Users` row once per session into `userProfile`), `confirmSignOut()`. The tab's two App rows are wired elsewhere: Add to Home Screen to `pwaShowInstallHelp()` in `pwa.js`, and Share links into the app to `openShareSetup()` in `share.js`. |
+| `me.js` | `renderMe()` (stats), `renderMeIdentity()`, `loadUserProfile()` (reads the `Users` row once per session into `userProfile` — **and creates it when missing**, via `createUserProfile`/`profileSeed`/`USERNAME_RE`; see **Signing up**), `confirmSignOut()`. The tab's two App rows are wired elsewhere: Add to Home Screen to `pwaShowInstallHelp()` in `pwa.js`, and Share links into the app to `openShareSetup()` in `share.js`. |
 | `bulk.js` | The "add many at once" sheet, one card per row. Row values live in `bulkEntries[]` and the DOM is re-rendered from it wholesale, so **`saveBulkFieldValues()` must flush the inputs back into the array before any redraw** — every mutation helper does this. `_skipSaveBulk` suppresses that flush in `bulkApplyDown` (the "copy row 1" pills), which has already updated the array itself. `openBulkAdd(listId)` takes an explicit destination in `bulkListId`, defaulting to `curListId`: the sheet normally opens from a collection, but an import from Home has no collection context and passes the chosen list. |
 | `share.js` | **Turning a shared link or a screenshot into an activity.** `readSharedInput()` (boot; parses and strips the query param), `handleSharedInput()` (called from `showApp()`), `openImportSheet`/`runUnfurl`/`renderImportState`/`IMPORT_FAIL_STATE`, `pickScreenshot`/`handleScreenshot` (downscale and send to the vision path), `handOffSingle`/`handOffMany`/`shareSourceLinks`, `looksLikeUrl`/`importFromComposer`, and `openShareSetup`/`shareTargetUrl`/`copyShareTargetUrl` for the iOS Shortcut. Loads after `activities.js` and `bulk.js` because it hands drafts to both. See **Sharing a link in** below. |
-| `map.js` | All MapLibre GL. `mapStyle()` (raster CARTO basemap + globe projection + sky), `webglOK()`, `actsToGeoJSON()`, and `attachActivityLayer()` — which adds the clustered GeoJSON source and syncs DOM markers (`makePinEl`, `makeClusterEl`) to the viewport. Then the two instances: the Map tab (`renderGlobalMap`, `fitGlobal`, `zoomGlobe`, `globeFillZoom`, `setGlobalMapFilter`) and the per-collection map (`renderMap`, `updateMapMarkers`). Plus `mapLoaded(map)` and `hasGeo`. Teardown is explicit — `destroyGlobalMap()`/`destroyDetailMap()` — because each map holds a WebGL context, but **only the detail map is torn down on navigation**. See **The immersive map** above for the traps. |
+| `map.js` | All MapLibre GL. **`ensureMapLibre()`** — the library is loaded on demand here, not from `<head>`; at ~900KB it was the biggest single cost of a cold launch, blocking the parser on the way to a Home screen with no map on it. Both entry points await it and fall back to the "map unavailable" state if it cannot be fetched. Then `mapStyle()` (raster CARTO basemap + globe projection + sky), `webglOK()`, `actsToGeoJSON()`, and `attachActivityLayer()` — which adds the clustered GeoJSON source and syncs DOM markers (`makePinEl`, `makeClusterEl`) to the viewport. Then the two instances: the Map tab (`renderGlobalMap`, `fitGlobal`, `zoomGlobe`, `globeFillZoom`, `setGlobalMapFilter`) and the per-collection map (`renderMap`, `updateMapMarkers`). Plus `mapLoaded(map)` and `hasGeo`. Teardown is explicit — `destroyGlobalMap()`/`destroyDetailMap()` — because each map holds a WebGL context, but **only the detail map is torn down on navigation**. See **The immersive map** above for the traps. |
 | `pwa.js` | Service-worker registration and the install/offline UI: `isStandalone()`/`isIOS()` (which stamp `.standalone`/`.ios` on `<html>`), the `beforeinstallprompt` capture behind `pwaInstall()`, the iOS Add-to-Home-Screen sheet, `pwaShowInstallHelp()` (the Me tab row), and `pwaUpdateOnlineState()`. Dismissals persist in `localStorage` under `bl_*` keys. **It also calls `reg.update()` on foreground and on reconnect** — an installed PWA is rarely killed, and registration is the only moment the browser looks for a new `sw.js`, so without it a shipped fix can sit undelivered on the home-screen copy for days and look like it was never made. |
 | `main.js` | Boot: `paintStaticIcons()` fills the empty icon placeholders left in `index.html` from the sprite map, then `readSharedInput()` captures any shared link (**before** the session restore — see **Sharing a link in**), then `restoreSession()` runs and `showApp()`/`showAuth()` follows. **Loads last.** See **Staying signed in** below — `restoreSession()` is deliberately more than one `getSession()` call. |
 
@@ -1323,6 +1513,8 @@ they can be queued when there is no network.
 | `Users` | `id` (= `auth.users.id`), `created_at`, `display_name`, `username`, `icon` |
 | `collection_members` *(optional)* | `collection_id`, `user_id`, `role`, `display_name`, `created_at` — added by `sharing.sql` |
 | `collection_invites` *(optional)* | `code` (PK), `collection_id`, `created_by`, `role`, `revoked`, `expires_at`, `created_at` |
+| `push_subscriptions` | `id`, `user_id`, `endpoint` (unique), `p256dh`, `auth`, `user_agent`, `created_at` — added by `schema.sql` |
+| `reminder_deliveries` | `activity_id`, `user_id`, `remind_at` (composite PK), `sent_at` — added by `schema.sql`. Who has already been told about which reminder, per person. See **Reminders**. |
 
 RPCs, from `sharing.sql`: `peek_invite(code)` reads an invite without
 accepting it, and `join_collection(code)` is **the only way a member row
@@ -1342,9 +1534,14 @@ Schema notes and traps:
   the second `i`). `api.js` matches the real column name. Don't "fix" it in code
   without renaming the column.
 - **`number_activities` / `activites_completed` are written but never read.**
-  `updateCollectionStats()` keeps them current after every mutation, but all
-  displayed counts are computed client-side from the fetched activities. They're
-  denormalized columns waiting for a use.
+  `updateCollectionStats()` keeps them roughly current, but all displayed
+  counts are computed client-side from the fetched activities. They're
+  denormalized columns waiting for a use — and because nothing reads them,
+  that write is **debounced and detached** rather than awaited. Don't put it
+  back on the critical path; see the cache section.
+- **`Users` needs `supabase/profiles.sql` run against it.** Nothing else
+  manages its RLS, and without an INSERT policy the profile row cannot be
+  created. See **Signing up**.
 - **`category_tag` (both tables) and `Users.icon` are unused** by the front end.
 - **The CSVs in `Supabase Setup/` are stale.** `Activities.csv` predates
   `location_lat`/`location_lng`, which the live table has and the code depends
@@ -1437,6 +1634,24 @@ these are the defaults, not overrides.
 - **The tab bar is `translateZ(0)`** so iOS gives it its own layer; without it
   fixed elements repaint late during momentum scrolling and appear to drift.
   `--tab-inset` is floored at 6px for the same reason `--nav-inset` is.
+- **The tab bar must stay behind the keyboard, not ride up on it.** It is
+  `position: fixed; bottom: 0`, and on iOS the software keyboard shrinks the
+  *visual* viewport while leaving the layout viewport alone — Safari then
+  re-anchors fixed elements to the visual one, so the bar climbs and parks
+  on top of the keyboard, under the predictive-text row. Script cannot opt
+  out of that, but `syncTabbarToKeyboard()` in `nav.js` measures it: the gap
+  between the bottom of `visualViewport` and the bottom of the layout
+  viewport is exactly how far Safari lifted it, so translating back down by
+  that much returns it to where it belongs. Three things to keep:
+  - **iOS only.** Chrome on Android already pins fixed elements to the
+    layout viewport, which is the behaviour being reproduced; applying the
+    correction there too would push the bar a whole keyboard *below* the
+    screen.
+  - **The tab bar and nothing else.** Bottom-anchored sheets *should* rise
+    with the keyboard — that is the entire reason they are bottom-anchored.
+    Do not generalise this to them.
+  - **`translate3d`, not `translateY`.** An inline transform overrides the
+    CSS `translateZ(0)`, so it has to carry the layer promotion itself.
 - **The nav bar has its own inset, `--nav-inset`,** floored at 14px. In an
   installed PWA the notch inset already provides room; in a browser tab
   `safe-area-inset-top` is 0 and the back button ended up pinned against the
@@ -1598,13 +1813,28 @@ Two things that will bite:
   assistive-technology path to it, and the tiles are not focusable. The button
   menu it replaced was reachable; this is not. A long-press menu as a fallback
   would fix it without giving the gesture up.
+- **EXIF location is unverified on a real iPhone.** JPEG and HEIC are both
+  handled and mime-type mislabelling no longer matters, so the known ways
+  it could silently fail are closed — but it has only been tested against
+  constructed fixtures and headless Chrome, never a real camera roll. It
+  degrades to silence, which is correct and also means a failure is
+  invisible; `handleMedia()` logs one `[media] photo location:` line to
+  the console naming which gate it fell through. The same parser could
+  read `DateTimeOriginal` to suggest the completion date too; it does not.
 - **Deleted media is not removed from Storage** — only its URL is dropped from
   the row. See the sweeper query at the bottom of `supabase/storage.sql`.
 - **Mutations re-render from the cache, but there are no optimistic updates.**
-  A quick-add still waits for the insert and the stats update before the row
-  appears — one round trip now rather than several, but not instant. (Offline
-  it *is* instant, because the write is applied to the snapshot and queued —
-  which is a good hint at how the online path should eventually work.)
+  A quick-add still waits for the insert itself before the row appears — one
+  round trip now, down from five, but not instant. (Offline it *is* instant,
+  because the write is applied to the snapshot and queued — which is a good
+  hint at how the online path should eventually work.)
+- **Legacy base64 photos are still on the list query's critical path.**
+  `select('*')` pulls `photos`, and any row written before the storage bucket
+  existed has image data inline, so a handful of them can be megabytes on
+  every fetch. Painting from the snapshot hides this on launch but not on
+  `revalidate()`. The one-off backfill below would fix it properly; dropping
+  the column from the query cannot, because `a.photos[0]` is the cover every
+  thumbnail, grid card and map pin draws.
 - **Media created offline stays base64 forever.** A photo attached with no
   connection is embedded in the row and syncs that way; nothing later uploads
   it to the bucket and rewrites the column. Same gap as the pre-bucket rows
@@ -1618,6 +1848,21 @@ Two things that will bite:
   indication that anyone else is in a list or has changed something. Realtime
   subscriptions would be the natural fix; `revalidate()` on foreground is what
   there is today.
+- **A shared list has one reminder, not one per person.** `remind_at` is a
+  column on the activity, so the last person to save a reminder overwrites
+  whatever the previous one set, and nobody can keep a private nudge about a
+  shared activity. The delivery side is per-user now
+  (`reminder_deliveries`); the *setting* side is not. Making it per-person
+  means moving `remind_at` out to its own table, which is a real schema
+  change and a real UI change — the sheet would have to say whose reminder
+  it is showing.
+- **Background push is not actually switched on.** `VAPID_PUBLIC_KEY` is
+  empty in `config.js`, so `pushConfigured()` is false and tier 3 is dead for
+  everyone, owners included — reminders currently run on the Home banner and
+  the on-open local notification only. Generate a pair
+  (`npx web-push generate-vapid-keys`), paste the public half into
+  `config.js`, set the private half as a function secret, and deploy
+  `send-reminders`.
 - **A member can rename a shared list.** The RLS update policy on `Collections`
   allows owner-or-member; narrowing it to the owner is a one-line change in
   `sharing.sql` if that turns out to be wrong.

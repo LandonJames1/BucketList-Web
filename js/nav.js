@@ -240,6 +240,58 @@ function setBodyScrollLock(lock){
 }
 
 /* ==============================================================
+   THE KEYBOARD AND THE TAB BAR
+
+   .tabbar is `position: fixed; bottom: 0`. On iOS the software
+   keyboard shrinks the **visual** viewport while leaving the layout
+   viewport alone, and Safari re-anchors fixed elements to the visual
+   one — so the tab bar climbs with the keyboard and parks on top of
+   it, directly under the predictive-text row. It should stay at the
+   bottom of the screen and let the keyboard cover it.
+
+   Script cannot opt out of that re-anchoring, but it can measure it:
+   the gap between the bottom of the visual viewport and the bottom of
+   the layout viewport is exactly how far Safari has lifted the bar, so
+   translating it back down by that amount returns it to where it
+   belongs.
+
+   Three things worth knowing:
+
+   - **iOS only, and that is not a shortcut.** Chrome on Android keeps
+     fixed elements pinned to the layout viewport already, which is the
+     behaviour we are trying to produce. Applying the correction there
+     as well would push the bar *below* the bottom of the screen by a
+     whole keyboard's height.
+   - **The tab bar and nothing else.** Bottom-anchored sheets *should*
+     rise with the keyboard — that is the entire reason they are
+     bottom-anchored, so a focused field stays put while the keyboard
+     resizes the viewport. They are deliberately untouched.
+   - **translate3d, not translateY.** The bar carries
+     `transform: translateZ(0)` in CSS to force its own layer, without
+     which iOS repaints it late during momentum scrolling and it
+     appears to drift. An inline transform overrides that, so it has to
+     keep the promotion itself.
+   ============================================================== */
+function syncTabbarToKeyboard(){
+  const vv=window.visualViewport;
+  const bar=$('tabbar');
+  if(!vv||!bar||!isIOS())return;
+  /* How much of the layout viewport sits below the visual one. Zero
+     with the keyboard closed, the keyboard's height with it open. */
+  const lift=Math.max(0,Math.round(window.innerHeight-(vv.height+vv.offsetTop)));
+  bar.style.transform=lift?`translate3d(0,${lift}px,0)`:'';
+}
+
+if(window.visualViewport){
+  /* Both events: resize fires when the keyboard opens or closes, scroll
+     when the visual viewport is panned around inside the layout one —
+     which iOS does on its own when a focused field would otherwise be
+     hidden. */
+  window.visualViewport.addEventListener('resize',syncTabbarToKeyboard);
+  window.visualViewport.addEventListener('scroll',syncTabbarToKeyboard);
+}
+
+/* ==============================================================
    VIEWPORT CHANGES
    Rotating the phone (or the iOS URL bar collapsing) leaves a GL map
    with stale dimensions until it is told to re-measure.
@@ -250,5 +302,7 @@ window.addEventListener('resize',()=>{
   navResizeTimer=setTimeout(()=>{
     refreshMapZoomFloors();
     applyNavCondense();
+    /* Rotating with the keyboard up changes its height. */
+    syncTabbarToKeyboard();
   },180);
 });

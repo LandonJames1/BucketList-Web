@@ -80,7 +80,46 @@ create policy "own subscriptions" on push_subscriptions
 
 
 -- ------------------------------------------------------------
--- 4. Re-arm a reminder when it is moved
+-- 4. Who has been told about which reminder
+--
+-- Reminders on a shared list go to everybody who can see the list —
+-- the owner and every collection_members row — not just the owner.
+-- See supabase/functions/send-reminders.
+--
+-- That makes Activities.reminder_sent_at unusable as the "already
+-- sent" marker: it is one column for what is now several recipients,
+-- so the first successful send would silently consume the notification
+-- for the whole list. This tracks it per person instead.
+--
+-- remind_at is part of the key on purpose. Moving a reminder re-arms
+-- it for everyone automatically, because the new date has no delivery
+-- rows against it — no trigger has to clear anything.
+--
+-- No RLS policy: nothing in the browser reads or writes this. The Edge
+-- Function uses the service role, which bypasses RLS. Enabling it with
+-- no policy is what makes that true rather than merely assumed.
+-- ------------------------------------------------------------
+create table if not exists reminder_deliveries (
+  activity_id uuid not null references "Activities"(id) on delete cascade,
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  remind_at   date not null,
+  sent_at     timestamptz not null default now(),
+  primary key (activity_id, user_id, remind_at)
+);
+
+create index if not exists reminder_deliveries_activity_idx
+  on reminder_deliveries(activity_id);
+
+alter table reminder_deliveries enable row level security;
+
+
+-- ------------------------------------------------------------
+-- 5. Re-arm a reminder when it is moved
+--
+-- Now belt-and-braces: reminder_deliveries above is keyed on the date,
+-- so a moved reminder is re-armed for every recipient without this.
+-- Kept because Activities.reminder_sent_at is still written, and
+-- leaving it stale would mislead anyone reading the column directly.
 --
 -- Without this, changing remind_at on an activity that has already been
 -- notified would never fire again, because reminder_sent_at is still

@@ -152,7 +152,53 @@ function openRemindSheet(){
   /* Nothing to remove until there is something set. */
   $('rmClearWrap').style.display=stored?'':'none';
   onRemindModeChange();
+  updateRemindAudience();
   openModal('remindSheet');
+}
+
+/* ==============================================================
+   WHO A REMINDER ACTUALLY REACHES
+
+   There is one remind_at per activity, not one per person, so a
+   reminder set on a shared list is the list's reminder: the sweep in
+   supabase/functions/send-reminders notifies the owner and every
+   member, and the Home banner shows up for all of them too.
+
+   That is the right behaviour — "book the campsite" is not a private
+   thought when three people are going — but it is a surprising one to
+   find out about afterwards, and the sheet gives no other clue. So say
+   it, on shared lists only, where it is not obvious.
+
+   Deliberately not said: which of them will get a *push*. That depends
+   on each person's notification permission and whether they have
+   installed the app, none of which this client can see, and guessing
+   at it would be worse than the general statement.
+   ============================================================== */
+async function updateRemindAudience(){
+  const el=$('rmShared');
+  if(!el)return;
+  el.style.display='none';
+  if(!sharingReady())return;
+
+  /* The activity being edited may not be filed yet — a new one takes
+     its destination from the sheet's List row. */
+  const listId=targetListId||curListId;
+  if(!listId)return;
+  const list=cachedCollections().find(c=>c.id===listId);
+  if(!list)return;
+
+  /* Two ways a list is shared, and the note belongs on both: one you
+     joined, and one you own and invited someone into. isSharedWithMe()
+     answers the first off the row itself; the second needs the
+     membership set, which is cached after the first Lists render. */
+  const shared=isSharedWithMe(list)||(await sharedCollectionIds()).has(listId);
+  /* The membership set can be a real await, and the sheet may have
+     been closed and reopened against a different list by the time it
+     lands. Re-check rather than writing a stale answer into it. */
+  if(!shared||(targetListId||curListId)!==listId)return;
+
+  el.textContent=`Everyone on “${list.name}” gets this reminder.`;
+  el.style.display='';
 }
 
 /* Show the date field for an explicit date, or what the chosen offset

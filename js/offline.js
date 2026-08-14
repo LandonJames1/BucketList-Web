@@ -298,12 +298,13 @@ async function applyOp(op){
   }
 
   /* No snapshot at all, or no IndexedDB. There is nothing to patch,
-     but the invalidation below still has to happen — skipping it when
+     but the cache below still has to be dealt with — skipping it when
      persistence is unavailable would leave the screen showing the row
      as it was before the write, which is the one failure this whole
      file exists to avoid. */
+  let next=null;
   if(rows){
-    let next=rows;
+    next=rows;
     if(op.action==='insert'){
       /* Replayed inserts must not double up if the first attempt in fact
          reached the server. Keyed on id, which we minted. */
@@ -316,6 +317,19 @@ async function applyOp(op){
     }
     await snapshotSave(kind,next);
   }
+
+  /* The row set was just computed for the snapshot, so hand it to the
+     in-memory cache too rather than dropping that cache and making the
+     re-render fetch the whole table back to learn something this
+     client already knows. See the note on primeActivities() in api.js.
+
+     Priming is refused on a cold cache, and it cannot happen at all
+     with no snapshot to compute from — both fall through to the
+     invalidate, which is the old behaviour and still correct. */
+  const primed=next && (kind==='activities'
+    ? primeActivities(next)
+    : primeCollections(next));
+  if(primed) return;
 
   if(kind==='activities') invalidateActivities();
   else invalidateCollections();

@@ -45,14 +45,86 @@ function renderMeIdentity(){
     </div>`;
 }
 
-/* The Users row holds the display name; fetched once per session and
-   reused, since nothing in the app changes it after sign-up. */
+/* ==============================================================
+   THE PROFILE ROW
+
+   `Users` holds the display name and handle. It is read once per
+   session — nothing in the app changes it after sign-up — and
+   **created here if it is missing**, which is the part that matters.
+
+   It used to be written inline by handleAuth() at the moment of
+   sign-up. That only ever worked on a project with email confirmation
+   switched off, because confirmation means signUp() returns no session
+   and there is nothing signed in to write the row with. This project
+   has confirmation on, so every account created since has had no
+   profile: no name in the You tab, and nothing to identify them by on
+   a shared list.
+
+   So the name and username now travel as auth user metadata (see
+   handleAuth) and the row is written on the first sign-in that has a
+   real session. Running it on every sign-in rather than only after
+   sign-up is deliberate — it also repairs the accounts that were
+   created while this was broken.
+   ============================================================== */
+const USERNAME_RE=/^[a-z0-9_.]{3,30}$/;
+
 async function loadUserProfile(){
   if(!currentUser)return;
   const{data,error}=await sb.from('Users').select('display_name,username').eq('id',currentUser.id).maybeSingle();
   if(error){console.error('loadUserProfile:',error);return;}
-  userProfile=data||null;
-  if(curPage==='me') renderMeIdentity();
+  if(data){
+    userProfile=data;
+    if(curPage==='me') renderMeIdentity();
+    return;
+  }
+  await createUserProfile();
+}
+
+/* Fall back to the email's local part for anything created before the
+   metadata was carried, so an old account still gets a sane handle
+   rather than being left without a row forever. */
+function profileSeed(){
+  const meta=(currentUser&&currentUser.user_metadata)||{};
+  const email=(currentUser&&currentUser.email)||'';
+  const local=email.split('@')[0]||'';
+  const display=(meta.display_name||meta.full_name||meta.name||local||'').trim();
+  let username=(meta.username||local||'').toLowerCase().replace(/[^a-z0-9_.]/g,'');
+  if(username.length<3) username=(username+'user').slice(0,12);
+  return{display:display||username,username:username.slice(0,30)};
+}
+
+async function createUserProfile(){
+  const seed=profileSeed();
+  if(!seed.username)return;
+
+  /* Usernames are meant to be unique, so a collision is an expected
+     outcome rather than an error — suffix and retry a few times before
+     giving up. 23505 is Postgres "unique_violation". */
+  for(let attempt=0;attempt<4;attempt++){
+    const username=attempt?`${seed.username.slice(0,26)}${Math.floor(Math.random()*9000+1000)}`:seed.username;
+    const row={id:currentUser.id,display_name:seed.display,username};
+    const{error}=await sb.from('Users').insert(row);
+    if(!error){
+      userProfile={display_name:row.display_name,username:row.username};
+      if(curPage==='me') renderMeIdentity();
+      return;
+    }
+    if(error.code!=='23505'){
+      /* Most likely no INSERT policy on Users. Nothing the user can do
+         about it, and the app works without a profile — so say it once
+         in the console and carry on rather than blocking sign-in. */
+      console.warn('createUserProfile:',error);
+      return;
+    }
+    /* The id is the primary key, so a collision on it means the row
+       already exists — another tab won the race. Re-read and stop. */
+    const{data}=await sb.from('Users').select('display_name,username').eq('id',currentUser.id).maybeSingle();
+    if(data){
+      userProfile=data;
+      if(curPage==='me') renderMeIdentity();
+      return;
+    }
+  }
 }
 
 /* Notification row in the You tab: reflects the real permission state

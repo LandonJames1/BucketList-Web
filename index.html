@@ -37,9 +37,16 @@
 
   <!-- ===== Third-party libraries =====
        MapLibre GL renders on the GPU and has a real globe projection,
-       which is what the Map tab needs; Leaflet could do neither. -->
-  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
-  <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+       which is what the Map tab needs; Leaflet could do neither.
+
+       It is NOT loaded here. At ~900KB it was the single biggest cost
+       of a cold launch — a parser-blocking script that had to be
+       downloaded, parsed and executed before the browser would look at
+       any of the app's own files, on the way to a Home screen with no
+       map on it. ensureMapLibre() in map.js fetches it the first time
+       a map is actually asked for, stylesheet included. Only preconnect
+       here, so that first fetch does not also pay for the handshake. -->
+  <link rel="preconnect" href="https://unpkg.com" crossorigin />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <!-- ===== Styles — order matters =====
@@ -504,6 +511,11 @@
       <!-- What a relative choice actually works out to, so the stored date
            is never a surprise. -->
       <p class="fg-hint" id="rmResolved" style="display:none"></p>
+      <!-- Shown only on a shared list. A reminder there notifies everyone
+           who can see the list, which is the right behaviour and a
+           surprising one to discover after the fact. See
+           updateRemindAudience() in reminders.js. -->
+      <p class="fg-hint" id="rmShared" style="display:none"></p>
       <div class="fg">
         <label>Note<span class="opt"> optional</span></label>
         <textarea id="rmNote" rows="2" maxlength="200"
@@ -556,6 +568,12 @@
           <input type="hidden" id="compLocLat" /><input type="hidden" id="compLocLng" />
           <div class="loc-results" id="compLocResults"></div>
         </div>
+        <!-- Filled in by suggestLocationFromPhoto() when an attached
+             photo carries a GPS fix and this field is still empty. A
+             suggestion to accept, never a value written on the user's
+             behalf — extraction can be wrong, and the same rule the
+             import sheet follows applies here. See media.js. -->
+        <div class="loc-suggest" id="compLocSuggest" hidden></div>
       </div>
 
       <button class="more-toggle" id="compMoreToggle" aria-expanded="false" onclick="toggleCompMore()">
@@ -826,6 +844,8 @@
 <script src="js/state.js"></script>
 <script src="js/utils.js"></script>
 <script src="js/fuzzy.js"></script>
+<!-- Pure binary parsing, no dependencies; media.js calls it. -->
+<script src="js/exif.js"></script>
 <script src="js/icons.js"></script>
 <script src="js/offline.js"></script>
 <script src="js/api.js"></script>

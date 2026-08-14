@@ -68,11 +68,18 @@ function probeSharing(){
     _sharingProbe=null;
 
     /* This probe runs in parallel with the first render, so
-       fetchCollections() has usually already answered — with
+       fetchCollections() may already have answered — with
        sharingReady() still false, which means it filtered to owned
        lists and cached that. Flipping the answer without dropping the
-       cache would hide every joined list until the next reload. */
-    if(_sharingReady){
+       cache would hide every joined list until the next reload.
+
+       But only *that* case needs the refetch, and it used to fire
+       unconditionally: on a cold launch the app now paints from the
+       disk snapshot, whose scope is already correct, and revalidate()
+       refreshes behind it — so invalidating here as well meant a
+       second full fetch of both tables on every single launch.
+       collectionsScope() is what tells the two apart. */
+    if(_sharingReady&&collectionsScope()===false){
       invalidateAll();
       if(currentUser) refreshAfterChange();
     }

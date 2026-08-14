@@ -208,9 +208,28 @@ async function handleMedia(e){
   e.target.value='';
   if(!files.length)return;
 
+  /* The first fix found across this batch, if the activity does not
+     already have a location. Read here rather than inside uploadPhoto
+     because it has to happen against the file *as picked* — that
+     function's first act is to run it through a canvas, which strips
+     every EXIF tag from the result. See js/exif.js. */
+  let geo=null;
+
   for(const f of files){
     const isVideo=f.type.startsWith('video/');
     if(!isVideo&&!f.type.startsWith('image/'))continue;
+    if(!isVideo&&!geo&&needsLocationSuggestion()){
+      geo=await exifReadLocation(f);
+      /* Silent for the user — a photo with no fix is the normal case,
+         not an error — but this feature has too many ways to quietly do
+         nothing (wrong format, stripped metadata, no fix, geocoder
+         down) to be undebuggable. One line naming which one it was. */
+      console.info('[media] photo location:',geo
+        ? `${geo.lat.toFixed(4)},${geo.lng.toFixed(4)} from ${f.name}`
+        : `none in ${f.name} (${f.type||'unknown type'})`+
+          (/^image\/jpe?g$/i.test(f.type||'')?' — no GPS tags in the file'
+                                             :' — only JPEG carries readable EXIF here'));
+    }
     _mediaPending++;
     renderThumbs();
     try{
@@ -224,9 +243,109 @@ async function handleMedia(e){
       renderThumbs();
     }
   }
+
+  /* After the uploads, not before: the reverse lookup is a network
+     round trip and the photos appearing is the thing the user is
+     waiting on. */
+  if(geo) suggestLocationFromPhoto(geo);
 }
 
 function rmMedia(i){ upMedia.splice(i,1); renderThumbs(); }
+
+/* ==============================================================
+   WHERE THE PHOTO WAS TAKEN
+
+   An activity with no location never appears on the map, and the
+   completion sheet is exactly where that gets missed — you have just
+   done the thing, you are attaching the photos of it, and the one
+   field that would put it on the map is the one you skip. The photos
+   already carry the answer.
+
+   Two rules:
+
+   1. **Only when the field is empty.** A location the user typed, or
+      one that came in with an imported link, is never second-guessed
+      by a photo's metadata.
+   2. **It suggests, it does not fill.** EXIF can be wrong — a photo of
+      the poster advertising the thing, a screenshot someone sent you,
+      a camera whose clock and fix were both stale. Writing a place
+      into the record of something you did, silently, on that evidence
+      is worse than not offering it. So it is a chip you tap, which is
+      the same rule the import sheet follows for the same reason.
+
+   The dismissal is deliberately sticky for the life of the sheet: an
+   offer that has been declined must not come back when the next photo
+   is added.
+   ============================================================== */
+let _photoLocDismissed=false;
+
+/* Called before reading a file, so a photo is not parsed at all when
+   its answer could not be used. */
+function needsLocationSuggestion(){
+  if(_photoLocDismissed) return false;
+  const el=$('compLoc');
+  /* Not the sheet this runs on — nothing to suggest into. */
+  if(!el||!$('compSheet').classList.contains('open')) return false;
+  return !el.value.trim();
+}
+
+/* Reset by openComp() so a dismissal does not leak into the next
+   activity completed in the same session. */
+function resetLocationSuggestion(){
+  _photoLocDismissed=false;
+  _photoLoc=null;
+  const box=$('compLocSuggest');
+  if(box){ box.hidden=true; box.innerHTML=''; }
+}
+
+let _photoLoc=null;
+
+async function suggestLocationFromPhoto(geo){
+  /* Re-checked rather than trusted from before the upload: the user
+     may have typed a place, or closed the sheet entirely, in the time
+     the photos took to go up. */
+  if(!needsLocationSuggestion()) return;
+
+  const place=await reverseGeocode(geo.lat,geo.lng);
+  if(!place){
+    console.info('[media] the photo had a location but the geocoder could not name it');
+    return;
+  }
+  if(!needsLocationSuggestion()) return;
+
+  _photoLoc=place;
+  const box=$('compLocSuggest');
+  if(!box) return;
+  box.innerHTML=`
+    <button class="loc-suggest-main" onclick="acceptPhotoLocation()">
+      ${icon('pin')}
+      <span class="loc-suggest-body">
+        <span class="loc-suggest-cap">From your photo</span>
+        <span class="loc-suggest-name">${esc(place.display)}</span>
+      </span>
+    </button>
+    <button class="loc-suggest-x" onclick="dismissPhotoLocation()"
+            aria-label="Dismiss">${icon('x','ic-xs')}</button>`;
+  box.hidden=false;
+}
+
+function acceptPhotoLocation(){
+  if(!_photoLoc) return;
+  $('compLoc').value=_photoLoc.display;
+  $('compLocLat').value=_photoLoc.lat;
+  $('compLocLng').value=_photoLoc.lng;
+  /* Accepted counts as settled: the field is no longer empty, so
+     nothing would offer again anyway, but this keeps the chip from
+     lingering next to a field it has already filled. */
+  dismissPhotoLocation();
+}
+
+function dismissPhotoLocation(){
+  _photoLocDismissed=true;
+  _photoLoc=null;
+  const box=$('compLocSuggest');
+  if(box){ box.hidden=true; box.innerHTML=''; }
+}
 
 /* ==============================================================
    ORDER, AND THEREFORE THE COVER — BY DRAGGING

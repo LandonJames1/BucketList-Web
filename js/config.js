@@ -48,7 +48,7 @@ const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{
    Left empty, everything still works except background push: reminders
    fall back to the Home banner and a notification on next open.
    ============================================================== */
-const VAPID_PUBLIC_KEY='';
+const VAPID_PUBLIC_KEY='BGkQr3oXiXD5Cs1iyVT6YI5lagtApiNOkFXOk6KPXVnZrnOgWMt-ikNCa_XiHne4GWfjjcE73LlcqMPonu_RpkI';
 
 /* Default cover images */
 const COVERS=[
