@@ -93,68 +93,6 @@ async function sliceBuffer(file,start,end){
   catch(e){ return null; }
 }
 
-/* ==============================================================
-   TEMPORARY — why did this photo have no location?
-
-   ⚠️ DIAGNOSTIC SCAFFOLDING. Delete this function and its one caller
-   in media.js once the iOS behaviour is pinned down.
-
-   The feature degrades to silence by design, which is right for a user
-   and useless for finding out why it did nothing on a phone with no
-   console attached. This says which stage it fell over at, in one
-   short line that media.js paints under the location field.
-   ============================================================== */
-async function exifDiagnose(file){
-  const bits=[];
-  try{
-    if(!file) return 'no file';
-    bits.push(`${file.type||'no type'} ${(file.size/1024/1024).toFixed(1)}MB`);
-
-    const head=await sliceBuffer(file,0,EXIF_SCAN_BYTES);
-    if(!head) return bits.join(' · ')+' · could not read';
-    const view=new DataView(head);
-    bits.push(`read ${(head.byteLength/1024).toFixed(0)}KB`);
-
-    if(view.getUint16(0)===0xFFD8){
-      bits.push('JPEG');
-      const tiff=exifFindTiff(view);
-      if(tiff<0) return bits.join(' · ')+' · NO Exif segment (stripped on upload)';
-      bits.push('Exif found');
-      const gps=exifGpsFrom(view,tiff);
-      return bits.join(' · ')+(gps?` · GPS ${gps.lat.toFixed(3)},${gps.lng.toFixed(3)}`
-                                 :' · Exif present but NO GPS tags');
-    }
-    if(isoType(view,4)==='ftyp'){
-      bits.push('HEIC '+isoType(view,8));
-      let meta=null;
-      for(const b of isoBoxes(view,0,view.byteLength)) if(b.type==='meta'){meta=b;break;}
-      if(!meta) return bits.join(' · ')+' · no meta box';
-      let iinf=null,iloc=null;
-      for(const b of isoBoxes(view,meta.start+4,meta.end)){
-        if(b.type==='iinf')iinf=b; else if(b.type==='iloc')iloc=b;
-      }
-      if(!iinf||!iloc) return bits.join(' · ')+` · meta ok, iinf=${!!iinf} iloc=${!!iloc}`;
-      const id=heicExifItemId(view,iinf);
-      if(id===null) return bits.join(' · ')+' · NO Exif item (stripped)';
-      const ext=heicItemExtent(view,iloc,id);
-      if(!ext) return bits.join(' · ')+` · Exif item ${id} but no extent`;
-      bits.push(`Exif item @${ext.offset}+${ext.length}`);
-      const buf=await sliceBuffer(file,ext.offset,ext.offset+Math.min(ext.length,HEIC_EXIF_MAX));
-      if(!buf) return bits.join(' · ')+' · could not read extent';
-      const v2=new DataView(buf);
-      const tiff=heicTiffStart(v2);
-      if(tiff<0) return bits.join(' · ')+' · no TIFF header in item';
-      const gps=exifGpsFrom(v2,tiff);
-      return bits.join(' · ')+(gps?` · GPS ${gps.lat.toFixed(3)},${gps.lng.toFixed(3)}`
-                                 :' · Exif present but NO GPS tags');
-    }
-    const sig=[0,1,2,3].map(i=>view.getUint8(i).toString(16).padStart(2,'0')).join(' ');
-    return bits.join(' · ')+` · unknown format (${sig})`;
-  }catch(e){
-    return bits.join(' · ')+' · threw: '+(e&&e.message||e);
-  }
-}
-
 /* Walk the JPEG segment markers to the start of the TIFF block inside
    APP1, or -1 if there isn't one. */
 function exifFindTiff(view){

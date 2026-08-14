@@ -214,15 +214,11 @@ async function handleMedia(e){
      function's first act is to run it through a canvas, which strips
      every EXIF tag from the result. See js/exif.js. */
   let geo=null;
-  /* ⚠️ TEMPORARY — held only so showPhotoLocationDiag() can explain a
-     miss. Remove with exifDiagnose(). */
-  let diagFile=null;
 
   for(const f of files){
     const isVideo=f.type.startsWith('video/');
     if(!isVideo&&!f.type.startsWith('image/'))continue;
     if(!isVideo&&!geo&&needsLocationSuggestion()){
-      diagFile=f;
       geo=await exifReadLocation(f);
       /* Silent for the user — a photo with no fix is the normal case,
          not an error — but this feature has too many ways to quietly do
@@ -252,19 +248,6 @@ async function handleMedia(e){
      round trip and the photos appearing is the thing the user is
      waiting on. */
   if(geo) suggestLocationFromPhoto(geo);
-  /* ⚠️ TEMPORARY — remove with exifDiagnose() in exif.js. There is no
-     console on a phone, so when this finds nothing it says why, in
-     place, rather than leaving us guessing from the outside. */
-  else if(diagFile&&needsLocationSuggestion()) showPhotoLocationDiag(diagFile);
-}
-
-/* ⚠️ TEMPORARY — see above. */
-async function showPhotoLocationDiag(file){
-  const box=$('compLocSuggest');
-  if(!box)return;
-  const why=await exifDiagnose(file);
-  box.innerHTML=`<div class="loc-suggest-diag">${esc(why)}</div>`;
-  box.hidden=false;
 }
 
 function rmMedia(i){ upMedia.splice(i,1); renderThumbs(); }

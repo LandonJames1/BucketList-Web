@@ -78,11 +78,6 @@
       color: var(--label-2);
     }
     .loc-suggest-x:active { background: var(--fill-4); }
-    /* ⚠️ TEMPORARY — pairs with exifDiagnose() in js/exif.js. Remove both. */
-    .loc-suggest-diag {
-      padding: 9px 12px; font-family: var(--mono); font-size: 11px;
-      line-height: 1.5; color: var(--label-2); word-break: break-word;
-    }
 
 /*  ============================================================
     MAP CONTAINER
