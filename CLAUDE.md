@@ -847,8 +847,17 @@ disk snapshot, so `primeFromSnapshot()` returned false, so `showApp()`'s
 corrected it — and the new account saw the old one's lists, activities,
 notes and photos for the entire session.
 
-It was client-side only. RLS still refused every write, and a reload
-cleared it. The rows were on screen, which is the part that matters.
+**Do not repeat the mistake that was made when this was diagnosed.**
+It was written up as "client-side only — RLS still refuses every
+write", on the strength of an unauthenticated probe coming back empty.
+That was wrong. Three `to authenticated ... using (true)` policies were
+sitting on `Collections`, `Activities` and `Users`, OR'd over every
+correct `bl_*` policy, so the account really did have full read, write
+and delete on everyone's data. They granted nothing to a logged-out
+request, which is exactly why the probe looked clean.
+
+An anonymous request cannot tell you a project is scoped. Only
+`pg_policies` can. See `supabase/rls-lockdown.sql`.
 
 Two mechanisms now, and **both should stay** — they fail differently:
 
@@ -1835,7 +1844,14 @@ Schema notes and traps:
 
 **Security:** `SUPABASE_KEY` in `config.js` is the publishable/anon key and is
 meant to be public, but it only protects data if **Row Level Security is enabled
-on all three tables**. `fetchActivitiesFor`/`fetchAllActivities` query by
+on all three tables *and* no permissive policy undoes it**. This project shipped
+for a while with a policy literally named `ALL` on each table —
+`to authenticated`, `cmd ALL`, `using (true)` — which OR'd over every correct
+policy and gave every signed-in user full access to everyone's rows.
+`supabase/rls-lockdown.sql` removes them and carries the audit query.
+**Checking this from the client is not possible**: those policies grant nothing
+to an anonymous request, so an unauthenticated probe returns `[]` and the
+project looks locked down. `fetchActivitiesFor`/`fetchAllActivities` query by
 `collection_id` with no user check and rely entirely on RLS to scope results;
 `fetchCollections` filters on `user_id` client-side, which is not a security
 boundary. Confirm RLS policies before treating any of this as private.

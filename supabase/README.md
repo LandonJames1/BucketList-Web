@@ -15,6 +15,7 @@ than assuming it is there:
 | `sharing.sql` | `probeSharing()` in `js/sharing.js` | No Share entry in the ⋯ menu; the app is single-user, exactly as before |
 | `storage.sql` | `probeStorage()` in `js/media.js` | Photos stay inline as base64; video is refused with an explanation |
 | `functions/send-reminders` | — | Reminders still show on Home and on next open, just not as background push |
+| **`rls-lockdown.sql`** | — | **Every signed-in user can read, edit and delete every other user's data. Run it.** |
 | `functions/unfurl` | — | A shared link still opens the activity sheet with the URL attached; screenshot import says it needs the key; the location guess stays quiet |
 | `multilist.sql` | `probeMultiList()` in `js/api.js` | An activity belongs to exactly one list; the Lists row stays single-select |
 | `functions/delete-account` | — | **Delete Account reports an error rather than half-deleting.** Deploy this if you offer the button at all |
