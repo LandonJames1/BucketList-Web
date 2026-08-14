@@ -27,6 +27,13 @@ if(isIOS()) document.documentElement.classList.add('ios');
    ============================================================== */
 let pwaDeferredPrompt=null;
 
+/* Was this page already under a service worker when it loaded?
+   Read at parse time, which is the earliest and therefore the only
+   honest moment: it is what tells a FIRST install apart from an
+   UPDATE, and the two want opposite things from controllerchange.
+   See the handler below. */
+const pwaHadController='serviceWorker' in navigator&&!!navigator.serviceWorker.controller;
+
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>{
     navigator.serviceWorker.register('sw.js').then(reg=>{
@@ -53,8 +60,29 @@ if('serviceWorker' in navigator){
       window.addEventListener('online',checkForUpdate);
     }).catch(e=>console.warn('[pwa] service worker registration failed:',e));
 
+    /* ---- Reload when the worker CHANGES, never when it ARRIVES ----
+
+       sw.js calls clients.claim() on activate, so on a first visit the
+       page acquires a controller it never had — and this handler used
+       to treat that exactly like an update and reload the app.
+
+       That reload is worse than useless. The page is already running
+       the newest code (it is the load that installed the worker), and
+       the reload lands on a URL that boot has already stripped its
+       query string from. readPendingJoin() and readSharedInput() hold
+       what they captured in memory, so a shared list invite or a
+       shared-in link opened by someone whose browser had never seen
+       the app — which is every recipient, the first time — was silently
+       destroyed before there was a signed-in user to hand it to. It
+       presented as the invite link simply opening the normal app.
+
+       The updatefound handler above already draws this distinction by
+       checking for a controller before offering a reload; this is the
+       same check, taken at parse time because by the time
+       controllerchange fires the controller is non-null either way. */
     let refreshing=false;
     navigator.serviceWorker.addEventListener('controllerchange',()=>{
+      if(!pwaHadController)return;
       if(refreshing)return;
       refreshing=true;
       window.location.reload();

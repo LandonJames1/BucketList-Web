@@ -38,10 +38,19 @@ let shareInput=null,shareDrafts=[],shareCover='',shareBusy=false;
    Runs at boot from main.js, before the session is restored: a share
    can arrive while signed out, and the sign-in screen must not eat it.
    ============================================================== */
+const SHARE_STASH='bl_pending_share';
+
 function readSharedInput(){
   let params;
-  try{ params=new URLSearchParams(location.search); }catch(e){ return; }
-  if(!params.toString()) return;
+  try{ params=new URLSearchParams(location.search); }catch(e){ params=null; }
+  if(!params||!params.toString()){
+    /* Same recovery as readPendingJoin(): a first visit installs the
+       service worker, which reloads the page after the query string
+       has already been stripped. See js/pwa.js. */
+    const kept=bootRead(SHARE_STASH);
+    if(kept){ try{ pendingShare=JSON.parse(kept); }catch(e){} }
+    return;
+  }
 
   const text=(params.get('text')||'').trim();
   /* Android's share sheet often puts the URL inside the text rather
@@ -60,6 +69,10 @@ function readSharedInput(){
     text:text&&text!==url?text:'',
   };
 
+  /* Held where a reload cannot destroy it — see bootKeep() in
+     js/utils.js and the controllerchange handler in js/pwa.js. */
+  bootKeep(SHARE_STASH,JSON.stringify(pendingShare));
+
   /* The app has no router, so the param has no meaning past this
      point. Strip it before anything can reload onto it. */
   history.replaceState(null,'',location.pathname);
@@ -70,6 +83,8 @@ function handleSharedInput(){
   if(!pendingShare) return;
   const input=pendingShare;
   pendingShare=null;
+  /* Consumed, for the same reason readPendingJoin()'s code is. */
+  bootDrop(SHARE_STASH);
   openImportSheet(input);
 }
 

@@ -374,12 +374,25 @@ async function leaveList(id){
    not eat it. The query string is stripped immediately so a reload
    cannot re-run the join.
    ============================================================== */
+const JOIN_STASH='bl_pending_join';
+
 function readPendingJoin(){
   let params;
-  try{ params=new URLSearchParams(location.search); }catch(e){ return; }
-  const code=(params.get('join')||'').trim();
-  if(!code) return;
+  try{ params=new URLSearchParams(location.search); }catch(e){ params=null; }
+  const code=((params&&params.get('join'))||'').trim();
+  if(!code){
+    /* Nothing in the URL, but a previous load of this tab may have
+       captured a code and then been reloaded out from under it — most
+       likely by the service worker taking control on a first visit.
+       See the controllerchange handler in js/pwa.js. */
+    pendingJoin=bootRead(JOIN_STASH)||null;
+    return;
+  }
   pendingJoin=code;
+  /* Held where a reload cannot destroy it. The recipient of an invite
+     usually has to sign in before there is anyone to join as, and that
+     is a long time to keep something in a global. */
+  bootKeep(JOIN_STASH,code);
   /* readSharedInput() may have stripped this already; doing it twice
      is harmless and neither can be made to depend on the other. */
   history.replaceState(null,'',location.pathname);
@@ -390,6 +403,10 @@ async function handlePendingJoin(){
   if(!pendingJoin) return;
   const code=pendingJoin;
   pendingJoin=null;
+  /* Consumed. Dropped here rather than in acceptJoin(), so that a
+     reload while the sheet is open cannot re-run the join — the same
+     property stripping the query string gives. */
+  bootDrop(JOIN_STASH);
 
   if(!sharingReady()){
     /* probeSharing() may not have answered yet — it is fired in the

@@ -53,6 +53,43 @@ function uuidv4(){
    here rather than a Postgres syntax error three layers down. */
 const UUID_RE=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function isUuid(v){ return UUID_RE.test(v||''); }
+
+/* ==============================================================
+   SURVIVING A RELOAD
+
+   Two things arrive in the query string and are read at boot — an
+   invite to a shared list (?join=) and a link shared into the app
+   (?share=). Both are stripped from the URL immediately, because the
+   app has no router and a reload must not re-run them, and both are
+   then held in an ordinary global until there is a signed-in user to
+   hand them to.
+
+   That last step is the fragile one: the stretch between boot and a
+   signed-in user is exactly where a reload is most likely, since a
+   recipient who has never opened the app has to sign in first. A
+   reload at that point loses the global AND finds a URL with nothing
+   left in it, so the capture is gone for good.
+
+   sessionStorage is the right shelf for it — it survives a reload,
+   it is scoped to the one tab, and it evaporates when that tab
+   closes, so nothing can be re-run days later. Access is wrapped
+   because it throws outright in some privacy modes.
+   Reading deliberately does NOT remove: a capture is dropped when it
+   is *consumed*, by the handler that finally has a user to hand it
+   to, and not a moment earlier. Removing on read would mean surviving
+   exactly one reload — enough for the service worker's, and not for
+   someone who reloads again while still on the sign-in screen.
+   ============================================================== */
+function bootKeep(key,value){
+  try{ sessionStorage.setItem(key,value); }catch(e){}
+}
+function bootRead(key){
+  try{ return sessionStorage.getItem(key); }catch(e){ return null; }
+}
+function bootDrop(key){
+  try{ sessionStorage.removeItem(key); }catch(e){}
+}
+
 function cap(s){return s.charAt(0).toUpperCase()+s.slice(1);}
 function todayISO(){return new Date().toISOString().split('T')[0];}
 

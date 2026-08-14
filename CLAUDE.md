@@ -709,6 +709,41 @@ The code is minted client-side so the link exists the instant the sheet
 opens. `?join=<code>` is read at boot **before `restoreSession()`**, for
 the same reason `?share=` is: it can arrive while signed out.
 
+**And it has to survive a reload, which is not the same thing.** Both
+captures are read at boot, stripped from the URL immediately, and then
+held until there is a signed-in user to hand them to — and the gap
+between those two moments is precisely where a reload is most likely,
+because the recipient of an invite is the one person guaranteed to have
+to sign in first. A reload there finds a URL with nothing left in it and
+a global that has been reinitialised, so the capture is gone for good.
+
+This shipped broken, and the reload was the app's own: `sw.js` calls
+`clients.claim()` on activate, so a **first** visit acquires a controller
+it never had, which fired `controllerchange`, which `pwa.js` turned into
+`window.location.reload()`. Every invite link opened by someone whose
+browser had not seen the app before — which is every recipient, the
+first time — landed on the plain app with the code already destroyed. It
+presented exactly as "sharing doesn't work; the link just opens the
+normal page".
+
+Two things fix it and both should stay, because they fail differently:
+
+- **`pwaHadController` in `pwa.js`.** The reload is for when the worker
+  *changes*, never when it *arrives*: on a first install the page is
+  already running the newest code, so the reload buys nothing and costs
+  the query string. The flag is read at parse time because by the time
+  `controllerchange` fires the controller is non-null either way. The
+  `updatefound` handler beside it already drew this distinction; this is
+  the same check, which it was missing.
+- **`bootKeep`/`bootRead`/`bootDrop` (`utils.js`)**, a sessionStorage
+  shelf for anything captured from the URL at boot. That is the general
+  answer — any reload eats these, not only the service worker's.
+  **Reading does not remove**: a capture is dropped when it is
+  *consumed*, by `handlePendingJoin()`/`handleSharedInput()`, so it
+  survives any number of reloads before sign-in and none after. Dropping
+  on consume rather than on accept is what preserves the original
+  property that a reload cannot re-run a join.
+
 **A shared list is badged on the Lists tab in both directions** — one you
 joined and one you own and invited someone into. `isSharedWithMe()` answers
 the first from the row itself; `sharedCollectionIds()` answers the second
@@ -1613,7 +1648,7 @@ Loaded in this order; **order matters**.
 | --- | --- |
 | `config.js` | `SUPABASE_URL`/`SUPABASE_KEY`, the `sb` client, the `COVERS` array of default Unsplash covers, and `randCover(existingCovers)` (picks a cover the user isn't already using). |
 | `state.js` | Every shared mutable global: `currentUser`, the navigation triple (`curTab`, `curPage`, `backTab`), `curListId`, `editingListId`, `editingActId`, `completingId`, `curFilter`, **`curSort`** (see **Sorting a collection**), `curView`, `upMedia`, `coverPhoto`, `userProfile`, `pendingShare` (a link shared in, held from boot until there is a signed-in user to file it for), and the map handles. Other files declare their own feature-local globals next to their code (`aLinks`, `bulkEntries`, `actMap`, `lbPhotos`, `locTimer`). |
-| `utils.js` | `$` (getElementById), `esc` (HTML-escape — **use it on every interpolated value**, all rendering is template strings), **`uuidv4`/`isUuid`** (client-minted row ids — read the warning under **Working offline** before touching them), `cap`, `todayISO`, `fmtDate(s, withYear)` (omits the year when it's the current one, unless `withYear` — a completed date is a record you look back on, so it always carries its year), `dateInfo(a)` (turns a target date like "This Year" into a `{label, cls}` urgency badge), `shakeEl`, `compress`, `confetti`, the priority pair `priClass`/`priTagHTML` (see **Showing priority**), **`ACT_SORTS`/`DEFAULT_ACT_SORT`/`sortActivities`** (see **Sorting a collection**), and **`activityListLabel(a, lists)`** — what the `.list-chip` on a row says, now that an activity can be in several lists. |
+| `utils.js` | `$` (getElementById), `esc` (HTML-escape — **use it on every interpolated value**, all rendering is template strings), **`uuidv4`/`isUuid`** (client-minted row ids — read the warning under **Working offline** before touching them), `cap`, `todayISO`, `fmtDate(s, withYear)` (omits the year when it's the current one, unless `withYear` — a completed date is a record you look back on, so it always carries its year), `dateInfo(a)` (turns a target date like "This Year" into a `{label, cls}` urgency badge), `shakeEl`, `compress`, `confetti`, the priority pair `priClass`/`priTagHTML` (see **Showing priority**), **`ACT_SORTS`/`DEFAULT_ACT_SORT`/`sortActivities`** (see **Sorting a collection**), **`activityListLabel(a, lists)`** — what the `.list-chip` on a row says, now that an activity can be in several lists — and **`bootKeep`/`bootRead`/`bootDrop`**, the sessionStorage shelf that keeps `?join=`/`?share=` alive across a reload (see **Shared lists**; reading deliberately does not remove). |
 | `exif.js` | `exifReadLocation(file)` — the GPS fix out of a photo's EXIF, or null. Handles **JPEG and HEIC/HEIF/AVIF**, dispatching on magic bytes rather than `file.type`. Underneath: the JPEG walk (`exifFindTiff`), the HEIC box walk (`isoBoxes`, `isoType`, `heicReadLocation`, `heicExifExtent`, `heicExifItemId`, `heicItemExtent`, `heicTiffStart`, `isTiffAt`), and the shared TIFF reader both land on (`exifGpsFrom`, `exifTagValue`, `exifDMS`). Pure, no dependencies, every failure path returns null rather than throwing. **Must be called against the original `File`**: a canvas re-encode strips every tag. See **Where the photo was taken**. |
 | `fuzzy.js` | Approximate string matching, shared by duplicate detection and search. `similarity(a,b)` (symmetric — are these the same thing?) and `matchScore(q,text)` (asymmetric — does this row answer what is being typed?), plus `scoreFields()` and the primitives underneath: `fuzzyNorm`, `fuzzyTokens`, `fuzzyStem`, `fuzzyTokenSim`, `fuzzySoftDice`, `fuzzyTrigrams`, `fuzzyDice`, `fuzzyEditRatio`. Pure and synchronous. **See How the fuzzy matching works** — the constants are tuned, not derived. |
 | `icons.js` | `ICON_PATHS`, the app's own inline-SVG glyph set (`sort` is the newest), plus `ICON_FILLED` (glyphs already solid, which must not be stroked) and `icon(name, cls)`. Icons inherit `currentColor`. **Add new glyphs here**, not inline in a template string. |
@@ -1654,7 +1689,7 @@ Loaded in this order; **order matters**.
 | `bulk.js` | The "add many at once" sheet, one card per row. Row values live in `bulkEntries[]` and the DOM is re-rendered from it wholesale, so **`saveBulkFieldValues()` must flush the inputs back into the array before any redraw** — every mutation helper does this. `_skipSaveBulk` suppresses that flush in `bulkApplyDown` (the "copy row 1" pills), which has already updated the array itself. `openBulkAdd(listId)` takes an explicit destination in `bulkListId`, defaulting to `curListId`: the sheet normally opens from a collection, but an import from Home has no collection context and passes the chosen list. |
 | `share.js` | **Turning a shared link or a screenshot into an activity.** `readSharedInput()` (boot; parses and strips the query param), `handleSharedInput()` (called from `showApp()`), `openImportSheet`/`runUnfurl`/`renderImportState`/`IMPORT_FAIL_STATE`, `pickScreenshot`/`handleScreenshot` (downscale and send to the vision path), `handOffSingle`/`handOffMany`/`shareSourceLinks`, `looksLikeUrl`/`importFromComposer`, and `openShareSetup`/`shareTargetUrl`/`copyShareTargetUrl` for the iOS Shortcut. Loads after `activities.js` and `bulk.js` because it hands drafts to both. See **Sharing a link in** below. |
 | `map.js` | All MapLibre GL. **`ensureMapLibre()`** — the library is loaded on demand here, not from `<head>`; at ~900KB it was the biggest single cost of a cold launch, blocking the parser on the way to a Home screen with no map on it. Both entry points await it and fall back to the "map unavailable" state if it cannot be fetched. Then `mapStyle()` (raster CARTO basemap + globe projection + sky), `webglOK()`, `actsToGeoJSON()`, and `attachActivityLayer()` — which adds the clustered GeoJSON source and syncs DOM markers (`makePinEl`, `makeClusterEl`) to the viewport. Then the two instances: the Map tab (`renderGlobalMap`, `fitGlobal`, `zoomGlobe`, `globeFillZoom`, `setGlobalMapFilter`) and the per-collection map (`renderMap`, `updateMapMarkers`). Plus `mapLoaded(map)` and `hasGeo`. Teardown is explicit — `destroyGlobalMap()`/`destroyDetailMap()` — because each map holds a WebGL context, but **only the detail map is torn down on navigation**. See **The immersive map** above for the traps. |
-| `pwa.js` | Service-worker registration and the install/offline UI: `isStandalone()`/`isIOS()` (which stamp `.standalone`/`.ios` on `<html>`), the `beforeinstallprompt` capture behind `pwaInstall()`, the iOS Add-to-Home-Screen sheet, `pwaShowInstallHelp()` (the Me tab row), and `pwaUpdateOnlineState()`. Dismissals persist in `localStorage` under `bl_*` keys. **It also calls `reg.update()` on foreground and on reconnect** — an installed PWA is rarely killed, and registration is the only moment the browser looks for a new `sw.js`, so without it a shipped fix can sit undelivered on the home-screen copy for days and look like it was never made. |
+| `pwa.js` | Service-worker registration and the install/offline UI: `isStandalone()`/`isIOS()` (which stamp `.standalone`/`.ios` on `<html>`), the `beforeinstallprompt` capture behind `pwaInstall()`, the iOS Add-to-Home-Screen sheet, `pwaShowInstallHelp()` (the Me tab row), and `pwaUpdateOnlineState()`. Dismissals persist in `localStorage` under `bl_*` keys. **It also calls `reg.update()` on foreground and on reconnect** — an installed PWA is rarely killed, and registration is the only moment the browser looks for a new `sw.js`, so without it a shipped fix can sit undelivered on the home-screen copy for days and look like it was never made. **`pwaHadController` gates the `controllerchange` reload** so it fires on an update and not on a first install — see **Shared lists**, where getting that wrong silently destroyed every invite link. |
 | `main.js` | Boot: `paintStaticIcons()` fills the empty icon placeholders left in `index.html` from the sprite map, then `readSharedInput()` captures any shared link (**before** the session restore — see **Sharing a link in**), then `restoreSession()` runs and `showApp()`/`showAuth()` follows. **Loads last.** See **Staying signed in** below — `restoreSession()` is deliberately more than one `getSession()` call. |
 
 ### The two-speed activity flow
