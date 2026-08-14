@@ -721,12 +721,30 @@ function parseInviteCode(text){
   /* A whole invite URL, however it has been mangled — the code is the
      one thing in it we can identify without parsing the rest. */
   const inUrl=raw.match(/[?&#]join=([^&#\s]+)/i);
-  const candidate=inUrl?decodeURIComponent(inUrl[1]):raw;
+  if(inUrl){
+    const c=decodeURIComponent(inUrl[1]).toLowerCase().replace(/[^a-z0-9]/g,'');
+    if(c.length===INVITE_LEN) return c;
+  }
   /* Strip anything that cannot be in the alphabet rather than
      rejecting it: a code read aloud and retyped picks up spaces, and
      one pasted out of a chat app picks up invisible characters. */
-  const cleaned=candidate.toLowerCase().replace(/[^a-z0-9]/g,'');
-  return cleaned.length===INVITE_LEN?cleaned:'';
+  const cleaned=raw.toLowerCase().replace(/[^a-z0-9]/g,'');
+  if(cleaned.length===INVITE_LEN) return cleaned;
+
+  /* A whole message pasted in, with no link in it to find the code by.
+     iOS will not let you select part of a message bubble — it copies
+     the entire thing — so "paste what they sent you" has to be a
+     working instruction, not a best case.
+
+     Every word is checked against the invite alphabet, which excludes
+     i, l, o and 0/1 precisely so codes do not look like words. An
+     18-character run drawn only from it is not something ordinary
+     prose produces. */
+  const words=raw.toLowerCase().match(/[a-z0-9]+/g)||[];
+  for(const w of words){
+    if(w.length===INVITE_LEN&&[...w].every(ch=>INVITE_ALPHABET.includes(ch))) return w;
+  }
+  return '';
 }
 
 function openJoinByCode(){
