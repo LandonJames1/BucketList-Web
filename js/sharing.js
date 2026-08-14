@@ -424,6 +424,93 @@ function readPendingJoin(){
   history.replaceState(null,'',location.pathname);
 }
 
+/* ==============================================================
+   AN INVITE THAT SURVIVES CREATING AN ACCOUNT
+
+   Every other capture in this file is client-side — a global, the URL,
+   a localStorage shelf — and all of them are bounded by one device.
+   That is enough for a recipient who already has an account: they sign
+   in on the device the link opened on and the code is still there.
+
+   It is not enough for the case sharing exists for, which is handing
+   the app to somebody who has never seen it. They have to sign up,
+   this project confirms email addresses, and the confirmation link
+   gets opened wherever their mail is — usually a different phone from
+   the one the invite landed on. There the shelf is empty, and the
+   invite is gone with nothing on screen to say so.
+
+   Carrying the code through on the auth user's metadata was built and
+   reverted: too many silent client-side links in one chain. So the
+   intent goes to the SERVER before signUp() is called — "whoever signs
+   up with this address means to join this list" — and is redeemed by
+   whatever device eventually signs in. See section 5 of
+   supabase/sharing.sql for the table, the two RPCs and what they
+   expose.
+
+   Both halves fail soft. An older project that has not had section 5
+   run against it gets an error from the RPC, logs one line, and
+   behaves exactly as it did before.
+   ============================================================== */
+
+/* Called from handleAuth(), before either signUp() or sign-in, with
+   the address being typed into the form. */
+async function claimInviteForEmail(code,email){
+  if(!code||!email||!navigator.onLine) return false;
+  try{
+    const{data,error}=await sb.rpc('claim_invite',{invite_code:code,claim_email:email});
+    if(error){
+      console.info('[sharing] claim_invite unavailable — an invite will not survive '+
+        'a sign-up on another device. Re-run supabase/sharing.sql.',error.message);
+      return false;
+    }
+    if(!data||!data.ok){ console.info('[sharing] claim_invite refused:',data&&data.error); return false; }
+    console.log('[join] invite claimed for',email);
+    return true;
+  }catch(e){
+    console.info('[sharing] claim_invite failed:',e);
+    return false;
+  }
+}
+
+/* The other end, from showApp(). Joins anything the server was holding
+   for this address and says so — a list that silently appeared is
+   barely better than one that never did.
+
+   Deliberately not called on every launch: inviteSweepDue() in
+   js/auth.js limits it to a real sign-in and to accounts young enough
+   for an invite to still be in flight. */
+async function claimInvitesForMe(){
+  if(!currentUser||!navigator.onLine) return;
+  /* Same reason as handlePendingJoin(): redeeming a claim inserts a
+     member row, which a deleted account cannot own. */
+  if(!await ensureSessionLive()) return;
+  if(!await probeSharing()) return;
+
+  let res;
+  try{ res=await sb.rpc('claim_invites_for_me'); }
+  catch(e){ console.info('[sharing] claim_invites_for_me failed:',e); return; }
+  if(res.error){
+    console.info('[sharing] claim_invites_for_me unavailable — re-run '+
+      'supabase/sharing.sql to close the sign-up path.',res.error.message);
+    return;
+  }
+  const joined=(res.data&&res.data.joined)||[];
+  if(!joined.length) return;
+
+  /* Same reasoning as acceptJoin(): whole collections just became
+     visible, so nothing is patched — the snapshot is definitely
+     missing rows it should have. */
+  invalidateAll();
+  invalidateSharedIds();
+  await snapshotClear();
+  await revalidate();
+  console.log('[join] redeemed',joined.length,'claimed invite(s)');
+  nav('detail',joined[0].collection_id);
+  showToast(joined.length===1
+    ?`Joined “${joined[0].name}”`
+    :`Joined ${joined.length} shared lists`);
+}
+
 /* The sign-in screen's half of the same capture.
 
    Someone who taps an invite link and has never opened the app before
@@ -431,19 +518,66 @@ function readPendingJoin(){
    sign in, and if anything downstream then fails they have no way to
    tell whether the link ever carried anything — which is exactly how
    this reads when it goes wrong: "the link just opens the app". So
-   the invite is acknowledged on the screen that is holding it up. */
+   the invite is acknowledged on the screen that is holding it up.
+
+   And then named, if the network will say what it is. peek_invite is
+   granted to anon precisely so this can run before there is an
+   account: "Sam shared Japan with you" is a reason to create one,
+   where "you have been invited to a shared list" is a form to fill in. */
+let _authInviteSeq=0;
 function updateAuthInviteNotice(){
   const el=$('authInvite');
   if(!el) return;
-  if(!pendingJoin){ el.style.display='none'; el.innerHTML=''; return; }
-  el.innerHTML=`<strong>You&rsquo;ve been invited to a shared list.</strong>
-    Sign in or create an account and it&rsquo;ll open straight away.`;
+  /* showAuth() can run more than once — a lapsed session, a failed
+     confirmation — so a peek that answers late must not repaint a
+     notice that has since been cleared or replaced. */
+  const seq=++_authInviteSeq;
+  const code=pendingJoin;
+  if(!code){ el.style.display='none'; el.innerHTML=''; return; }
+
+  const line='Create an account or sign in — the list will be waiting either way.';
+  el.innerHTML=`<strong>You&rsquo;ve been invited to a shared list.</strong>${line}`;
+  el.style.display='block';
+  if(!navigator.onLine) return;
+
+  sb.rpc('peek_invite',{invite_code:code}).then(({data,error})=>{
+    if(seq!==_authInviteSeq||pendingJoin!==code) return;
+    if(error||!data||!data.ok) return;
+    el.innerHTML=`<strong>${esc(data.owner)} shared &ldquo;${esc(data.name)}&rdquo; with you.</strong>${line}`;
+  }).catch(()=>{});
+}
+
+/* Once they have gone off to their inbox, the promise changes: there
+   is nothing left for them to do here, and the thing they cannot
+   otherwise know is that the invite is no longer riding on this
+   browser. It isn't — claimInviteForEmail() put it on the server. */
+function authInviteWaitingNotice(){
+  const el=$('authInvite');
+  if(!el||!(pendingJoin||bootReadLong(JOIN_STASH))) return;
+  el.innerHTML=`<strong>Your invite is saved.</strong>
+    Open the confirmation link on any device and the shared list will be
+    there when you land.`;
   el.style.display='block';
 }
 
 /* Called from showApp() once there is a signed-in user to join as. */
 async function handlePendingJoin(){
   if(!pendingJoin) return;
+
+  /* Before the code is taken out of the global, and before anything is
+     shown: a session restored from disk may belong to an account that
+     has since been deleted, and this is the path where that surfaced.
+     peek_invite would have succeeded — the JWT is still signed, and it
+     is granted to anon anyway — so the sheet would open, the invite
+     would be consumed, and only join_collection() would fail, on a
+     foreign key onto auth.users, reading as "that invite link isn't
+     valid" for a link that was perfectly good.
+
+     A failure to reach the server is not an answer and returns true, so
+     this cannot strand an invite on a bad connection. When it does come
+     back false the auth screen is already up, holding the invite. */
+  if(!await ensureSessionLive()) return;
+
   const code=pendingJoin;
   pendingJoin=null;
 

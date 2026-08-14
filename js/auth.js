@@ -40,6 +40,13 @@ function resetAccountState(){
   invalidateAll();
   invalidateSharedIds();
   resetSharingProbe();
+  /* Whether the *previous* account still existed says nothing about
+     this one. See IS THIS SESSION STILL A REAL ACCOUNT? below. The
+     watch is restarted by showApp(), so it never runs without a user
+     to run for. */
+  resetSessionLiveCheck();
+  stopSessionWatch();
+  _recheckAfter=0;
   userProfile=null;
   /* The globe is kept alive across navigation, so nothing else would
      dispose it — and its pins are the previous account's places. */
@@ -54,10 +61,196 @@ function resetAccountState(){
 function showAuth(){
   $('authPage').style.display='flex';
   $('appWrap').style.display='none';
+  /* Someone who arrived on an invite link and has never had a session
+     on this device is, overwhelmingly, someone being handed the app for
+     the first time — that is what sharing is for. Opening on Sign In
+     asks them for an account they do not have and makes creating one
+     the second thing they find. The check is deliberately "has this
+     browser ever held a session", not "is there one now": a signed-out
+     regular still gets the form they expect. */
+  if(pendingJoin&&!authIsSignUp&&!hasStoredSession()){
+    authIsSignUp=true;
+    applyAuthMode();
+  }
   /* An invite opened while signed out lands here. Say so, or signing
      in looks like the only thing the link did. See js/sharing.js. */
   updateAuthInviteNotice();
   pwaUpdateOnlineState();
+}
+
+/* ==============================================================
+   IS THIS SESSION STILL A REAL ACCOUNT?
+
+   It shipped that it did not have to be. Deleting an account signs out
+   the device that pressed the button and nothing else — and there is
+   always something else: another browser, a laptop, and on iOS the
+   installed PWA, which has its own storage partition and is therefore
+   a second signed-in copy of the app by construction.
+
+   Every one of those keeps a session in localStorage, and nothing ever
+   asked the server about it:
+
+   - getSession() answers from disk without a request whenever the
+     access token has not expired, so restoreSession() saw a perfectly
+     good session for an account that no longer existed;
+   - PostgREST verifies a JWT's *signature*. It does not check that
+     auth.uid() still exists in auth.users, so the token kept being
+     accepted — reads came back empty, because the rows had cascaded
+     away, which is exactly what an account with nothing in it looks
+     like.
+
+   The result was being signed into a deleted account for the lifetime
+   of an access token, seeing an empty app, and — the way this was
+   found — following an invite link into it. Everything downstream then
+   failed in a way that pointed anywhere but here: join_collection()
+   inserts a member row with a foreign key onto auth.users, so it was
+   rejected for a reason no message on screen could explain.
+
+   So the session is checked against the server once per launch.
+   getUser() is a real request to /auth/v1/user, which 4xxs for a user
+   that has been deleted or banned.
+
+   TWO RULES, and the second is the one that keeps this from becoming a
+   worse bug than the one it fixes:
+
+   1. It never blocks the first paint. The check is started at boot and
+      awaited only by the things that must not run against a dead
+      session — joining a list, redeeming a claimed invite.
+   2. **Only a definitive answer from the server signs anyone out.** A
+      request that failed to arrive is not an answer. Offline, or on a
+      flaky connection, the session is kept — signing someone out
+      because their train went into a tunnel is the bug restoreSession()
+      already exists to avoid, and it would be worse arriving from here.
+   ============================================================== */
+let _liveCheck=null;
+function resetSessionLiveCheck(){ _liveCheck=null; }
+
+/* Memoised: several callers want the answer and it is one request. */
+function ensureSessionLive(){
+  if(!_liveCheck) _liveCheck=verifyLiveUser();
+  return _liveCheck;
+}
+
+async function verifyLiveUser(){
+  if(!currentUser) return false;
+  /* Nothing to learn, and see rule 2. */
+  if(!navigator.onLine) return true;
+
+  let err=null;
+  try{
+    const res=await sb.auth.getUser();
+    if(res&&res.data&&res.data.user) return true;
+    err=res&&res.error;
+  }catch(e){ err=e; }
+
+  if(!authAnswerIsDefinitive(err)) return true;
+  console.warn('[auth] this session belongs to an account that no longer exists — signing out',err);
+  await signOutStaleSession();
+  return false;
+}
+
+/* ---- Asking often enough to be worth calling a forced sign-out ----
+
+   The launch check alone leaves a device that is already open running
+   as a deleted account until somebody closes it. These are the other
+   moments, and between them there is no realistic gap:
+
+   - the app is foregrounded (the visibilitychange handler);
+   - the network comes back;
+   - five minutes pass with the app on screen;
+   - the server rejects a write. That last one is the one that matters
+     most, because it means the very first thing the user tries to DO
+     in a deleted account throws them out, rather than the next tick.
+
+   All of them funnel through here so the throttle is shared: several
+   failing writes in a row are one question, not one each. */
+const SESSION_RECHECK_MS=5*60*1000;
+const RECHECK_THROTTLE_MS=30*1000;
+let _sessionTimer=null,_recheckAfter=0;
+
+function recheckSessionSoon(){
+  if(!currentUser||!navigator.onLine) return;
+  const now=Date.now();
+  if(now<_recheckAfter) return;
+  _recheckAfter=now+RECHECK_THROTTLE_MS;
+  resetSessionLiveCheck();
+  ensureSessionLive();
+}
+
+function startSessionWatch(){
+  stopSessionWatch();
+  _sessionTimer=setInterval(()=>{
+    /* Hidden is the foreground handler's job, and a backgrounded PWA
+       has its timers suspended anyway — this would only fire late and
+       ask a question that is about to be asked properly. */
+    if(document.visibilityState!=='visible') return;
+    recheckSessionSoon();
+  },SESSION_RECHECK_MS);
+}
+function stopSessionWatch(){
+  if(_sessionTimer){ clearInterval(_sessionTimer); _sessionTimer=null; }
+}
+
+/* Did the server actually answer, and was the answer "no"? */
+function authAnswerIsDefinitive(err){
+  /* A reply with no user and no error in it. */
+  if(!err) return true;
+  /* supabase-js's own class for "the request never got there". */
+  if(err.name==='AuthRetryableFetchError') return false;
+  const status=Number(err.status||err.statusCode||0);
+  /* Being rate-limited or timed out says nothing about the account,
+     and acting on either would sign out a perfectly good user. */
+  if(status===408||status===429) return false;
+  if(status>=400&&status<500) return true;
+  const code=String(err.code||err.error_code||'').toLowerCase();
+  return /user_not_found|session_not_found|user_banned|bad_jwt/.test(code);
+}
+
+/* Like handleSignOut(), minus everything that needs a working session.
+   The token is dead, so revoking it server-side would only 4xx; the
+   push unsubscribe would too, and its rows cascaded with the account. */
+async function signOutStaleSession(){
+  const hadInvite=!!pendingJoin;
+  currentUser=null;              /* before signOut, so the SIGNED_OUT
+                                    handler does not repeat this */
+  resetAccountState();
+  /* The deleted account's own offline copy of its data. Explicit, as in
+     handleSignOut(): this device is not coming back to that account. */
+  await offlineSignOut();
+  try{ await sb.auth.signOut({scope:'local'}); }
+  catch(e){ console.warn('[auth] local sign-out:',e); }
+  showAuth();
+  setAuthNotice('<strong>That account no longer exists.</strong>'+
+    (hadInvite
+      ?'It was deleted, and this device was still signed in as it. Sign in or create an account — the invite is still here.'
+      :'It was deleted, and this device was still signed in as it. Sign in or create an account to carry on.'));
+}
+
+/* ==============================================================
+   WHETHER TO ASK THE SERVER FOR A WAITING INVITE
+
+   claim_invites_for_me() is a round trip, and for almost every launch
+   the answer is "nothing" — so it is not on the boot path. Two things
+   make it due, and between them they cover every way a claimed invite
+   can be reached:
+
+   - a real authentication just happened (the form, or a confirmation
+     link redeemed at boot). That is the moment a claim is redeemable
+     for the first time, on whatever device it happened on;
+   - the account is younger than a week. This is the belt: a session
+     restored from storage never passes the first test, so a sweep that
+     failed — offline at the moment of confirmation, say — would
+     otherwise never be retried, because the person is already signed in
+     and has no reason to sign in again. An invite in flight is days
+     old at most, and an established account never pays for this.
+   ============================================================== */
+let authJustAuthenticated=false;
+const INVITE_SWEEP_AGE=7*24*60*60*1000;
+function inviteSweepDue(){
+  if(!currentUser) return false;
+  if(authJustAuthenticated) return true;
+  const born=Date.parse(currentUser.created_at||'');
+  return !!born&&(Date.now()-born)<INVITE_SWEEP_AGE;
 }
 async function showApp(){
   $('authPage').style.display='none';
@@ -90,6 +283,11 @@ async function showApp(){
      installing a login screen is pointless. */
   pwaMaybeShowIosHint();
   sb.auth.startAutoRefresh();
+  /* Keep asking whether this account still exists while the app is on
+     screen. Without it, a device left open runs as a deleted account
+     until somebody closes it. See IS THIS SESSION STILL A REAL
+     ACCOUNT? */
+  startSessionWatch();
   /* Whether the media bucket exists decides how the completion sheet
      stores photos and whether it accepts video at all. Probed once,
      early, so the first upload does not have to find out. */
@@ -116,7 +314,17 @@ async function showApp(){
   handleSharedInput();
   /* An invite to a shared list is held the same way, and for the same
      reason: it can arrive while signed out. See js/sharing.js. */
+  const hadPendingJoin=!!pendingJoin;
   handlePendingJoin();
+  /* And the server-side half of the same thing: an invite claimed
+     against this email address before the account existed, which is the
+     only copy that survives a sign-up read on a different device.
+
+     Skipped when the link path above is already running, so the two
+     cannot race to join the same list or announce it twice. Nothing is
+     lost by that — the claim stays on the server, and a later launch
+     consumes it silently once the membership is already there. */
+  if(!hadPendingJoin&&inviteSweepDue()) claimInvitesForMe();
   probeRemindColumn().then(ok=>{
     if(ok&&curPage==='home') renderHome();
     checkDueReminders();
@@ -184,12 +392,20 @@ function showCheckEmail(email){
   $('authCheckError').textContent='';
   $('authTitle').textContent='Check your email';
   $('authSub').textContent='We sent a confirmation link to '+email+'.';
+  /* The invite notice above the form is still on screen and still says
+     "create an account or sign in", which is no longer what is being
+     asked. Repoint it: the one thing this person cannot otherwise know
+     is that the invite is not riding on this browser any more. */
+  authInviteWaitingNotice();
   setAuthView('check');
 }
 function authBackToForm(){
   pendingConfirmEmail='';
   setAuthView('form');
   applyAuthMode();
+  /* Undo showCheckEmail()'s repointing — there is a form to fill in
+     again, so the notice goes back to saying what to do with it. */
+  updateAuthInviteNotice();
 }
 function setAuthError(msg,ok){
   const el=$('authError');
@@ -206,6 +422,10 @@ async function handleAuth(){
   btn.disabled=true;
   const label=btn.textContent;
   btn.textContent='…';
+  /* The durable copy, not just the in-memory one: any reload between
+     opening the link and pressing this button empties the global — a
+     service-worker update, a tab iOS discarded, a manual refresh. */
+  const joinCode=pendingJoin||bootReadLong(JOIN_STASH);
   try{
     if(authIsSignUp){
       const displayName=$('authDisplayName').value.trim();
@@ -230,6 +450,20 @@ async function handleAuth(){
 
          emailRedirectTo points the confirmation link back at wherever
          the app is really being served — see confirmRedirectUrl(). */
+
+      /* An invite the person is signing up in order to accept is
+         handed to the server BEFORE the account exists, keyed by the
+         address they are creating it with. This is the one copy of the
+         code that is not tied to this browser, and the confirmation
+         email is very often read on a different one.
+
+         Before signUp() rather than after: if the request succeeds on
+         the server and the response never arrives, the account exists
+         and this page may never run again — the claim has to already
+         be there. A claim for a sign-up that then fails costs nothing;
+         it is capped and expires. See js/sharing.js. */
+      if(joinCode) await claimInviteForEmail(joinCode,email);
+
       const{data,error}=await sb.auth.signUp({
         email,password,
         options:{
@@ -243,6 +477,7 @@ async function handleAuth(){
            is keyed off who is signed in, and showApp() starts reading
            it immediately. */
         resetAccountState();
+        authJustAuthenticated=true;
         currentUser=data.user;showApp();return;
       }
       /* An email that already has a *confirmed* account comes back
@@ -258,9 +493,18 @@ async function handleAuth(){
       }
       if(data.user&&!data.session){ showCheckEmail(email); return; }
     } else {
+      /* The same claim on the sign-in path. The link's own capture
+         normally handles an existing account — it is sitting in this
+         browser and handlePendingJoin() picks it up a moment from now —
+         but that is the copy every known failure here destroys, and a
+         claim is one round trip on the rare launch that has an invite
+         pending. It costs nothing when the link path works: the server
+         sees the membership already exists and consumes it in silence. */
+      if(joinCode) await claimInviteForEmail(joinCode,email);
       const{data,error}=await sb.auth.signInWithPassword({email,password});
       if(error)throw error;
       resetAccountState();
+      authJustAuthenticated=true;
       currentUser=data.user;showApp();return;
     }
   }catch(err){
@@ -540,6 +784,12 @@ document.addEventListener('visibilitychange',()=>{
   if(!currentUser)return;
   if(document.visibilityState!=='visible'){ sb.auth.stopAutoRefresh(); return; }
   sb.auth.startAutoRefresh();
+  /* And the same question the boot asks, asked again. An installed PWA
+     is rarely killed, so "the next launch" can be days away — and the
+     token refresh that would eventually notice only runs as the current
+     one nears expiry. Coming back to the app is the natural moment, and
+     it is one request beside the two revalidate() is about to make. */
+  recheckSessionSoon();
   /* Rows are cached for the session so tab switches cost nothing (see
      api.js). Coming back to the app is the one moment that cache could
      be behind — the same account may have been used on another device —
@@ -557,6 +807,10 @@ document.addEventListener('visibilitychange',()=>{
 window.addEventListener('online',()=>{
   updateSyncUI();
   if(!currentUser)return;
+  /* The check is skipped outright while offline — a request that cannot
+     be made is not an answer — so the connection returning is the first
+     moment it can be asked at all. */
+  recheckSessionSoon();
   revalidate().then(()=>refreshAfterChange());
 });
 window.addEventListener('offline',()=>updateSyncUI());

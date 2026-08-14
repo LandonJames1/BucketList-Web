@@ -132,6 +132,20 @@ function hasStoredSession(){ return !!readStoredSession(); }
   const user=confirmed||await restoreSession();
   if(user){
     currentUser=user;
+    /* A stored session is not proof the account behind it still exists
+       — deleting an account only signs out the device that asked, and
+       the token stays cryptographically valid until it expires. Started
+       here and deliberately NOT awaited: it must not delay the first
+       paint, and the things that would be wrong to run against a dead
+       session await it themselves. See IS THIS SESSION STILL A REAL
+       ACCOUNT? in js/auth.js. */
+    ensureSessionLive();
+    /* Landing from a confirmation link is a real authentication, and
+       the single most likely moment for an invite to be waiting on the
+       server for this address — this is quite often the first time the
+       new account has been signed in anywhere. showApp() checks this
+       via inviteSweepDue(). See js/auth.js. */
+    if(confirmed) authJustAuthenticated=true;
     /* Awaited so the splash holds until Home has actually painted.
        showApp() primes the cache from the disk snapshot before its
        first render (see the note there), which is a few milliseconds

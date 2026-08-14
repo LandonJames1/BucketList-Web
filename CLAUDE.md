@@ -801,13 +801,65 @@ because what people have in their clipboard is whatever they were sent.
 The share sheet therefore shows the code beside the link, and
 `sendInviteLink()` puts it in the message body.
 
-**An invite still does not survive a sign-up that needs email confirmation.**
-`bootKeepLong` covers someone who already has an account: they sign in on the
-device the link opened on and the code is still in that device's localStorage.
-It does not cover someone signing up *in order to accept*, because that
-detours through a confirmation email, and mail gets read on phones — the code
-is stranded on the first device. **This is open, and an attempt to close it
-client-side was reverted**; see the backlog entry.
+#### An invite that survives creating an account
+
+**The state lives on the server, keyed by email address.** Every other
+capture in `sharing.js` is bounded by one device, which is enough for a
+recipient who already has an account and not enough for the case sharing
+exists for — handing the app to somebody who has never seen it. They have to
+sign up, this project confirms addresses, and the confirmation link gets
+opened wherever their mail is, which is usually the other phone. There the
+`bootKeepLong` shelf is empty and the invite is gone with nothing on screen
+to say so.
+
+Carrying the code on the auth user's metadata was built and reverted — the
+chain ran in-memory global → localStorage → auth metadata → a probe race → a
+sheet, and every link in it fails silently. So:
+
+- **`claimInviteForEmail(code, email)`** is called from `handleAuth()` *before*
+  `signUp()`, and records "whoever signs up with this address means to join
+  this list" in `invite_claims` (section 5 of `sharing.sql`). Before rather
+  than after: if the request reaches the server and the response never
+  arrives, the account exists and this page may never run again.
+- **`claimInvitesForMe()`** redeems it from `showApp()`, on whatever device
+  eventually signs in, and **returns what it joined** so the app can say so
+  and open the list. A shared list that silently materialises is only
+  marginally better than one that never arrives.
+
+Four things hold it up:
+
+- **There is deliberately no trigger on `auth.users`**, though that is the
+  obvious shape and the one profiles.sql uses. It would join them before the
+  address is confirmed, it fires exactly once so an error loses the invite for
+  good, and the client could not then tell them. An unclaimed row simply waits
+  and is redeemed on the next sign-in.
+- **`inviteSweepDue()` (`auth.js`) decides when to ask**, because for almost
+  every launch the answer is "nothing waiting" and this is a round trip. Two
+  things make it due: a real authentication just happened (the form, or a
+  confirmation link redeemed at boot), **or** the account is under a week old.
+  The second is the retry belt — a session restored from storage never passes
+  the first test, so a sweep that failed while offline would otherwise never
+  run again, the person being already signed in and having no reason to sign
+  in twice.
+- **The two paths never race.** `showApp()` skips the sweep when the ordinary
+  link capture is already running. Nothing is lost: the claim stays on the
+  server and a later launch consumes it in silence, because
+  `claim_invites_for_me()` reports only lists it actually joined and says
+  nothing about one the user is already in.
+- **The sign-in screen opens on Create Account** when an invite is pending and
+  this browser has never held a session (`showAuth()`), and
+  `updateAuthInviteNotice()` names the list — `peek_invite` is granted to
+  `anon` precisely so it can. *"Landon shared "Japan 2027" with you"* is a
+  reason to make an account; *"sign in to continue"* is a form. Once they have
+  gone off to their inbox, `authInviteWaitingNotice()` repoints the same block
+  to say the invite is no longer riding on this browser.
+
+What this exposes: `claim_invite` has to be callable by `anon` — there is no
+session at sign-up — so anyone holding a live code can register any address
+against it, and that list would appear in their account if they later sign up.
+Someone holding the code could already have emailed it to them directly.
+Claims are capped per address, expire after 30 days, and are readable by
+nobody: RLS is on with no policies at all.
 
 **Moving the shelf ate one release's invites, and `bootReadLong()` now
 carries the migration.** The join code lived in sessionStorage under the same
@@ -945,6 +997,10 @@ causes, and they need different answers:
 3. **The refresh timer stalled while backgrounded.** Handled in `auth.js` — see
    its row in the JS map.
 
+The opposite failure — staying signed in when you should *not* be — is
+`ensureSessionLive()`; see **Being signed into an account that no longer
+exists**.
+
 Supporting pieces: `config.js` spells out the auth options rather than relying
 on defaults (and pins `storageKey`, so a supabase-js upgrade cannot silently
 sign everyone out by changing it), and `body.booting` shows a splash until the
@@ -954,6 +1010,77 @@ someone who is already signed in.
 Worth knowing: **an installed PWA has its own storage partition on iOS**, so
 signing in inside Safari and then installing to the home screen means signing
 in once more. That is the platform, not a bug.
+
+#### Being signed into an account that no longer exists
+
+**This shipped, and it is the other half of staying signed in: a stored
+session is not proof the account behind it still exists.** Deleting an account
+signs out the device that pressed the button and nothing else — and there is
+always something else. Another browser, a laptop, and on iOS the installed
+PWA, which by the note above is a second signed-in copy of the app by
+construction.
+
+Nothing ever asked the server about any of them:
+
+- `getSession()` answers **from disk with no request** while the access token
+  has not expired, so `restoreSession()` saw a perfectly good session;
+- PostgREST verifies a JWT's **signature**, not that `auth.uid()` still exists
+  in `auth.users`. The token kept being accepted, and reads came back empty
+  because the rows had cascaded away — which is indistinguishable from an
+  account with nothing in it.
+
+So the app opened as a deleted account for the lifetime of an access token.
+It was found by following an invite link into one, and everything downstream
+then failed pointing anywhere but here: `peek_invite` succeeded (the JWT is
+signed, and it is granted to `anon` regardless), the sheet opened, the invite
+was consumed, and only `join_collection()` failed — on a foreign key onto
+`auth.users` — reading on screen as *"that invite link isn't valid"* for a
+link that was perfectly good.
+
+`ensureSessionLive()`/`verifyLiveUser()` in `auth.js` ask once per launch, via
+`sb.auth.getUser()` — a real request to `/auth/v1/user`, which 4xxs for a user
+that has been deleted or banned. Four things about it:
+
+- **It never blocks the first paint.** `main.js` starts it and does not await
+  it. The two things that must not run against a dead session —
+  `handlePendingJoin()` and `claimInvitesForMe()` — await it themselves, and
+  `handlePendingJoin()` does so **before** it takes the code out of the global,
+  so a rejected session cannot consume an invite.
+- **Only a definitive answer signs anyone out** (`authAnswerIsDefinitive`). A
+  request that never arrived is not an answer; nor is a 429 or a 408. This is
+  the same rule `restoreSession()` follows for the same reason, and getting it
+  wrong here would be a worse bug than the one it fixes.
+- **It runs at every moment a device could act, not only at launch.** The
+  launch check alone leaves an app that is *already open* running as a deleted
+  account until somebody closes it, and an installed PWA is rarely killed —
+  "the next launch" can be days away. So `recheckSessionSoon()` is also called
+  on foreground, on the network returning, every five minutes while the app is
+  on screen (`startSessionWatch`), and — the one that matters most — **when
+  the server rejects a write**, in all three of `dbInsert`/`dbUpdate`/
+  `dbDelete`. That last one means the first thing the user tries to *do* in a
+  deleted account throws them out, rather than the next tick. They share one
+  30-second throttle, so a run of failing writes is one question and not one
+  each: eight rejected writes cost exactly one `getUser`.
+- **`signOutStaleSession()` is `handleSignOut()` minus everything needing a
+  working session** — no server-side revoke, no push unsubscribe, both of
+  which would only 4xx. It keeps `pendingJoin`, so the invite that exposed
+  this survives to the sign-in screen it lands on.
+
+**Signing out everywhere is two halves, and only one of them is a server's to
+do.** `delete-account` now calls `admin.signOut(jwt, 'global')` before
+`deleteUser`, which revokes every refresh token the account holds on every
+device — so no other copy of the app can ever *renew*. (Deleting the user
+cascades those rows anyway; being explicit is belt to that brace, and it is
+placed after the failure check so a half-failed deletion cannot sign the
+caller out of an account that is still alive.)
+
+What no server can do is revoke an **access token that has already been
+issued**: they are stateless signed JWTs, verified by signature alone, with
+nothing consulted while one is inside its lifetime. That residual window is
+what the client checks above close, and **its size is the project's JWT
+expiry setting** — Authentication → Sessions → *Access token (JWT) expiry*,
+3600s by default. Lowering it shortens the worst case for anything that never
+opens the app at all; it is the one lever on this that is not code.
 
 #### One account at a time
 
@@ -1806,7 +1933,7 @@ Loaded in this order; **order matters**.
 
 | File | Domain |
 | --- | --- |
-| `auth.js` | **`resetAccountState()`** — everything belonging to one account, cleared on every auth transition (see **One account at a time**) — plus `showAuth`/`showApp` (swap `#authPage` against `#appWrap`; `showApp` boots into Home, loads the profile, triggers the iOS install hint, picks up any link shared in via `handleSharedInput()`, and starts the token auto-refresh). Also the `visibilitychange` handler that stops/starts auto-refresh — browsers suspend timers in a backgrounded PWA, and without restarting on resume the access token goes stale and the next request 401s, which reads to the user as being logged out — and the `onAuthStateChange` listener that keeps `currentUser` in step and only shows the login screen on a real `SIGNED_OUT`, `toggleAuthMode`/`applyAuthMode` (tracked by the `authIsSignUp` flag, not by reading the heading text), `setAuthError`, `handleAuth`, `handleSignOut`. Sign-up also inserts the `Users` profile row. Plus **the confirmation-email landing** — `readEmailConfirmation` (boot; reads `token_hash`/`code`/implicit tokens/`error`, and strips only its own keys), `consumeEmailConfirmation`, `confirmFailureHTML`, `confirmRedirectUrl`, `setAuthNotice`, `setAuthView`/`showCheckEmail`/`authBackToForm`, and the resend pair `sendConfirmationEmail`/`resendConfirmation`/`resendFromNotice`. See **Coming back through the confirmation email**. |
+| `auth.js` | **`resetAccountState()`** — everything belonging to one account, cleared on every auth transition (see **One account at a time**) — **`ensureSessionLive`/`verifyLiveUser`/`authAnswerIsDefinitive`/`signOutStaleSession`/`resetSessionLiveCheck`/`recheckSessionSoon`/`startSessionWatch`/`stopSessionWatch`**, which is how a session belonging to a deleted account stops being trusted, on every device (see **Being signed into an account that no longer exists**) — **`inviteSweepDue()`/`authJustAuthenticated`**, which decide when to ask the server whether an invite is waiting for this address (see **An invite that survives creating an account**) — plus `showAuth`/`showApp` (swap `#authPage` against `#appWrap`; `showApp` boots into Home, loads the profile, triggers the iOS install hint, picks up any link shared in via `handleSharedInput()`, and starts the token auto-refresh). Also the `visibilitychange` handler that stops/starts auto-refresh — browsers suspend timers in a backgrounded PWA, and without restarting on resume the access token goes stale and the next request 401s, which reads to the user as being logged out — and the `onAuthStateChange` listener that keeps `currentUser` in step and only shows the login screen on a real `SIGNED_OUT`, `toggleAuthMode`/`applyAuthMode` (tracked by the `authIsSignUp` flag, not by reading the heading text), `setAuthError`, `handleAuth`, `handleSignOut`. Sign-up also inserts the `Users` profile row. Plus **the confirmation-email landing** — `readEmailConfirmation` (boot; reads `token_hash`/`code`/implicit tokens/`error`, and strips only its own keys), `consumeEmailConfirmation`, `confirmFailureHTML`, `confirmRedirectUrl`, `setAuthNotice`, `setAuthView`/`showCheckEmail`/`authBackToForm`, and the resend pair `sendConfirmationEmail`/`resendConfirmation`/`resendFromNotice`. See **Coming back through the confirmation email**. |
 | `nav.js` | `nav(page, listId)` — the single entry point for changing screens (see **Screens and navigation**). Plus `PAGE_TAB`, `TAB_ROOT`, `selectTab`, `goBack`, `dismissOverlays`, **`refreshAfterChange(src)`** (the single answer to "something was written, what redraws?" — see **Refreshing after a change**), `updateNavbar` (**where each screen's bar buttons are defined**), `applyNavCondense`, a debounced `resize` handler, **`setBodyScrollLock(lock)`** — the single place that touches body overflow — and **`syncTabbarToKeyboard()`**, which keeps the tab bar behind the software keyboard instead of riding up on top of it (see **Mobile layout rules**). |
 | `gestures.js` | The two touch gestures, both delegated from `document`: **swipe a sheet down to dismiss it** (`.modal` and the action sheet) and **swipe sideways to change screen**. `overlayOpen`, `ownsHorizontal`/`ownsVertical` (surfaces with their own gesture), `SHEET_DISMISS_PX`/`SHEET_FLICK_PX`, `SWIPE_MIN`/`SWIPE_EDGE`, `TAB_ORDER` (in `nav.js`). See **Gestures** below. |
 | `modals.js` | `openModal` (**resets `.sheet-body` scrollTop** — see the note under *Sheets* below) / `closeModal` (they call `setBodyScrollLock`, so use them rather than toggling `.open` yourself), the scrim-click and Escape handlers, **`showActionSheet(opts)`** and `showConfirm` (iOS confirms destructive actions with an action sheet, not a dialog — `confirmDeleteCollection`/`confirmDeleteActivity` wrap it), the photo lightbox (swipe sideways to page, down to close), the list picker (`openListPicker`/`renderListPickerRows`/`listPickerPick`/`listPickerDone` — single- *and* multi-select, see **The list picker**), `ensurePickerRoom`/`releasePickerRoom` (see **Gestures**), and `showToast`. |
@@ -1824,7 +1951,7 @@ Loaded in this order; **order matters**.
 | File | Domain |
 | --- | --- |
 | `dupes.js` | **Fuzzy duplicate detection.** `dupeGuard(opts, proceed)` — the single gate every add path goes through — plus `dupeGuardBatch()` (returns a promise for the subset to keep), `findDupes`, `dupeScore`, `dupeHintFor` (the mark in the import sheet), the sheet's handlers (`dupeAddAnyway`/`dupeSkipDuplicates`/`dupeOpenExisting`/`dupeCancel`/`dupeCancelBatch`), and the `DUPE_LIKELY`/`DUPE_POSSIBLE` thresholds. Loads before every screen that adds an activity. See **Catching duplicates**. |
-| `sharing.js` | **Shared lists.** `probeSharing`/`sharingReady`/`resetSharingProbe`, `ownsCollection`/`isSharedWithMe` (which buttons to draw), the invite sheet (`openShareList`/`renderShareList`/`createInvite`/`revokeInvite`/`copyInviteLink`/`copyInviteCode`/`sendInviteLink`/`removeMember`), leaving (`confirmLeaveList`/`leaveList`), and accepting (`readPendingJoin` at boot, `handlePendingJoin`/`acceptJoin`/`declineJoin`, `updateAuthInviteNotice` for the signed-out case, and the link-free path `openJoinByCode`/`submitJoinCode`/`parseInviteCode`), plus `makeInviteCode`/`inviteUrl`. See **Shared lists**, and **Accepting an invite** for why that last group exists. |
+| `sharing.js` | **Shared lists.** `probeSharing`/`sharingReady`/`resetSharingProbe`, `ownsCollection`/`isSharedWithMe` (which buttons to draw), the invite sheet (`openShareList`/`renderShareList`/`createInvite`/`revokeInvite`/`copyInviteLink`/`copyInviteCode`/`sendInviteLink`/`removeMember`), leaving (`confirmLeaveList`/`leaveList`), and accepting (`readPendingJoin` at boot, `handlePendingJoin`/`acceptJoin`/`declineJoin`, `updateAuthInviteNotice`/`authInviteWaitingNotice` for the signed-out case, and the link-free path `openJoinByCode`/`submitJoinCode`/`parseInviteCode`), plus **`claimInviteForEmail`/`claimInvitesForMe`** — the server-side copy of the code, which is the only one that survives a sign-up confirmed on another device — and `makeInviteCode`/`inviteUrl`. See **Shared lists**, **Accepting an invite** for why that link-free group exists, and **An invite that survives creating an account** for the last pair. |
 | `search.js` | The Search screen pushed from Home: one fuzzy field over every activity and collection. `openSearch`, `renderSearch` (the screen) / `renderSearchResults` (**only the results** — rebuilding the field would drop focus), `searchActivities`/`searchCollections`, `searchRowHTML`, and `searchMark` — **the one place a rendered string is not `esc()`'d wholesale**; it splits on raw text and escapes each piece. See **Finding things again**. |
 | `upnext.js` | The Up Next screen pushed from Home: every unfinished activity, bucketed by `targetBand()`. Borrows its rows and sort from `home.js`. |
 | `done.js` | The Accomplished screen pushed from Home: everything completed, grouped by the month it was finished. Reuses Home's photo tiles. |
@@ -1972,13 +2099,18 @@ they can be queued when there is no network.
 | `Users` | `id` (= `auth.users.id`), `created_at`, `display_name`, `username`, `icon` |
 | `collection_members` *(optional)* | `collection_id`, `user_id`, `role`, `display_name`, `created_at` — added by `sharing.sql` |
 | `collection_invites` *(optional)* | `code` (PK), `collection_id`, `created_by`, `role`, `revoked`, `expires_at`, `created_at` |
+| `invite_claims` *(optional)* | `email`, `code` (composite PK), `created_at`, `claimed_at`, `claimed_by` — added by `sharing.sql` section 5. An invite waiting for an account that does not exist yet. **RLS on with no policies**, so only the two `SECURITY DEFINER` RPCs can see it. |
 | `push_subscriptions` | `id`, `user_id`, `endpoint` (unique), `p256dh`, `auth`, `user_agent`, `created_at` — added by `schema.sql` |
 | `reminder_deliveries` | `activity_id`, `user_id`, `remind_at` (composite PK), `sent_at` — added by `schema.sql`. Who has already been told about which reminder, per person. See **Reminders**. |
 
 RPCs, from `sharing.sql`: `peek_invite(code)` reads an invite without
 accepting it, and `join_collection(code)` is **the only way a member row
 is ever created** — there is deliberately no INSERT policy on
-`collection_members`. The `SECURITY DEFINER` helpers `owns_collection`,
+`collection_members`. Section 5 adds two more: `claim_invite(code, email)`
+(callable by `anon`, because it runs before the account exists) records an
+invite against an address, and `claim_invites_for_me()` redeems whatever is
+waiting for the signed-in one and returns what it joined. See **An invite
+that survives creating an account**. The `SECURITY DEFINER` helpers `owns_collection`,
 `is_collection_member` and `can_use_collection` exist to break RLS
 policy recursion; read that file's header before touching them.
 
@@ -2411,21 +2543,18 @@ Two things that will bite:
   folder listing**, which is capped at 1000 files. Someone with more
   than that leaves the remainder orphaned. Same sweeper problem as the
   one at the bottom of `storage.sql`.
-- **An invite is lost if the recipient has to create an account.** The
-  join code lives in the localStorage of the device the link opened on,
-  and a sign-up detours through a confirmation email that is usually
-  read on a different device. Carrying the code in `options.data` at
-  `signUp()` — so it rides on the auth user the way `display_name` does
-  — was built, shipped and **reverted**: it did not work in testing and
-  the failure was never isolated, which is itself the lesson. The chain
-  has too many client-side links (in-memory global → localStorage →
-  auth metadata → a probe race → a sheet), every one of them silent.
-  The next attempt should move the state to the **server**: an RPC the
-  recipient can call *before* signing up that records "this code
-  intends to be joined by this email", and a trigger on `auth.users`
-  that acts on it. That has no device, no storage and no code-version
-  dependency. Until then, the working paths are opening the invite link
-  again once signed in, and **You → Join a shared list** with the code.
+- **An invite that survives sign-up needs section 5 of `sharing.sql` to
+  have been run.** It is new, so a project that ran an earlier version
+  of that file does not have `invite_claims` and the two RPCs. Both
+  client halves fail soft — one `console.info` naming the fix — and the
+  app behaves exactly as it did before, which means the failure is
+  invisible unless you read the console. Re-run the file.
+- **A claimed invite is redeemed against the address, not the person.**
+  Someone who signs up with a different address from the one they were
+  invited at — a work address on the laptop, a personal one on the
+  phone — gets nothing, and there is no way for the app to notice. They
+  fall back to **You → Join a shared list** with the code, which is why
+  `sendInviteLink()` puts the code in the message body.
 - **There is no password reset.** The confirmation landing already redeems
   a `type=recovery` link — it goes through the same `verifyOtp()` — so
   someone following one is signed in, but there is no "forgot password"

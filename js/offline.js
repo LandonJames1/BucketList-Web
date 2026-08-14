@@ -237,7 +237,12 @@ async function dbInsert(table,values){
   if(navigator.onLine){
     const{error}=await sb.from(table).insert(rows);
     if(!error){ await applyOp(op); return{error:null,rows}; }
-    if(!isNetworkError(error)) return{error};
+    /* The server said no. One reason it can say no is that the account
+       behind this session no longer exists — every table here has a
+       foreign key onto auth.users somewhere behind it — so this is the
+       moment to ask. Throttled and memoised in js/auth.js; a run of
+       failing writes is one question, not one each. */
+    if(!isNetworkError(error)){ recheckSessionSoon(); return{error}; }
   }
   await queueWrite(op);
   await applyOp(op);
@@ -252,7 +257,8 @@ async function dbUpdate(table,values,match){
     Object.entries(match).forEach(([k,v])=>{q=q.eq(k,v);});
     const{error}=await q;
     if(!error){ await applyOp(op); return{error:null}; }
-    if(!isNetworkError(error)) return{error};
+    /* See the note in dbInsert(). */
+    if(!isNetworkError(error)){ recheckSessionSoon(); return{error}; }
   }
   await queueWrite(op);
   await applyOp(op);
@@ -267,7 +273,8 @@ async function dbDelete(table,match){
     Object.entries(match).forEach(([k,v])=>{q=q.eq(k,v);});
     const{error}=await q;
     if(!error){ await applyOp(op); return{error:null}; }
-    if(!isNetworkError(error)) return{error};
+    /* See the note in dbInsert(). */
+    if(!isNetworkError(error)){ recheckSessionSoon(); return{error}; }
   }
   await queueWrite(op);
   await applyOp(op);

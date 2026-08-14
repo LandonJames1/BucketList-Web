@@ -151,6 +151,36 @@ Deno.serve(async (req) => {
     return json({ error: 'could not delete everything', details: failures }, 500);
   }
 
+  /* ---- Every device, not just this one ----
+
+     Deleting the user cascades auth.refresh_tokens away, so this is
+     belt to that brace — but it is worth being explicit about, because
+     it is the only half of "log out everywhere" that a server can
+     actually do.
+
+     Scope 'global' revokes every refresh token this account holds, on
+     every device, so no other copy of the app can ever renew. What it
+     CANNOT do is revoke an access token that has already been issued:
+     those are stateless signed JWTs, verified by signature alone, and
+     nothing on the server is consulted while one is still inside its
+     lifetime. That residual window is closed from the client instead —
+     see IS THIS SESSION STILL A REAL ACCOUNT? in js/auth.js — and its
+     size is the project's "JWT expiry" setting, so shortening that
+     shortens the worst case.
+
+     Placed after the failure check: everything above has succeeded, so
+     this account is going. Doing it earlier would sign the caller out
+     of every device and then leave the account alive.
+
+     Not fatal if it fails. deleteUser() below removes the same tokens
+     by cascade a line later. */
+  try {
+    const { error: outErr } = await admin.auth.admin.signOut(jwt, 'global');
+    if (outErr) console.warn('delete-account: global signOut:', outErr.message);
+  } catch (e) {
+    console.warn('delete-account: global signOut threw:', e);
+  }
+
   const { error: delErr } = await admin.auth.admin.deleteUser(uid);
   if (delErr) return json({ error: `deleting the account: ${delErr.message}` }, 500);
 
