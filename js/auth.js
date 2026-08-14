@@ -280,7 +280,7 @@ async function handleAuth(){
       currentUser=data.user;showApp();return;
     }
   }catch(err){
-    if(!err.handled) setAuthError(err.message||'Sign in failed.');
+    if(!err.handled) setAuthError(authErrorText(err,'Sign in failed.'));
   }
   btn.disabled=false;
   btn.textContent=label;
@@ -454,12 +454,46 @@ function setAuthNotice(html,ok){
   el.style.display=html?'':'none';
 }
 
+/* ==============================================================
+   WHAT SUPABASE'S ERRORS SAY vs WHAT THEY MEAN
+
+   Auth errors are surfaced raw almost everywhere in this app, and for
+   most of them that is right — "Invalid login credentials" is already
+   the sentence you would write. Three are not, and all three arrive at
+   the worst possible moment.
+
+   "email rate limit exceeded" is the one that matters most. It is not
+   about this account or this address: it is the whole *project's*
+   hourly allowance on Supabase's built-in email service, which is a
+   testing facility with a very small budget. Shown verbatim it reads
+   as "you have done something wrong", when the truthful version is
+   "the project cannot send any more email for a while" — a completely
+   different thing to be told, and it points at the only real fix,
+   which is configuring custom SMTP.
+   ============================================================== */
+function authErrorText(err,fallback){
+  const code=String((err&&(err.code||err.error_code))||'').toLowerCase();
+  const msg=String((err&&err.message)||'');
+  const low=msg.toLowerCase();
+
+  if(code.includes('over_email_send_rate_limit')||low.includes('email rate limit')){
+    return 'Too many emails from this app in the last hour. Wait a few minutes and try again.';
+  }
+  /* The per-address cooldown, which does name a number — keep it. */
+  if(low.includes('for security purposes')) return msg;
+  if(code.includes('over_request_rate_limit')){
+    return 'Too many attempts just now. Give it a minute.';
+  }
+  return msg||fallback||'Something went wrong.';
+}
+
 /* One request behind both resend buttons. The cooldown is not politeness
-   — Supabase rate-limits these per address, and a second press inside
-   the window comes back as an error that reads like the resend itself
-   failed. */
+   — Supabase enforces its own per-address wait, and a press inside that
+   window comes back as an error that reads like the resend itself
+   failed. Matched to the 60s server side rather than undercutting it,
+   which only manufactures a guaranteed failure. */
 let confirmResendAt=0;
-const RESEND_COOLDOWN=45000;
+const RESEND_COOLDOWN=60000;
 async function sendConfirmationEmail(email,btn,errEl){
   const say=msg=>{ if(errEl) errEl.textContent=msg; };
   if(!email){ say('Enter your email first.'); return false; }
@@ -479,7 +513,7 @@ async function sendConfirmationEmail(email,btn,errEl){
     confirmResendAt=Date.now()+RESEND_COOLDOWN;
     ok=true;
   }catch(e){
-    say(e.message||'Could not send that email.');
+    say(authErrorText(e,'Could not send that email.'));
   }
   if(btn){ btn.disabled=false; btn.textContent=label; }
   return ok;
