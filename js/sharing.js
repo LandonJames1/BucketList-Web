@@ -224,8 +224,9 @@ function renderShareList(l){
          <div class="shr-code-head">The code, on its own</div>
          <button class="shr-code" onclick="copyInviteCode()"
                  aria-label="Copy the invite code">${esc(_shareInvite)}</button>
-         <p class="shr-note">Both buttons above send the link and this code
-           together. If the link opens somewhere unhelpful, they go to
+         <button class="btn btn-tinted btn-block" onclick="copyInviteCode()">
+           ${icon('link','ic-sm')}Copy just the code</button>
+         <p class="shr-note">Paste it into its own message. They go to
            Lists &rarr; Join a List and enter it.</p>
          <button class="btn btn-plain btn-block" onclick="revokeInvite()">Turn the link off</button>`
       : `<p class="shr-note">Sharing is off for this list. Creating a link lets
