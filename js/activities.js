@@ -37,7 +37,39 @@ function quickAddActivity(){
      here on, and leaving a copy behind means it can be filed twice. */
   input.value='';
   onComposerInput();
-  openNewActivity(name);
+  startNewActivity(name);
+}
+
+/* ==============================================================
+   ONE QUESTION BEFORE THE SHEET
+
+   An activity arrives two ways round: something you mean to do, and
+   something you have just done and want on the record. The second had
+   no path at all — you had to create the plan and immediately complete
+   it, which is two sheets and a fiction in between. A helicopter ride
+   taken on a whim is exactly the thing this app is for, and it was the
+   thing it was worst at.
+
+   So every *human* way in asks first. Deliberately not inside
+   openNewActivity() itself: a link import (handOffSingle) and the bulk
+   sheet land there too, and both are plans by construction, so the
+   question would have only one answer.
+
+   New Activity is first because it is the overwhelmingly common
+   answer, and this costs the fast path a tap — the composers were
+   tuned so capture costs one extra tap and it is now two. Keeping the
+   common answer under the thumb is what makes that bearable.
+   ============================================================== */
+function startNewActivity(prefillName){
+  showActionSheet({
+    message:'Is this something you want to do, or something you’ve already done?',
+    items:[
+      {label:'New Activity',       icon:'plus',
+       onSelect:()=>openNewActivity(prefillName)},
+      {label:'Completed Activity', icon:'check-circle',
+       onSelect:()=>openCompDraft(prefillName)},
+    ],
+  });
 }
 
 /* ==============================================================
@@ -90,7 +122,31 @@ async function toggleComplete(id,isDone){
    Nothing is written until Save, so an accidental tap still costs a
    Cancel rather than a wrong date to find later.
    ============================================================== */
-let compId=null,compSrc=null,compList=null,compNew=false;
+/* compNew   — this save is the moment it becomes accomplished.
+   compDraft — there is no row yet; Save inserts one.
+   They are separate because a draft is both new AND needs its name
+   editable, and compNew alone used to decide the name's shape too. */
+let compId=null,compSrc=null,compList=null,compNew=false,compDraft=false;
+/* The lists the open activity was in when the sheet opened. Only used to
+   tell "the user moved it" from "the user never touched that row" — with
+   the multi-list migration absent, listFieldsFor() returns collection_id
+   alone, and writing that back unchanged would strip an activity out of
+   every list but its home. Same guard commitSaveActivity() uses. */
+let compListsBefore=[];
+
+/* The whole Date row opens the picker. Its native calendar glyph is
+   hidden — the row leads with one of its own — and on desktop that glyph
+   is the only part of a date input a click opens the picker from, so it
+   has to be asked for explicitly. showPicker() needs a user gesture,
+   which a click handler is; it throws where it is unsupported or already
+   open, and focus alone is the right fallback there (iOS opens its wheel
+   on focus regardless). */
+function openCompDatePicker(){
+  const el=$('compDate');
+  if(!el)return;
+  el.focus();
+  try{ el.showPicker(); }catch(e){}
+}
 
 async function openComp(id,source){
   const a=await fetchActivity(id);
@@ -99,7 +155,13 @@ async function openComp(id,source){
   compSrc=source||curPage;
   compList=a.listId;
   compNew=!a.completed;
+  compDraft=false;
   upMedia=[...(a.media||[])];
+  /* Seeded from the row so the Lists row can move it. compListsBefore
+     is what confirmComplete() compares against to decide whether the
+     list columns are written at all. */
+  setTargetLists(a.listIds&&a.listIds.length?a.listIds:[a.listId]);
+  compListsBefore=[...targetListIds];
 
   $('compName').value=a.name;
   /* Defaults to the stored date, or today for anything completed
@@ -115,10 +177,115 @@ async function openComp(id,source){
      this one. See suggestLocationFromPhoto() in js/media.js. */
   resetLocationSuggestion();
   renderThumbs();
+  renderCompListRow();
 
   $('compSheetTitle').textContent=compNew?'Accomplished':'Edit';
   $('compSaveBtn').textContent=compNew?'Done':'Save';
   openModal('compSheet');
+}
+
+/* ==============================================================
+   LOGGING SOMETHING ALREADY DONE
+
+   The same sheet with no row behind it. It is the right form already —
+   name, date, place, photos, how it went — and everything the sheet
+   enforces still applies, the mandatory photo above all: something
+   worth adding after the fact is something you have a picture of.
+
+   The one field it has to grow is the list. An activity in no list is
+   in the database, on the map, and reachable from nowhere.
+   ============================================================== */
+async function openCompDraft(prefillName){
+  compId=null;
+  compSrc=curPage;
+  compList=curListId||null;
+  compNew=true;                 /* it is being accomplished right now */
+  compDraft=true;
+  upMedia=[];
+
+  setTargetLists(curListId?[curListId]:[]);
+  compListsBefore=[];
+
+  $('compName').value=prefillName||'';
+  $('compDate').value=todayISO();
+  $('compDate').max=todayISO();
+  $('compLoc').value='';$('compLocLat').value='';$('compLocLng').value='';
+  $('compNotes').value='';
+  resetLocationSuggestion();
+  renderThumbs();
+  await renderCompListRow();
+
+  $('compSheetTitle').textContent='Accomplished';
+  $('compSaveBtn').textContent='Add';
+  openModal('compSheet');
+  /* After the sheet has finished sliding in, as everywhere else — a
+     field focused mid-animation drags the keyboard up against a sheet
+     that is still moving. */
+  if(!prefillName) setTimeout(()=>$('compName').focus(),320);
+}
+
+/* Shares targetListIds with the activity sheet: the two are never open
+   at once, and sharing it means listFieldsFor() works unchanged. */
+async function renderCompListRow(){
+  const row=$('compListRow');
+  if(!row)return;
+
+  const lists=await fetchCollections();
+  /* No lists at all is handled at Save, the same way the activity sheet
+     handles it — there is nothing useful to draw here. */
+  if(!lists.length){row.style.display='none';return;}
+  row.style.display='';
+
+  const known=new Set(lists.map(l=>l.id));
+  setTargetLists(targetListIds.filter(id=>known.has(id)));
+  if(!targetListIds.length) setTargetLists([lists[0].id]);
+
+  const multi=multiListReady();
+  $('compListLabel').textContent=multi?'Lists':'List';
+  renderActListValue(lists,'compListName');
+
+  row.onclick=()=>openListPicker({
+    multi,
+    title:multi?'Lists':'Add to List',
+    subtitle:multi?'Pick as many lists as you like.':'',
+    currentId:targetListId,
+    currentIds:targetListIds,
+    onPick:picked=>{
+      setTargetLists(Array.isArray(picked)?picked:[picked]);
+      if(!targetListIds.length) setTargetLists([lists[0].id]);
+      renderActListValue(lists,'compListName');
+    },
+  });
+}
+
+/* ==============================================================
+   MEDIA IS REQUIRED TO MARK SOMETHING ACCOMPLISHED
+
+   A completion with nothing attached to it is a date. The photo or
+   the clip is the thing you come back for, and it is also what gives
+   the activity a cover, a grid card and a map pin — so the one moment
+   the user certainly has it is the one moment to ask.
+
+   **Only on the way in.** `compNew` gates it, so an activity completed
+   before this rule existed — or one whose media was all removed
+   afterwards — can still be edited and saved. Enforcing it on the edit
+   pass would strand those rows: their owner could not save a
+   correction to the date or the notes without first finding a photo of
+   something they did years ago.
+
+   Called from renderThumbs() (js/media.js), which every change to
+   upMedia ends in, so the hint and the qualifier cannot drift out of
+   step with the tiles.
+   ============================================================== */
+function updateMediaRequirement(){
+  const qual=$('compMediaQual'),hint=$('compMediaHint');
+  if(qual){
+    qual.textContent=compNew?' required':' optional';
+    qual.className=compNew?'req':'opt';
+  }
+  /* Only while it is unmet — a rule restated over a grid that already
+     satisfies it is nagging. */
+  if(hint) hint.hidden=!(compNew&&!upMedia.length);
 }
 
 /* The name the check button and the date pill call. Completing and
@@ -137,11 +304,22 @@ function openCompFrom(id){
 }
 
 async function confirmComplete(){
-  if(!compId)return;
+  if(!compId&&!compDraft)return;
   const name=$('compName').value.trim();
   if(!name){shakeEl($('compName'));$('compName').focus();return;}
-  const btn=$('compSaveBtn');btn.disabled=true;
-  const{error,offline}=await dbUpdate('Activities',{
+  /* At least one photo or video, on the way in only — see
+     updateMediaRequirement() for why the edit pass is exempt. An upload
+     still running is a different answer from none: the user has already
+     done the thing being asked for. */
+  if(compNew&&!upMedia.length){
+    if(_mediaPending){ showToast('Still adding that — one moment.'); return; }
+    const sec=$('compMediaSec');
+    shakeEl(sec);
+    sec.scrollIntoView({block:'center',behavior:'smooth'});
+    showToast('Add a photo or video to mark this accomplished.');
+    return;
+  }
+  const fields={
     name,
     date_completed:$('compDate').value||todayISO(),
     location:$('compLoc').value.trim()||null,
@@ -149,19 +327,76 @@ async function confirmComplete(){
     location_lng:parseFloat($('compLocLng').value)||null,
     experience_notes:$('compNotes').value.trim()||null,
     photos:denormMedia(upMedia)
-  },{id:compId});
+  };
+
+  /* A draft is an add, so it goes through the same gate every other add
+     path does. Read off the sheet first, as saveActivity() does: the
+     check can open a sheet on top of this one, and a value captured on
+     the far side of that would come from a form the user has moved on
+     from. */
+  if(compDraft){
+    dupeGuard({name,location:fields.location||''},()=>commitCompDraft(fields));
+    return;
+  }
+
+  /* The Lists row can move the activity from here, which matters most
+     for a completed one — the activity sheet hides "Edit details" once
+     something is done, so this is the only way to refile it. Written
+     only when the set actually changed, for the reason on
+     compListsBefore. */
+  const wasIn=compListsBefore.length?compListsBefore:[compList].filter(Boolean);
+  const nowIn=targetListIds.length?targetListIds:wasIn;
+  const cols=listFieldsFor(nowIn);
+  const moved=cols&&(wasIn.length!==nowIn.length||wasIn.some((id,i)=>id!==nowIn[i]));
+  if(moved) Object.assign(fields,cols);
+
+  const btn=$('compSaveBtn');btn.disabled=true;
+  const{error,offline}=await dbUpdate('Activities',fields,{id:compId});
   btn.disabled=false;
   if(error){
     console.error('confirmComplete:',error);
     showToast(error.message||'Couldn’t save.');
     return;
   }
-  const wasNew=compNew,src=compSrc,list=compList;
+  const wasNew=compNew,src=compSrc;
   closeModal('compSheet');
   compId=null;
-  await updateCollectionStats(list||curListId);
+  /* Both ends: a list gained needs recounting and so does one it was
+     taken out of. */
+  new Set([...wasIn,...nowIn,curListId].filter(Boolean)).forEach(id=>updateCollectionStats(id));
   if(wasNew){ confetti(); showToast(offline?'Accomplished — will sync later':'Accomplished'); }
   else showToast(offline?'Saved — will sync later':'Saved');
+  refreshAfterChange(src);
+}
+
+/* The insert half of confirmComplete(). The id is minted client-side by
+   dbInsert/stampRow, so this queues and replays like any other write —
+   a helicopter ride logged on the flight home syncs when you land. */
+async function commitCompDraft(fields){
+  const lists=targetListIds.length?targetListIds:(curListId?[curListId]:[]);
+  const cols=listFieldsFor(lists);
+  if(!cols){showToast('Create a list first');return;}
+
+  const btn=$('compSaveBtn');btn.disabled=true;
+  /* Nothing about a plan applies to something already done: there is no
+     target left to reach, and priority is about what to do next — the
+     app draws neither on a completed activity. They are written as the
+     column defaults rather than left out so the row matches every other
+     one in the table. */
+  const row=Object.assign({target_date:null,priority:'medium',links:[]},fields,cols);
+  const{error,offline}=await dbInsert('Activities',row);
+  btn.disabled=false;
+  if(error){
+    console.error('commitCompDraft:',error);
+    showToast(error.message||'Couldn’t save.');
+    return;
+  }
+  const src=compSrc;
+  closeModal('compSheet');
+  compDraft=false;compId=null;
+  lists.forEach(id=>updateCollectionStats(id));
+  confetti();
+  showToast(offline?'Accomplished — will sync later':'Accomplished');
   refreshAfterChange(src);
 }
 
@@ -173,6 +408,15 @@ async function confirmComplete(){
    used to hold Location, and for the same reason — a field nobody
    opens is a field nobody fills in. Target date and list share a line
    (.fg-pair), which is what buys the room for that.
+
+   The notes field itself is gone too, and not because of the
+   disclosure. "Why is this on your list?" is the wrong question at the
+   moment of capture: the answer is the activity's name, so the field
+   sat empty on nearly every row while still costing the sheet a block
+   of height. What you thought about the thing afterwards has a place
+   already — "How it went" on the completion sheet. The `description`
+   column is still on the table and nothing writes it any more; see the
+   note in CLAUDE.md before putting anything back.
    ============================================================== */
 /* Where the activity being edited will be filed, in order — the first
    entry is its home list. Inside a collection that starts as just that
@@ -194,12 +438,26 @@ function setTargetLists(ids){
   targetListId=targetListIds[0]||null;
 }
 
-async function openNewActivity(prefillName){
+/* Why the sheet opened the way it did. The only caller that passes a
+   message is a screenshot import that could not be read — rather than
+   parking the user on a card explaining the failure, the sheet they were
+   heading for anyway opens and says so in a line. Cleared on every open,
+   so nothing leaks into the next activity. */
+function setActivityNotice(msg){
+  const box=$('actNotice');
+  if(!box)return;
+  if(!msg){ box.hidden=true; box.innerHTML=''; return; }
+  box.innerHTML=`${icon('camera','ic-sm')}<span>${esc(msg)}</span>`;
+  box.hidden=false;
+}
+
+async function openNewActivity(prefillName,notice){
   editingActId=null;aLinks=[];
+  setActivityNotice(notice);
   setTargetLists(curListId?[curListId]:[]);
   await renderActListPicker();
   $('aName').value=prefillName||'';
-  $('aDesc').value='';$('aLoc').value='';$('aLocLat').value='';$('aLocLng').value='';
+  $('aLoc').value='';$('aLocLat').value='';$('aLocLng').value='';
   resetLocationGuess(true);
   resetDateOptions();
   $('aDate').value=DEFAULT_TARGET_DATE;
@@ -221,9 +479,10 @@ async function openNewActivity(prefillName){
 async function openEditAct(id){
   const a=await fetchActivity(id);if(!a)return;
   editingActId=id;
+  setActivityNotice('');       /* never carries over from a failed import */
   setTargetLists(a.listIds&&a.listIds.length?a.listIds:[a.listId]);
   await renderActListPicker();
-  $('aName').value=a.name;$('aDesc').value=a.description||'';
+  $('aName').value=a.name;
   $('aLoc').value=a.location||'';$('aLocLat').value=a.locationLat||'';$('aLocLng').value=a.locationLng||'';
   resetLocationGuess(false);
   /* An activity saved before "Someday"/"No date" were retired still
@@ -303,12 +562,18 @@ async function renderActListPicker(){
    the "+2" — the only part saying anything the user did not already
    know. "3 lists" always fits, never truncates, and matches what the
    activity sheet's own section says ("In 3 lists"). Which three is one
-   tap away, in the picker this row opens. */
-function renderActListValue(lists){
+   tap away, in the picker this row opens.
+
+   Shared with the completion sheet's draft mode, which passes its own
+   element id — the wording and its reasoning are the same on both, and
+   two copies would be two things to keep in step. */
+function renderActListValue(lists,elId){
+  const el=$(elId||'actListName');
+  if(!el)return;
   const n=targetListIds.length;
-  if(n>1){ $('actListName').textContent=`${n} lists`; return; }
+  if(n>1){ el.textContent=`${n} lists`; return; }
   const home=lists.find(l=>l.id===targetListId);
-  $('actListName').textContent=home?home.name:'Choose';
+  el.textContent=home?home.name:'Choose';
 }
 
 /* Target dates offered to new activities. Retired values live only in
@@ -393,7 +658,6 @@ async function saveActivity(){
   }
   const fields={
     name,
-    description:$('aDesc').value.trim()||null,
     location:$('aLoc').value.trim()||null,
     location_lat:parseFloat($('aLocLat').value)||null,
     location_lng:parseFloat($('aLocLng').value)||null,
@@ -552,12 +816,13 @@ async function openActDetail(id){
      caption under it, and they still sit directly above the media rather
      than being separated from it by anything else.
 
-     The name is centred on a completed activity to sit over the
-     symmetric full-width pair of badges; a pending activity's badges are
-     small left-aligned chips, so its title stays left. */
+     Both states carry the same pair of full-width badges — state and
+     date when it is done, priority and deadline when it is not — and
+     the name is centred over them on a completed activity, where the
+     sheet is a record rather than a plan. */
   let h=`<div class="ad-head">
     <div class="ad-title${a.completed?' centered':''}">${esc(a.name)}</div>
-    <div class="ad-badges${a.completed?' done':''}">
+    <div class="ad-badges">
       <span class="tag ${a.completed?'tag-done':'tag-'+(a.priority||'medium')}">
         ${a.completed?'Accomplished':cap(a.priority||'medium')}
       </span>
@@ -611,14 +876,6 @@ async function openActDetail(id){
   if(a.location){
     h+=`<div class="ad-section"><div class="ad-section-label">Location</div>
       <div class="ad-note">${esc(a.location)}</div></div>`;
-  }
-  if(a.description){
-    h+=`<div class="ad-section"><div class="ad-section-label">Notes</div>
-      <div class="ad-note">${esc(a.description)}</div></div>`;
-  }
-  if(a.targetDate&&!a.completed){
-    h+=`<div class="ad-section"><div class="ad-section-label">Target</div>
-      <div class="ad-note">${esc(a.targetDate)}</div></div>`;
   }
   if(a.links&&a.links.length){
     h+=`<div class="ad-section"><div class="ad-section-label">Links</div>

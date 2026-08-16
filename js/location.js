@@ -91,7 +91,7 @@ async function reverseGeocode(lat,lng){
    after the fact (see js/media.js); this answers it at the moment the
    activity is created, from the name alone.
 
-   The model half is `{activity:{name,description}}` on the unfurl
+   The model half is `{activity:{name}}` on the unfurl
    function — see the PREDICTING A LOCATION header there for why the
    bar is set where it is, and for the three gates it has to clear.
    This file holds the fourth, and the one that writes.
@@ -145,6 +145,9 @@ let _guessSeq=0,_guessFor='',_guessFilled=false,_guessDismissed=false;
    enough to edit has already had its chance to be guessed at. */
 function resetLocationGuess(arm){
   _guessSeq++;
+  /* A pause in typing that has not fired yet belongs to the sheet being
+     torn down, not the one being opened. */
+  clearTimeout(_guessTimer);
   _guessFor='';_guessFilled=false;_guessDismissed=!arm;
   const box=$('aLocGuess');
   if(box){ box.hidden=true; box.innerHTML=''; }
@@ -174,10 +177,50 @@ function undoLocationGuess(){
   clearLocationGuessMark();
 }
 
-/* Fired by the activity sheet's name field on `change` — i.e. on blur,
-   and only when the value actually moved. Not on input: this costs a
-   model call, and one per keystroke is absurd. */
+/* ==============================================================
+   MAKING THE GUESS ARRIVE SOONER
+
+   Three levers, none of which changes what the feature will answer:
+
+   1. **Ask while they are still typing, not on blur.** The round trip
+      is the whole cost, and firing it at a pause in typing overlaps it
+      with the rest of the sheet being filled in — the answer is
+      frequently already there by the time they would have left the
+      field. Still one call per *pause*, never one per keystroke: that
+      is what GUESS_IDLE_MS buys, and it is why the original comment
+      said "not on input".
+   2. **Remember the answers for the session.** Most names are asked
+      about once, but the ones that repeat — a name retyped after a
+      correction, the same activity added to two lists — return
+      instantly and free. Negative answers are cached too, and they are
+      the majority.
+   3. **Never ask twice for the same name.** `_guessFor` already did
+      this within one sheet; the cache extends it across sheets.
+   ============================================================== */
+const GUESS_IDLE_MS=650;
+let _guessTimer=null;
+
+/* Session-lived, name → {location,lat,lng} or null. Deliberately not
+   persisted: a place the model would answer differently later is worth
+   re-asking, and this exists to kill repeats inside one sitting, not to
+   build a gazetteer. */
+const _guessCache=new Map();
+
+function queueLocationGuess(){
+  clearTimeout(_guessTimer);
+  /* Cheap reasons not to bother are checked here as well as in
+     maybeGuessLocation(), so a dismissed sheet does not keep arming a
+     timer on every keystroke. */
+  if(_guessDismissed) return;
+  _guessTimer=setTimeout(maybeGuessLocation,GUESS_IDLE_MS);
+}
+
+/* Fired by the activity sheet's name field: on blur (`change`), on a
+   pause in typing (debounced `input`), and explicitly by
+   openNewActivity() for a name that arrived from a composer and was
+   therefore never typed into the field at all. */
 async function maybeGuessLocation(){
+  clearTimeout(_guessTimer);
   const nameEl=$('aName'),locEl=$('aLoc');
   if(!nameEl||!locEl) return;
   const name=nameEl.value.trim();
@@ -190,20 +233,30 @@ async function maybeGuessLocation(){
      ourselves, which a renamed activity should be allowed to replace. */
   if(locEl.value.trim()&&!_guessFilled) return;
 
-  _guessFor=fuzzyNorm(name);
+  const key=fuzzyNorm(name);
+  _guessFor=key;
   const seq=++_guessSeq;
+
   let data;
-  try{
-    const r=await sb.functions.invoke('unfurl',{
-      body:{activity:{name,description:($('aDesc').value||'').trim()}},
-    });
-    if(r.error) throw r.error;
-    data=r.data;
-  }catch(e){
-    /* The backend is optional here exactly as it is for an import.
-       Without it the field is simply left for the user. */
-    console.info('[location] no guess:',e&&e.message||e);
-    return;
+  if(_guessCache.has(key)){
+    /* Instant and free. A cached miss is stored as null and short-circuits
+       here too — most names never name a place, so that is the common case. */
+    data=_guessCache.get(key);
+  } else {
+    try{
+      const r=await sb.functions.invoke('unfurl',{
+        body:{activity:{name}},
+      });
+      if(r.error) throw r.error;
+      data=r.data;
+    }catch(e){
+      /* The backend is optional here exactly as it is for an import.
+         Without it the field is simply left for the user. A failure is
+         deliberately NOT cached — it says nothing about the name. */
+      console.info('[location] no guess:',e&&e.message||e);
+      return;
+    }
+    _guessCache.set(key,data&&data.location?data:null);
   }
 
   /* Stale, or the sheet is gone, or the user has since typed

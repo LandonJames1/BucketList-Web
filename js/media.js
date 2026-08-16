@@ -229,6 +229,14 @@ async function handleMedia(e){
         : `none in ${f.name} (${f.type||'unknown type'})`+
           (/^image\/jpe?g$/i.test(f.type||'')?' — no GPS tags in the file'
                                              :' — only JPEG carries readable EXIF here'));
+      /* Started the moment the fix is read, NOT after the uploads — the
+         reverse lookup is a ~1KB GET and the uploads are megabytes, so
+         serialising them behind a video meant the chip appeared seconds
+         after the photo it came from. It runs alongside them instead and
+         renders whenever it resolves; suggestLocationFromPhoto() re-checks
+         needsLocationSuggestion() on the far side of the round trip, so a
+         user who typed a place in the meantime still wins. */
+      if(geo) suggestLocationFromPhoto(geo);
     }
     _mediaPending++;
     renderThumbs();
@@ -244,10 +252,6 @@ async function handleMedia(e){
     }
   }
 
-  /* After the uploads, not before: the reverse lookup is a network
-     round trip and the photos appearing is the thing the user is
-     waiting on. */
-  if(geo) suggestLocationFromPhoto(geo);
 }
 
 function rmMedia(i){ upMedia.splice(i,1); renderThumbs(); }
@@ -546,4 +550,9 @@ function renderThumbs(){
   const pending=Array.from({length:_mediaPending},()=>
     `<div class="photo-th pending"><span class="spinner"></span></div>`).join('');
   box.innerHTML=tiles+pending;
+  /* The completion sheet will not save without at least one of these.
+     The rule belongs to that sheet, not to the picker, so it lives in
+     activities.js — this is only the one place every change to upMedia
+     passes through. */
+  updateMediaRequirement();
 }

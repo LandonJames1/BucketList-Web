@@ -648,8 +648,7 @@ async function updateMapMarkers(){
   if(curFilter==='completed') acts=acts.filter(a=>a.completed);
   const searchEl=$('detSearch');
   const search=searchEl?searchEl.value.trim().toLowerCase():'';
-  if(search) acts=acts.filter(a=>
-    a.name.toLowerCase().includes(search)||(a.description||'').toLowerCase().includes(search));
+  if(search) acts=acts.filter(a=>a.name.toLowerCase().includes(search));
   setLayerData(actMap,detMapState,acts);
 }
 

@@ -169,7 +169,7 @@ async function runUnfurl(caption){
   /* Reading anything — a link or a screenshot — needs the network. A
      queued import is not a sensible thing to build: the whole point is
      to come back with a filled-in draft to review. */
-  if(!navigator.onLine){ renderImportState('offline'); return; }
+  if(!navigator.onLine){ return importFailed('offline'); }
   shareBusy=true;
   renderImportState('loading');
   try{
@@ -188,7 +188,7 @@ async function runUnfurl(caption){
       /* Instagram serves a login wall to anything unauthenticated, so
          there is nothing to read and no amount of retrying changes it.
          A screenshot or the caption is the way through. */
-      renderImportState(IMPORT_FAIL_STATE[data.degraded]||'empty');
+      importFailed(data.degraded||'empty');
     } else if(shareInput.image&&shareDrafts.length===1){
       /* A screenshot that read as one activity goes straight to the
          activity sheet. The review card was showing the user their own
@@ -207,8 +207,48 @@ async function runUnfurl(caption){
        the user just types the name. */
     console.warn('unfurl:',e);
     shareDrafts=[];
-    renderImportState('offline');
+    importFailed('failed');
   }finally{ shareBusy=false; }
+}
+
+/* ==============================================================
+   WHEN NOTHING COULD BE READ
+
+   The two paths part company here, because what the user should do
+   next is genuinely different.
+
+   A **link** keeps the failure card. Its offer — "read a screenshot
+   instead" — is the entire reason Instagram is usable, and pasting the
+   caption is a real second attempt at the same import. There is
+   something to do on that card.
+
+   A **screenshot** does not. It was already the fallback: the picture
+   is the last thing the app can read, so nothing on that card was a
+   route back to a filled-in draft. What it actually offered was a
+   textarea for describing the activity in words — which is the
+   activity sheet, with fewer fields and an extra step in front of it.
+   So the sheet opens instead, carrying one line saying why it is
+   empty. Failing into the form you were heading for beats failing
+   into a page about the failure.
+   ============================================================== */
+const SHOT_FAIL_NOTICE={
+  no_model: 'Reading screenshots isn’t switched on for this app yet, so nothing could be read from the picture. Fill this in yourself.',
+  too_large:'That image was too big to read. Fill this in yourself — or cancel and try a screenshot rather than a full-resolution photo.',
+  offline:  'You’re offline, so the screenshot couldn’t be read. Fill this in and it’ll sync once you’re back.',
+  failed:   'The screenshot couldn’t be read just now. Fill this in yourself.',
+};
+const SHOT_FAIL_DEFAULT=
+  'Nothing in that screenshot read as an activity, so it couldn’t be filled in for you. Add the details yourself.';
+
+function importFailed(reason){
+  if(!(shareInput&&shareInput.image)){
+    /* The link path is unchanged — see IMPORT_FAIL_STATE. */
+    renderImportState(IMPORT_FAIL_STATE[reason]||'empty');
+    return;
+  }
+  handOffSingle(
+    {name:'',location:'',lat:null,lng:null},
+    SHOT_FAIL_NOTICE[reason]||SHOT_FAIL_DEFAULT);
 }
 
 /* Which "it didn't work" screen each backend outcome earns. They
@@ -238,33 +278,34 @@ function renderImportState(state){
     return;
   }
 
+  /* **Links only.** A screenshot that could not be read never lands
+     here — importFailed() sends it to the activity sheet instead. This
+     card survives because on a link there is a real next attempt to
+     offer: a screenshot, or the caption. */
   if(state==='caption'||state==='empty'||state==='offline'||
      state==='nomodel'||state==='toolarge'){
-    title.textContent=isShot?'Add from screenshot':'Add from link';
+    title.textContent='Add from link';
     btn.style.display='none';
 
     const msg=
       state==='caption'   ? 'Instagram doesn’t let apps read a post — screenshot it instead, and it’ll be read straight off the picture. Pasting the caption works too.'
     : state==='offline'   ? (navigator.onLine
-                              ? `Couldn’t read that ${isShot?'screenshot':'link'}. Add it by hand, or paste the text to have it filled in.`
+                              ? 'Couldn’t read that link. Screenshot the page instead, paste the text, or add it by hand.'
                               : 'You’re offline, so nothing can be read right now. Add it by hand and it’ll sync later.')
-    : state==='nomodel'   ? 'Reading screenshots needs ANTHROPIC_API_KEY set on the unfurl function. Add it by hand for now.'
-    : state==='toolarge'  ? 'That image is too big to read. Try a screenshot rather than a full-resolution photo.'
-    : isShot              ? 'Nothing that looks like a place or an experience in that screenshot.'
-    :                       'Nothing about a place or experience in that link. Paste the caption if there’s more to it.';
+    : state==='nomodel'   ? 'Reading pages needs ANTHROPIC_API_KEY set on the unfurl function. Add it by hand for now.'
+    : state==='toolarge'  ? 'That was too big to read. Try a screenshot rather than a full-resolution image.'
+    :                       'Nothing about a place or experience in that link. Screenshot it, or paste the caption if there’s more to it.';
 
-    /* The screenshot button is offered on every failure of the link
-       path and is the whole reason Instagram is usable at all — the
-       user already has the post on screen, and a screenshot needs no
-       API, no permission and no cooperation from the platform. */
+    /* The screenshot button is the whole reason Instagram is usable at
+       all — the user already has the post on screen, and a screenshot
+       needs no API, no permission and no cooperation from the platform. */
     body.innerHTML=`
       <div class="imp-status">
         <p>${esc(msg)}</p>
-        ${!isShot?`<button class="btn btn-filled btn-block" onclick="pickScreenshot()">
-          ${icon('camera','ic-sm')}Read a screenshot instead</button>`:''}
-        <textarea id="importCaption" rows="4"
-                  placeholder="${isShot?'Describe what it was, or paste the caption':'Paste the caption'}"></textarea>
-        <button class="btn ${isShot?'btn-filled':'btn-tinted'} btn-block" onclick="importFromCaption()">Read this text</button>
+        <button class="btn btn-filled btn-block" onclick="pickScreenshot()">
+          ${icon('camera','ic-sm')}Read a screenshot instead</button>
+        <textarea id="importCaption" rows="4" placeholder="Paste the caption"></textarea>
+        <button class="btn btn-tinted btn-block" onclick="importFromCaption()">Read this text</button>
         <button class="btn btn-plain btn-block" onclick="importByHand()">Add by hand</button>
       </div>`;
     return;
@@ -294,7 +335,6 @@ function renderImportState(state){
           <span class="imp-item-body">
             <span class="imp-item-name">${esc(d.name)}</span>
             ${d.location?`<span class="imp-item-loc">${icon('pin')}${esc(d.location)}</span>`:''}
-            ${d.description?`<span class="imp-item-desc">${esc(d.description)}</span>`:''}
             ${dupe?`<span class="imp-item-dupe">Already have &ldquo;${esc(dupe)}&rdquo;</span>`:''}
           </span>
         </button>`;
@@ -327,7 +367,7 @@ function importFromCaption(){
 /* Escape hatch from every failed state: the link is still worth
    keeping even when nothing could be read off it. */
 function importByHand(){
-  shareDrafts=[{name:(shareInput&&shareInput.title)||'',location:'',description:'',lat:null,lng:null,pick:true}];
+  shareDrafts=[{name:(shareInput&&shareInput.title)||'',location:'',lat:null,lng:null,pick:true}];
   handOffSingle(shareDrafts[0]);
 }
 
@@ -353,17 +393,18 @@ function confirmImport(){
    sheet. Both are the screens the user already knows, and both still
    require a Save.
    ============================================================== */
-async function handOffSingle(draft){
+/* `notice` is passed only by importFailed() — a line in the sheet saying
+   why it arrived empty. A successful import leaves it off. */
+async function handOffSingle(draft,notice){
   closeModal('importSheet');
   /* Let the sheet finish sliding out before the next one starts, or
      the two transforms fight and the second appears half-open. */
   await new Promise(r=>setTimeout(r,240));
 
-  await openNewActivity(draft.name||'');
+  await openNewActivity(draft.name||'',notice);
   $('aLoc').value=draft.location||'';
   $('aLocLat').value=draft.lat??'';
   $('aLocLng').value=draft.lng??'';
-  $('aDesc').value=draft.description||'';
   aLinks=shareSourceLinks();
   renderTagChips('aLinks');
 }
@@ -384,7 +425,6 @@ async function handOffMany(drafts){
       bulkEntries=drafts.map(d=>({
         links,
         _name:d.name||'',
-        _desc:d.description||'',
         _loc:d.location||'',
         _locLat:d.lat??'',
         _locLng:d.lng??'',
@@ -423,32 +463,4 @@ function importFromComposer(){
   if(!looksLikeUrl(url)){ shakeEl(input); return; }
   input.value='';onHomeComposerInput();
   openImportSheet({url,title:'',text:''});
-}
-
-/* ==============================================================
-   THE iOS SHORTCUT
-
-   There is no API for this — the user builds a Shortcut once and it
-   appears in the real share sheet from then on. All the app can do is
-   explain it and hand over the URL the Shortcut has to open.
-   ============================================================== */
-function shareTargetUrl(){
-  return location.origin+location.pathname.replace(/index\.html$/,'')+'index.html?share=';
-}
-
-function openShareSetup(){
-  $('shareSetupUrl').textContent=shareTargetUrl();
-  openModal('shareSetupSheet');
-}
-
-async function copyShareTargetUrl(){
-  const url=shareTargetUrl();
-  try{
-    await navigator.clipboard.writeText(url);
-    showToast('Copied');
-  }catch(e){
-    /* Clipboard access is refused in plenty of contexts; the URL is on
-       screen either way, so this is a convenience, not the mechanism. */
-    showToast('Select the address above to copy it');
-  }
 }

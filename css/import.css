@@ -1,10 +1,9 @@
 /* ==============================================================
-   IMPORT — the sheet a shared link opens into, plus the Shortcut
-   setup sheet behind the You tab row.
+   IMPORT — the sheet a shared link or a screenshot opens into.
 
-   Both live inside .modal, so the sheet chrome (grabber, bar, body
-   padding) comes from modals.css; this file is only what goes in
-   them. See js/share.js.
+   It lives inside .modal, so the sheet chrome (grabber, bar, body
+   padding) comes from modals.css; this file is only what goes in it.
+   See js/share.js.
    ============================================================== */
 
 /* The link itself, under the bar. Small-caps mono, like every other
@@ -150,15 +149,6 @@
     text-overflow: ellipsis;
 }
 .imp-item-loc .ic { width: 11px; height: 11px; flex: none; }
-.imp-item-desc {
-    font-size: 13px;
-    line-height: 1.4;
-    color: var(--label-2);
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
 
 .imp-note {
     margin-top: 14px;
@@ -168,7 +158,11 @@
 }
 
 /* ==============================================================
-   SHORTCUT SETUP
+   "HERE IS A LINK, HERE IS WHAT TO DO WITH IT"
+
+   Written for the iOS Shortcut setup sheet, which is gone; kept
+   because sharing.css leans on all three for the invite sheet and the
+   accept-an-invite card, which are the same shape.
    ============================================================== */
 .shr-lead {
     font-size: 15px;
@@ -176,38 +170,6 @@
     color: var(--label-2);
     margin-bottom: 18px;
 }
-
-.shr-steps {
-    margin: 0 0 18px;
-    padding: 0;
-    list-style: none;
-    counter-reset: shr;
-}
-.shr-steps li {
-    counter-increment: shr;
-    position: relative;
-    padding: 0 0 14px 34px;
-    font-size: 15px;
-    line-height: 1.45;
-    color: var(--label);
-}
-.shr-steps li::before {
-    content: counter(shr);
-    position: absolute;
-    left: 0;
-    top: -1px;
-    width: 23px;
-    height: 23px;
-    border-radius: 50%;
-    background: var(--tint-soft);
-    color: var(--tint);
-    font-family: var(--mono);
-    font-size: 11px;
-    font-weight: 600;
-    display: grid;
-    place-items: center;
-}
-.shr-steps strong { font-weight: 600; }
 
 .shr-url {
     padding: 12px 14px;

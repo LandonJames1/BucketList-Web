@@ -69,7 +69,6 @@
   <link rel="stylesheet" href="css/map.css" />
   <link rel="stylesheet" href="css/bulk.css" />
   <link rel="stylesheet" href="css/import.css" />
-  <link rel="stylesheet" href="css/search.css" />
   <link rel="stylesheet" href="css/dupes.css" />
   <link rel="stylesheet" href="css/sharing.css" />
   <link rel="stylesheet" href="css/pwa.css" />
@@ -179,13 +178,21 @@
        changes to say so), or screenshot it. The camera replaces the old
        decorative plus rather than being added beside it — the
        placeholder and the go arrow already say "add". -->
-  <div class="home-composer" id="homeComposer">
-    <button class="home-composer-shot" id="homeComposerShot" onclick="pickScreenshot()"
-            aria-label="Add from a screenshot"></button>
-    <input id="homeComposerInput" type="text" placeholder="Add something you want to do"
-           maxlength="100" autocomplete="off" autocapitalize="sentences" enterkeyhint="done"
-           oninput="onHomeComposerInput()" onkeydown="onHomeComposerKey(event)" />
-    <button class="home-composer-go" onclick="homeQuickAdd()" aria-label="Add" id="homeComposerGo"></button>
+  <!-- The wrapper owns the gutters so #homeSuggest, which is absolutely
+       positioned, lines up with the field rather than with the page. -->
+  <div class="home-composer-wrap">
+    <div class="home-composer" id="homeComposer">
+      <button class="home-composer-shot" id="homeComposerShot" onclick="pickScreenshot()"
+              aria-label="Add from a screenshot"></button>
+      <input id="homeComposerInput" type="text" placeholder="Add or find something"
+             maxlength="100" autocomplete="off" autocapitalize="sentences" enterkeyhint="done"
+             oninput="onHomeComposerInput()" onkeydown="onHomeComposerKey(event)"
+             onfocus="updateHomeSuggest()" />
+      <button class="home-composer-go" onclick="homeQuickAdd()" aria-label="Add" id="homeComposerGo"></button>
+    </div>
+    <!-- What you are typing may already be in here. See
+         updateHomeSuggest() in home.js — it never blocks the add. -->
+    <div class="home-suggest" id="homeSuggest"></div>
   </div>
   <!-- Shared by the composer's camera and by "read a screenshot
        instead" on a failed link import. Lives outside any .fg, so it
@@ -226,32 +233,6 @@
     <h1><em>Accomplished</em></h1>
   </div>
   <div id="doneBody"></div>
-</div>
-
-<!-- ===== SEARCH — pushed on top of Home =====
-     One field over every activity in every list, plus the lists
-     themselves. Matching is fuzzy, so a misremembered name still
-     finds the row. The field is part of the page rather than the nav
-     bar so it can pin under the bar and stay reachable while the
-     results scroll. See search.js. -->
-<div class="page page-pushed" id="page-search">
-  <div class="srch-bar">
-    <div class="searchfield" id="searchField">
-      <span id="searchFieldIcon"></span>
-      <input id="searchInput" type="search" placeholder="Search everything"
-             autocomplete="off" autocorrect="off" spellcheck="false"
-             inputmode="search" enterkeyhint="search" oninput="onSearchInput()" />
-      <button class="search-clear" onclick="clearSearch()" aria-label="Clear search">
-        <span id="searchClearIcon"></span>
-      </button>
-    </div>
-    <div class="seg" id="searchFilter">
-      <button data-f="all" class="active" onclick="setSearchFilter('all')">All</button>
-      <button data-f="pending" onclick="setSearchFilter('pending')">To Do</button>
-      <button data-f="completed" onclick="setSearchFilter('completed')">Done</button>
-    </div>
-  </div>
-  <div id="searchResults"></div>
 </div>
 
 <!-- ===== LISTS TAB (root) ===== -->
@@ -313,20 +294,9 @@
       <span class="row-body"><span class="row-title">Add to Home Screen</span></span>
       <span class="row-chevron" id="meInstallChevron"></span>
     </button>
-    <button class="row tappable has-leading" onclick="openShareSetup()">
-      <span class="row-leading li-purple" id="meShareIcon"></span>
-      <span class="row-body"><span class="row-title">Share links into the app</span></span>
-      <span class="row-chevron" id="meShareChevron"></span>
-    </button>
-    <!-- The floor tier of accepting an invite: a code typed in here.
-         An invite link has to survive whichever browser or in-app
-         webview the recipient's messaging app hands it to; this does
-         not. See JOINING BY CODE in sharing.js. -->
-    <button class="row tappable has-leading" onclick="openJoinByCode()">
-      <span class="row-leading li-green" id="meJoinIcon"></span>
-      <span class="row-body"><span class="row-title">Join a shared list</span></span>
-      <span class="row-chevron" id="meJoinChevron"></span>
-    </button>
+    <!-- Joining by code lives on the Lists tab, beside New List and in
+         that tab's empty state — which is the screen the missing list
+         was supposed to appear on. It is not duplicated here. -->
   </div>
 
   <div class="section-header">Account</div>
@@ -399,18 +369,29 @@
       <button class="navbtn strong" id="actSaveBtn" onclick="saveActivity()">Add</button>
     </div>
     <div class="sheet-body">
+      <!-- Why this sheet opened empty. Written by openNewActivity()'s
+           second argument, and the only thing that passes one is a
+           screenshot import that could not be read — see
+           handOffUnread() in share.js. It says what happened and then
+           gets out of the way; there is nothing to dismiss because it
+           goes with the sheet. -->
+      <div class="act-notice" id="actNotice" hidden></div>
       <!-- The name is what the whole sheet is about, so it is set apart
            rather than being the first of six identical boxes: the serif
            face is how an activity name is set everywhere else in the
            app, so the field states what it holds. -->
       <div class="fg fg-hero">
         <label>Activity</label>
-        <!-- `change` rather than `input`: this fires a model call, and
-             one per keystroke is absurd. On blur, only when the value
-             actually moved. See maybeGuessLocation() in location.js. -->
+        <!-- Two triggers, both landing on maybeGuessLocation(). `change`
+             fires on blur; the debounced `input` fires after a pause in
+             typing, which is the whole latency win — the round trip runs
+             while the user is still filling the sheet instead of starting
+             when they leave the field. One call per pause, not per
+             keystroke; the name cache and _guessFor between them mean the
+             blur almost never asks again. See location.js. -->
         <input id="aName" placeholder="What do you want to do?" maxlength="100"
                autocapitalize="sentences" enterkeyhint="done"
-               onchange="maybeGuessLocation()" />
+               oninput="queueLocationGuess()" onchange="maybeGuessLocation()" />
       </div>
 
       <!-- Target date and list share a line. Both are one-tap choices
@@ -522,15 +503,18 @@
         <input type="hidden" id="aRemind" /><input type="hidden" id="aRemindNote" />
       </div>
 
-      <!-- Notes and links are shown outright rather than behind a
-           "More options" disclosure. Once the date and list share a
-           line the sheet is short enough to hold everything, and a
-           collapsed field is one most people never open — the same
-           reason Location was pulled out of the disclosure before it. -->
-      <div class="fg">
-        <label>Notes<span class="opt"> optional</span></label>
-        <textarea id="aDesc" placeholder="Why is this on your list?" autocapitalize="sentences"></textarea>
-      </div>
+      <!-- Links are shown outright rather than behind a "More options"
+           disclosure. Once the date and list share a line the sheet is
+           short enough to hold everything, and a collapsed field is one
+           most people never open — the same reason Location was pulled
+           out of the disclosure before it.
+
+           There is deliberately no Notes field here. Asking "why is this
+           on your list?" at the moment of capture is asking the wrong
+           question at the wrong time: the answer is the activity's name,
+           and the field it sat in was the one people skipped. What you
+           thought about it afterwards belongs on the completion sheet,
+           in "How it went". -->
       <div class="fg">
         <label>Links<span class="opt"> optional</span></label>
         <div class="chip-field" id="aLinksWrap" onclick="$('aLinkInput').focus()"></div>
@@ -611,51 +595,114 @@
            so the name lives here rather than in the activity sheet — see
            openActDetail(). Target date, priority and reminders are gone
            from a completed activity entirely: they are all about what to
-           do next, and there is no next. -->
-      <div class="fg">
+           do next, and there is no next.
+
+           It is the same editable .fg-hero field in all three of this
+           sheet's modes — completing something, editing something
+           already done, and logging something that never existed as a
+           plan. It was briefly a static heading while completing, on the
+           grounds that the name was a fact already written; in practice
+           the moment you tick something off is exactly when you notice
+           the name is wrong, and having to save, reopen and edit to fix
+           it was worse than the box being there. -->
+      <div class="fg fg-hero" id="compNameField">
         <label>Activity</label>
         <input id="compName" placeholder="What did you do?" maxlength="100"
                autocapitalize="sentences" enterkeyhint="done" />
       </div>
-      <div class="fg">
-        <label>When did you do it?</label>
-        <input type="date" id="compDate" />
-      </div>
-
-      <div class="fg">
-        <label>Where<span class="opt"> optional</span></label>
-        <div class="loc-wrap">
-          <input id="compLoc" placeholder="Search for a place" maxlength="200" autocomplete="off"
+      <!-- THE RECORD — when and where, in one card.
+           These were two labelled .fg blocks, which cost a mono label,
+           a 46px box and a 22px gap each and made the two smallest
+           answers on the sheet its two largest controls. As inset rows
+           they read as one fact about the completion, and the sheet
+           gets ~80px back. The card deliberately does NOT clip its
+           overflow: .loc-results hangs out of the bottom of it. -->
+      <div class="comp-card">
+        <!-- The row opens the picker, not just the field. The native
+             calendar glyph is hidden (the row already leads with one),
+             and on desktop that glyph is the only thing that opens the
+             picker on a click — so openCompDatePicker() calls
+             showPicker() explicitly. On iOS the field opens its own
+             wheel either way. -->
+        <div class="comp-row comp-row-tap" onclick="openCompDatePicker()">
+          <span class="comp-row-ic" id="compDateIcon"></span>
+          <span class="comp-row-label">Date</span>
+          <input type="date" id="compDate" class="comp-row-input is-date" />
+        </div>
+        <!-- .loc-wrap is the whole row, not just the input, so the
+             results drop the full width of the card rather than the
+             width of the value on the right of it. -->
+        <div class="comp-row loc-wrap">
+          <span class="comp-row-ic" id="compLocIcon"></span>
+          <span class="comp-row-label">Where</span>
+          <input id="compLoc" class="comp-row-input" placeholder="Add a place"
+                 maxlength="200" autocomplete="off"
                  oninput="locSearch(this,'compLocResults')" onfocus="locSearch(this,'compLocResults')" />
           <input type="hidden" id="compLocLat" /><input type="hidden" id="compLocLng" />
           <div class="loc-results" id="compLocResults"></div>
         </div>
-        <!-- Filled in by suggestLocationFromPhoto() when an attached
-             photo carries a GPS fix and this field is still empty. A
-             suggestion to accept, never a value written on the user's
-             behalf — extraction can be wrong, and the same rule the
-             import sheet follows applies here. See media.js. -->
-        <div class="loc-suggest" id="compLocSuggest" hidden></div>
+        <!-- On every mode of this sheet. A draft has to be filed
+             somewhere — a row in no list is reachable from nowhere — and
+             on the other two it is a move, written by confirmComplete()
+             only when the set actually changed. Once something is done
+             the activity sheet's "Edit details" is hidden, so without it
+             here there is no way to refile a completed activity at all. -->
+        <button class="comp-row comp-row-btn" id="compListRow" style="display:none">
+          <span class="comp-row-ic" id="compListIcon"></span>
+          <span class="comp-row-label" id="compListLabel">List</span>
+          <span class="comp-row-value" id="compListName">Choose</span>
+          <span class="comp-row-chevron" id="compListChevron"></span>
+        </button>
       </div>
+      <!-- Filled in by suggestLocationFromPhoto() when an attached
+           photo carries a GPS fix and this field is still empty. A
+           suggestion to accept, never a value written on the user's
+           behalf — extraction can be wrong, and the same rule the
+           import sheet follows applies here. See media.js. -->
+      <div class="loc-suggest comp-suggest" id="compLocSuggest" hidden></div>
 
       <!-- Photos and notes are on the sheet outright. They sat behind an
            "Add photos, video & notes" disclosure, which is one tap in
            front of the single thing people most want to attach at the
            moment they tick something off — and a collapsed field is one
            most people never open. The whole sheet still fits a 320px
-           screen, which is why the disclosure could go. -->
-      <div class="fg">
-        <label>Photos &amp; video<span class="opt"> optional</span></label>
-        <button class="photo-zone" onclick="$('photoInput').click()">
-          <span id="photoZoneIcon"></span>
-          <span>Add</span>
-        </button>
+           screen, which is why the disclosure could go.
+
+           The Add pill sits ON the section head rather than under it.
+           It stays the small pill it has to be — see the media section
+           of CLAUDE.md, the control for adding media must not be louder
+           than the media — while giving up the line of its own that it
+           had no content to justify. -->
+      <div class="comp-sec" id="compMediaSec">
+        <div class="comp-sec-head">
+          <!-- Required on the way in, optional on the way back — see
+               updateMediaRequirement() in activities.js, which owns both
+               this qualifier and the hint below. -->
+          <span class="comp-sec-label">Photos &amp; video<span class="opt" id="compMediaQual"> optional</span></span>
+          <button class="photo-zone" onclick="$('photoInput').click()">
+            <span id="photoZoneIcon"></span>
+            <span>Add</span>
+          </button>
+        </div>
         <input type="file" id="photoInput" multiple accept="image/*,video/*" hidden onchange="handleMedia(event)" />
         <div class="photo-previews" id="photoPrev"></div>
+        <!-- Said here rather than only in the toast on Done: a
+             requirement discovered by pressing the button you thought
+             would finish is a dead end, not a rule. -->
+        <div class="comp-req-hint" id="compMediaHint" hidden>
+          Add at least one to mark this accomplished.
+        </div>
       </div>
-      <div class="fg">
-        <label>How it went<span class="opt"> optional</span></label>
-        <textarea id="compNotes" placeholder="Tell the story&hellip;" autocapitalize="sentences"></textarea>
+
+      <!-- Set in the serif, because that is what it will be read back in
+           (.ad-note.prose on the activity sheet) and because it is the
+           one thing on this sheet the user writes rather than picks. -->
+      <div class="comp-sec">
+        <div class="comp-sec-head">
+          <span class="comp-sec-label">How it went<span class="opt"> optional</span></span>
+        </div>
+        <textarea id="compNotes" class="comp-note" placeholder="Tell the story&hellip;"
+                  autocapitalize="sentences"></textarea>
       </div>
     </div>
   </div>
@@ -764,38 +811,6 @@
     </div>
     <div class="imp-source" id="importSource"></div>
     <div class="sheet-body" id="importBody"></div>
-  </div>
-</div>
-
-<!-- How to get the app into the iOS share sheet. iOS does not
-     support the Web Share Target API, so a Shortcut is the mechanism —
-     all the app can do is explain it and hand over the URL. -->
-<div class="modal-overlay" id="shareSetupSheet">
-  <div class="modal">
-    <div class="sheet-grabber"></div>
-    <div class="sheet-bar">
-      <button class="navbtn" onclick="closeModal('shareSetupSheet')">Done</button>
-      <div class="sheet-title">Share into the app</div>
-      <span class="navbtn" style="pointer-events:none;opacity:0">Done</span>
-    </div>
-    <div class="sheet-body">
-      <p class="shr-lead">iPhone doesn’t let a web app add itself to the share
-        sheet. A Shortcut does the same job, and you only build it once.</p>
-      <ol class="shr-steps">
-        <li>Open <strong>Shortcuts</strong> and make a new shortcut.</li>
-        <li>Turn on <strong>Show in Share Sheet</strong>, and set it to accept
-          <strong>URLs</strong>.</li>
-        <li>Add the <strong>Open URLs</strong> action.</li>
-        <li>Set the URL to the address below with <strong>Shortcut Input</strong>
-          added on the end.</li>
-        <li>Name it <strong>Add to Someday We&rsquo;ll Die</strong>.</li>
-      </ol>
-      <div class="shr-url" id="shareSetupUrl"></div>
-      <button class="btn btn-tinted btn-block" onclick="copyShareTargetUrl()">Copy address</button>
-      <p class="shr-note">Sharing a TikTok, X post, or web page from anywhere on
-        the phone will then open Someday We&rsquo;ll Die with it filled in. Instagram blocks
-        apps from reading its posts, so those ask you to paste the caption.</p>
-    </div>
   </div>
 </div>
 
@@ -995,7 +1010,6 @@
 <script src="js/dupes.js"></script>
 <script src="js/sharing.js"></script>
 <script src="js/home.js"></script>
-<script src="js/search.js"></script>
 <script src="js/upnext.js"></script>
 <script src="js/done.js"></script>
 <script src="js/reminders.js"></script>

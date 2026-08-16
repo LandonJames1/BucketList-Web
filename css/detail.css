@@ -295,20 +295,6 @@
     .ad-datebtn:active { opacity: .6; }
     .ad-datebtn .ic { width: 12px; height: 12px; }
 
-    /* A completed activity has exactly two badges — the state and the
-       date it happened — and at the shared badge size they sat as two
-       small chips against a 29px serif title with most of the row empty
-       beside them. Here they are the header's second line, so they take
-       a size to match and split the width between them. */
-    .ad-badges.done { gap: 10px; flex-wrap: nowrap; }
-    .ad-badges.done > * {
-      flex: 1; min-width: 0;
-      height: 38px; border-radius: 12px;
-      justify-content: center;
-      font-size: 12px; letter-spacing: .1em;
-    }
-    .ad-badges.done .ad-datebtn { padding: 0 10px; margin: 0; }
-    .ad-badges.done .ad-datebtn .ic { width: 15px; height: 15px; }
     .ad-head { padding: 0 var(--gx-r) 0 var(--gx-l); }
     /* The name leads the sheet and the badges sit under it, so nothing
        goes above the title and the badges carry the gap. See
@@ -319,10 +305,33 @@
       margin-top: 0;
     }
     .ad-title.centered { text-align: center; }
+
+    /* An activity has exactly two badges — state and date when it is
+       done, priority and deadline when it is not — and at the shared
+       badge size they sat as two small chips against a 29px serif title
+       with most of the row empty beside them. Here they are the header's
+       second line, so they take a size matching the sheet's other
+       controls and split the width between them. */
     .ad-badges {
-      display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+      display: flex; flex-wrap: nowrap; gap: 10px; align-items: center;
       margin-top: 14px;
     }
+    .ad-badges > * {
+      flex: 1; min-width: 0;
+      height: 38px; border-radius: 12px;
+      justify-content: center;
+      font-size: 12px; letter-spacing: .1em;
+    }
+    /* The deadline badge is bare coloured text everywhere else in the
+       app. At this size it needs the fill its neighbour has, mixed from
+       whatever urgency colour it is already carrying — so it cannot
+       disagree with the hue, and no per-urgency token is needed. */
+    .ad-badges .badge:not(.ad-datebtn) {
+      padding: 0 10px;
+      background: color-mix(in srgb, currentColor 13%, transparent);
+    }
+    .ad-badges .ad-datebtn { padding: 0 10px; margin: 0; }
+    .ad-badges .ad-datebtn .ic { width: 15px; height: 15px; }
     /* A single piece of media leads the sheet. The wrapper carries the
        size and the corner so the .media-tile inside can stay generic. */
     .ad-hero-wrap {

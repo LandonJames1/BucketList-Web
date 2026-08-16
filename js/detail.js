@@ -97,7 +97,6 @@ async function renderActivitiesList(){
   if(curFilter==='completed') acts=acts.filter(a=>a.completed);
   if(search) acts=acts.filter(a=>
     a.name.toLowerCase().includes(search)||
-    (a.description||'').toLowerCase().includes(search)||
     (a.location||'').toLowerCase().includes(search));
   acts=sortActivities(acts,curSort);
 

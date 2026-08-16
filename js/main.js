@@ -21,6 +21,10 @@ function paintStaticIcons(){
 
   set('coverZoneIcon',icon('photo','ic-lg'));
   set('photoZoneIcon',icon('camera','ic-sm'));
+  set('compDateIcon',icon('calendar'));
+  set('compLocIcon',icon('pin'));
+  set('compListIcon',icon('stack'));
+  set('compListChevron',icon('chevron-right'));
   set('bulkAddIcon',icon('plus','ic-sm'));
 
   set('lbCloseBtn',icon('x'));
@@ -35,18 +39,12 @@ function paintStaticIcons(){
      decorative plus — see the note in index.html. */
   set('homeComposerShot',icon('camera'));
   set('homeComposerGo',icon('chevron-right'));
-  set('searchFieldIcon',icon('search'));
-  set('searchClearIcon',icon('x','ic-xs'));
   set('actListChevron',icon('chevron-right'));
   set('aRemindChevron',icon('chevron-right'));
   set('meNotifyIcon',icon('clock'));
   set('listPickerSearchIcon',icon('search'));
   set('listPickerNewIcon',icon('plus'));
   set('meInstallChevron',icon('chevron-right'));
-  set('meShareIcon',icon('link'));
-  set('meShareChevron',icon('chevron-right'));
-  set('meJoinIcon',icon('share'));
-  set('meJoinChevron',icon('chevron-right'));
   const lead=document.querySelector('#page-me .li-blue');
   if(lead) lead.innerHTML=icon('share');
 }

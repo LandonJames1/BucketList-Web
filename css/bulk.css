@@ -45,15 +45,14 @@
     .bulk-field > label {
       flex: 0 0 74px; font-size: 15px; color: var(--label-2); letter-spacing: -.002em;
     }
-    .bulk-field input, .bulk-field select, .bulk-field textarea {
+    .bulk-field input, .bulk-field select {
       flex: 1; min-width: 0;
       border: none; outline: none; background: none; color: var(--label);
       /* 16px floor again — these were 12.8px in the old table. */
       font-size: max(16px, 17px); letter-spacing: -.011em;
       padding: 12px 0; -webkit-appearance: none; appearance: none;
     }
-    .bulk-field textarea { resize: none; min-height: 46px; height: 46px; line-height: 1.35; }
-    .bulk-field input::placeholder, .bulk-field textarea::placeholder { color: var(--label-3); }
+    .bulk-field input::placeholder { color: var(--label-3); }
     .bulk-field select {
       text-align: right; padding-right: 20px; color: var(--label-2); cursor: pointer;
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='7' viewBox='0 0 13 8'%3E%3Cpath d='M1 1.5 6.5 6.5 12 1.5' fill='none' stroke='%238e8e93' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");

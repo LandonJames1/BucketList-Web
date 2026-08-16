@@ -32,10 +32,9 @@
 
      1. metadata  — oEmbed where a public endpoint exists, OpenGraph
                     tags otherwise. Instagram has neither (see below).
-     2. structure — Claude turns a caption into {name, location,
-                    description}, and fans a listicle out into many.
-                    Without ANTHROPIC_API_KEY it falls back to using
-                    the raw title.
+     2. structure — Claude turns a caption into {name, location}, and
+                    fans a listicle out into many. Without
+                    ANTHROPIC_API_KEY it falls back to the raw title.
      3. geocode   — the place name becomes lat/lng via Nominatim, the
                     same service js/location.js already uses, so an
                     imported activity lands on the map.
@@ -249,15 +248,8 @@ const SCHEMA = {
               'Only when the activity is tied to that place; leave empty for something doable anywhere. ' +
               'Read it from the source — never infer one from an association, and never a whole country.',
           },
-          description: {
-            type: 'string',
-            description:
-              'Almost always an empty string. Only a hard constraint stated in the source that would otherwise be ' +
-              'forgotten and cannot be looked up later — a permit window, a booking lead time, a short season. ' +
-              'Never prices, gear, technique, weather or time of day.',
-          },
         },
-        required: ['name', 'location', 'description'],
+        required: ['name', 'location'],
         additionalProperties: false,
       },
     },
@@ -271,6 +263,21 @@ const SCHEMA = {
    the same model: a screenshot is the higher-volume route and the one
    where a misread costs the user the most to correct. */
 const MODEL = 'claude-opus-5';
+
+/* The location guess is a different job from an import and gets its own
+   constant. An import reads a page or a screenshot and writes a row the
+   user reviews; this answers one closed question ("does this name identify
+   one specific place?") against a two-field schema, behind three more
+   gates — the `certain` flag, Nominatim finding it, and guessMatchesName()
+   on the client. It is also the latency the user actually feels, because
+   it runs while they are still filling in the sheet.
+   ⚠️ If the guess is still too slow, THIS is the lever: 'claude-haiku-4-5'
+   is a fraction of the latency and cost for a constrained classification
+   like this one. It is left on the same model as the imports because
+   swapping it trades some strictness for speed, and strictness is the
+   whole feature — see the four gates in CLAUDE.md. Change it here, in one
+   place, and re-run the worked examples in PLACE_SYSTEM. */
+const PLACE_MODEL = 'claude-opus-5';
 
 const SYSTEM = `You turn a shared social post or web page into bucket-list activities.
 
@@ -293,14 +300,14 @@ particular circumstances — those belong to their story, not the user's plan.
   emoji, handles, prices, brands or clickbait.
 - location: a specific, geocodable place. Use "" if the source names no place,
   or if the activity could be done anywhere. Never invent one.
-- description: **almost always "".** Only a hard constraint actually stated in
-  the source that would be forgotten and cannot be looked up later — a permit
-  window, a booking lead time, a short season. Never prices, gear, technique,
-  weather or time of day. Never anything you inferred. When in doubt, "".
+There is nowhere else to put anything. The name and the location are the whole
+of an activity, so a detail that fits neither is dropped rather than squeezed
+into the name — prices, gear, technique, weather, time of day, and anything you
+inferred. When in doubt, leave it out.
 
 If the source is not about a place or experience at all, return an empty list.`;
 
-type Draft = { name: string; location: string; description: string };
+type Draft = { name: string; location: string };
 
 async function structure(meta: Meta, url: string, extra: string): Promise<Draft[]> {
   const key = Deno.env.get('ANTHROPIC_API_KEY');
@@ -309,7 +316,7 @@ async function structure(meta: Meta, url: string, extra: string): Promise<Draft[
   /* No key, or nothing to read: fall back to the bare title rather than
      returning nothing. The user gets a prefilled sheet either way. */
   if (!key || !raw) {
-    return meta.title ? [{ name: meta.title.slice(0, 120), location: '', description: '' }] : [];
+    return meta.title ? [{ name: meta.title.slice(0, 120), location: '' }] : [];
   }
 
   try {
@@ -341,7 +348,7 @@ async function structure(meta: Meta, url: string, extra: string): Promise<Draft[
     return Array.isArray(parsed.activities) ? parsed.activities.slice(0, 20) : [];
   } catch (e) {
     console.error('structure:', e);
-    return meta.title ? [{ name: meta.title.slice(0, 120), location: '', description: '' }] : [];
+    return meta.title ? [{ name: meta.title.slice(0, 120), location: '' }] : [];
   }
 }
 
@@ -350,7 +357,7 @@ async function structure(meta: Meta, url: string, extra: string): Promise<Draft[
 
    Same schema out, so the client renders the result with the code it
    already has. What differs is the instruction: a screenshot has no
-   title or description field to lean on, and a lot of what is on
+   title or summary text to lean on, and a lot of what is on
    screen is chrome — like counts, comment threads, tab bars, the
    status bar — that must not end up in an activity name.
 
@@ -417,11 +424,10 @@ always the safer mistake here.
   Read it from signage, map labels, geotags, captions or an address block. Use
   "" if nothing on screen names a place, or if the activity could be done
   anywhere. Never invent one.
-- description: **almost always "".** The name should carry the whole idea on its
-  own. Fill this in only for a hard constraint actually stated in the source
-  that would be forgotten and could not be looked up later — a permit window, a
-  booking lead time, a short season. Never prices, gear, technique, weather or
-  time of day. Never anything inferred. When in doubt, "".
+The name should carry the whole idea on its own, because there is nowhere else
+for anything to go: an activity is a name and a place and nothing more. A detail
+that fits neither is dropped, not squeezed into the name — prices, gear,
+technique, weather, time of day, and anything inferred.
 
 ## How many
 
@@ -488,8 +494,8 @@ const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif
 /* ==============================================================
    PREDICTING A LOCATION FROM A NAME
 
-   The third way in, and the smallest: `{activity:{name,description}}`
-   comes back as `{location,lat,lng}` or as nothing at all.
+   The third way in, and the smallest: `{activity:{name}}` comes back
+   as `{location,lat,lng}` or as nothing at all.
 
    It exists because an activity with no location never appears on the
    map, and typing one in is the step everybody skips. But most
@@ -589,7 +595,7 @@ Write the place as a geocoder would want it: the specific name first, then the
 city or region, then the country. Never a street address.`;
 
 async function predictPlace(
-  name: string, description: string,
+  name: string,
 ): Promise<{ location: string; lat: number | null; lng: number | null }> {
   const empty = { location: '', lat: null, lng: null };
   const key = Deno.env.get('ANTHROPIC_API_KEY');
@@ -601,14 +607,22 @@ async function predictPlace(
   try {
     const client = new Anthropic({ apiKey: key });
     const res = await client.messages.create({
-      model: MODEL,
-      max_tokens: 1024,
+      model: PLACE_MODEL,
+      /* The answer is a place string and a boolean. 1024 was room this
+         call has never needed, and a smaller ceiling is one less thing
+         between the user and the field being filled. */
+      max_tokens: 256,
       system: PLACE_SYSTEM,
-      output_config: { effort: 'medium', format: { type: 'json_schema', schema: PLACE_SCHEMA } },
+      /* `low` rather than `medium`. The prompt does the work here — the
+         rules and the worked examples decide the answer, not depth of
+         deliberation — and this is the one model call in the app that
+         runs while somebody is watching an empty field. If recall drops
+         on names that plainly do identify a place, raise this before
+         touching the prompt. */
+      output_config: { effort: 'low', format: { type: 'json_schema', schema: PLACE_SCHEMA } },
       messages: [{
         role: 'user',
-        content: `Activity: ${name.trim()}` +
-          (description.trim() ? `\nNotes: ${description.trim()}` : ''),
+        content: `Activity: ${name.trim()}`,
       }],
     });
 
@@ -661,7 +675,7 @@ Deno.serve(async (req) => {
 
   let body: {
     url?: string; text?: string; image?: string; mediaType?: string;
-    activity?: { name?: string; description?: string };
+    activity?: { name?: string };
   };
   try { body = await req.json(); } catch { return json({ error: 'bad json' }, 400); }
 
@@ -670,10 +684,7 @@ Deno.serve(async (req) => {
      the plumbing below: no URL to guard, no image to size, no drafts to
      geocode in bulk. See predictPlace. */
   if (body.activity) {
-    return json(await predictPlace(
-      (body.activity.name || '').slice(0, 200),
-      (body.activity.description || '').slice(0, 500),
-    ));
+    return json(await predictPlace((body.activity.name || '').slice(0, 200)));
   }
 
   /* ---- Screenshot ----

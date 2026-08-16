@@ -72,9 +72,15 @@
 /*  ============================================================
     QUICK ADD — file an idea without choosing a list first
     ============================================================ */
+    /* The gutters live here rather than on .home-composer so the
+       suggestion dropdown can be absolutely positioned against the
+       field's own edges. */
+    .home-composer-wrap {
+      position: relative;
+      margin: 14px var(--gx-r) 0 var(--gx-l);
+    }
     .home-composer {
       display: flex; align-items: center; gap: 12px;
-      margin: 14px var(--gx-r) 0 var(--gx-l);
       padding: 4px 14px 4px 12px; min-height: 58px;
       background: var(--bg-elevated); border-radius: var(--r-card);
       box-shadow: var(--shadow-sm), 0 0 0 .5px var(--separator);
@@ -124,6 +130,63 @@
     .home-composer-go:active { transform: scale(.88); }
     .home-composer.has-text .home-composer-go { display: flex; }
     .home-composer-go .ic { width: 18px; height: 18px; }
+
+/*  ------------------------------------------------------------
+    ALREADY ON YOUR LISTS
+
+    The composer is the one field on Home, so it answers both
+    questions people arrive with — "put this somewhere" and "where
+    did I put that". Matches .loc-results in shape deliberately: it
+    is the same interaction, a dropdown of candidates under a field
+    you are typing into. Named for itself rather than borrowing
+    those classes, which mean *place*.
+    ------------------------------------------------------------ */
+    .home-suggest {
+      position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 40;
+      background: var(--bg-raised); border-radius: var(--r-card);
+      max-height: 264px; overflow-y: auto; display: none;
+      box-shadow: var(--shadow-lg), 0 0 0 .5px var(--separator);
+      -webkit-overflow-scrolling: touch;
+    }
+    .home-suggest.open { display: block; }
+    /* A single mono line naming what this list is, so a dropdown of
+       existing activities under an "Add…" field cannot be mistaken for
+       autocomplete of the thing being typed. */
+    .home-suggest-head {
+      padding: 11px 15px 7px;
+      font-family: var(--mono); font-size: 9.5px; font-weight: 500;
+      letter-spacing: .14em; text-transform: uppercase; color: var(--label-3);
+    }
+    .home-suggest-item {
+      display: flex; align-items: center; gap: 11px;
+      width: 100%; min-height: 54px; padding: 8px 15px; text-align: left;
+    }
+    .home-suggest-item:not(:last-child) { border-bottom: .5px solid var(--separator); }
+    .home-suggest-item:active { background: var(--fill-4); }
+    .home-suggest-item > .ic { width: 19px; height: 19px; flex-shrink: 0; color: var(--label-3); }
+    .home-suggest-item.done > .ic { color: var(--green); }
+    .home-suggest-body { min-width: 0; flex: 1; }
+    .home-suggest-name {
+      display: block;
+      font-family: var(--serif); font-size: 16px; font-weight: 600;
+      letter-spacing: -.008em; color: var(--label);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .home-suggest-item.done .home-suggest-name { color: var(--label-2); }
+    .home-suggest-name mark {
+      background: var(--tint-soft); color: inherit; border-radius: 3px;
+    }
+    /* One line, nowrap, with the list name as the only shrinkable child
+       — the same rule .up-meta follows, and for the same reason: a row
+       whose height depends on how long a list name happens to be makes
+       the dropdown step as you read down it. */
+    .home-suggest-meta {
+      display: flex; align-items: center; gap: 6px; flex-wrap: nowrap;
+      margin-top: 3px; min-height: 17px; overflow: hidden;
+    }
+    .home-suggest-meta .list-chip { min-width: 0; }
+    .home-suggest-chevron { flex-shrink: 0; display: flex; color: var(--label-4); }
+    .home-suggest-chevron .ic { width: 16px; height: 16px; stroke-width: 2.4; }
 
 /*  ============================================================
     UP NEXT

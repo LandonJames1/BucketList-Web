@@ -46,7 +46,7 @@ function mapActivity(row){
     if(row.links){links=Array.isArray(row.links)?row.links:typeof row.links==='string'?JSON.parse(row.links):[];}
     const media=normMedia(raw);
     return{id:row.id,listId:row.collection_id,listIds:activityListIds(row),
-      name:row.name,description:row.description||'',
+      name:row.name,
       targetDate:row.target_date||null,priority:row.priority||'medium',links,
       completed:!!row.date_completed,completedDate:row.date_completed||null,
       completionNotes:row.experience_notes||'',
@@ -57,7 +57,7 @@ function mapActivity(row){
       location:row.location||'',
       locationLat:row.location_lat||null,locationLng:row.location_lng||null,
       remindAt:row.remind_at||null,remindNote:row.reminder_note||'',createdAt:row.created_at};
-  }catch(e){console.error('mapActivity error:',e,row);return{id:row.id,listId:row.collection_id,listIds:[row.collection_id].filter(Boolean),name:row.name||'',description:'',targetDate:null,priority:'medium',links:[],completed:!!row.date_completed,completedDate:row.date_completed||null,completionNotes:'',media:[],photos:[],location:'',locationLat:null,locationLng:null,remindAt:null,remindNote:'',createdAt:row.created_at};}
+  }catch(e){console.error('mapActivity error:',e,row);return{id:row.id,listId:row.collection_id,listIds:[row.collection_id].filter(Boolean),name:row.name||'',targetDate:null,priority:'medium',links:[],completed:!!row.date_completed,completedDate:row.date_completed||null,completionNotes:'',media:[],photos:[],location:'',locationLat:null,locationLng:null,remindAt:null,remindNote:'',createdAt:row.created_at};}
 }
 
 /* ==============================================================

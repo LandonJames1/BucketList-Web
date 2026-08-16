@@ -16,6 +16,10 @@
    ============================================================== */
 
 async function renderHome(){
+  /* The composer is static markup, so its dropdown survives navigation
+     away and back. Whatever was typed stays; the list of answers to it
+     does not reopen unprompted. */
+  closeHomeSuggest();
   const lists=await fetchCollections();
   const acts=await fetchAllActivities(lists);
 
@@ -163,6 +167,9 @@ function renderHomeRecent(acts,lists){
    ============================================================== */
 function onHomeComposerKey(e){
   if(e.key==='Enter'){ e.preventDefault(); homeQuickAdd(); }
+  /* Escape closes the suggestions without clearing what was typed —
+     the field is still an add field and the text is still wanted. */
+  if(e.key==='Escape') closeHomeSuggest();
 }
 function onHomeComposerInput(){
   const c=$('homeComposer');
@@ -182,7 +189,168 @@ function onHomeComposerInput(){
     go.innerHTML=icon(isLink?'link':'chevron-right');
     go.setAttribute('aria-label',isLink?'Import link':'Add');
   }
+  updateHomeSuggest();
 }
+
+/* ==============================================================
+   FINDING WHAT YOU ALREADY HAVE, FROM THE SAME FIELD
+
+   People arrive at Home with one of two things in mind — "put this
+   somewhere" and "where did I put that" — and the composer was only
+   ever an answer to the first. Typing "kayak" into it was a way to
+   create a second kayaking activity beside the one already there.
+
+   So it answers both. **It never blocks the add**: this only draws a
+   dropdown, Return still opens the plan-or-record chooser, and a query
+   matching nothing shows nothing. That is the whole contract, and it is
+   what lets the field keep its old job unchanged.
+
+   Deliberately synchronous, against the in-memory cache — the same
+   thing dupeGuard() reads. Scoring every activity on a keystroke is
+   cheap; a network round trip per keystroke is not, and a spinner under
+   a field you are typing into would be worse than no feature. A cold
+   cache means nothing to search, and the dropdown simply stays shut.
+
+   It is not a replacement for the Search screen (the bar button is
+   still there): five rows under a composer, activities only, no
+   collections and no filters.
+   ============================================================== */
+const HOME_SUGGEST_MAX=5;
+const HOME_SUGGEST_MIN_CHARS=2;
+
+/* Below this a hit is noise. Tuned against matchScore's bands: a whole-
+   word prefix scores ~.62 and up, the trigram fallback tops out at .55,
+   so this keeps the weakest character-overlap hits out while letting
+   every structural match through. */
+const SEARCH_MIN=.34;
+
+/* Weights per field. The name is what people mean nearly every time; a
+   stray hit deep in a notes field must never outrank it. */
+const SEARCH_ACT_WEIGHTS=[['name',1],['location',.8],['collection',.62],['completionNotes',.45]];
+
+/* Returns scored hits rather than a filtered array, because the ranking
+   is the useful part — with fuzzy matching a query returns a long tail
+   of weak hits, and the order is what makes the top of the list the
+   answer.
+
+   This and searchMark() below are all that survives of the Search
+   screen, which this composer replaced. They live here because the
+   composer is now their only caller; the tuning notes above are the
+   reason not to "simplify" the constants. */
+function searchActivities(q,acts,lists){
+  const byId={};
+  lists.forEach(l=>{byId[l.id]=l.name;});
+  /* Every list an activity is in, not just its home one — searching
+     "Japan" has to find something filed into the Japan list from
+     somewhere else, or the list name stops being a reliable way to find
+     things the moment an activity is in two. */
+  const listNames=a=>(a.listIds||[a.listId]).map(id=>byId[id]||'').filter(Boolean).join(' ');
+  const out=[];
+  for(const a of acts){
+    const fields=SEARCH_ACT_WEIGHTS.map(([k,w])=>
+      [k==='collection'?listNames(a):a[k],w]);
+    /* Links are searched as a group: people do remember "that tiktok
+       one", and the URL is the only place that shows up. */
+    if(a.links&&a.links.length) fields.push([a.links.join(' '),.4]);
+    const score=scoreFields(q,fields);
+    if(score>=SEARCH_MIN) out.push({a,score});
+  }
+  return out.sort((x,y)=>y.score-x.score||
+    /* Ties break toward what is still to do — a finished thing is a
+       record, an unfinished one is an answer you can act on. */
+    (x.a.completed-y.a.completed)||
+    new Date(y.a.createdAt)-new Date(x.a.createdAt));
+}
+
+/* Only the literal query substring is marked, never the fuzzy match. A
+   fuzzy hit has no single span to point at — "kayakking" matching
+   "kayaking" would need per-character marks that read as corruption
+   rather than emphasis. So when there is an exact run to show we show
+   it, and otherwise the row is simply unmarked.
+
+   Escaping happens here, not at the call site: this is the one place in
+   the app where a rendered string is deliberately not esc()'d wholesale,
+   so the split has to be on the raw text and the escaping applied to
+   each piece. Don't "simplify" it. */
+function searchMark(text,q){
+  const s=text||'';
+  const term=(q||'').trim();
+  if(!term) return esc(s);
+  const at=s.toLowerCase().indexOf(term.toLowerCase());
+  if(at<0) return esc(s);
+  return esc(s.slice(0,at))+
+    '<mark>'+esc(s.slice(at,at+term.length))+'</mark>'+
+    esc(s.slice(at+term.length));
+}
+
+function closeHomeSuggest(){
+  const box=$('homeSuggest');
+  if(box){ box.classList.remove('open'); box.innerHTML=''; }
+}
+
+function updateHomeSuggest(){
+  const box=$('homeSuggest'),input=$('homeComposerInput');
+  if(!box||!input)return;
+  const q=input.value.trim();
+
+  /* A pasted link is on its way to the import sheet — matching its URL
+     against activity names would be noise in front of that. */
+  if(q.length<HOME_SUGGEST_MIN_CHARS||looksLikeUrl(q)) return closeHomeSuggest();
+
+  /* Nothing to compare against, so nothing is claimed. Same failure
+     shape as duplicate detection, which reads the same cache — both
+     return [] rather than null when it has never been filled. */
+  const acts=cachedActivities(),lists=cachedCollections();
+  if(!acts.length) return closeHomeSuggest();
+
+  const hits=searchActivities(q,acts,lists).slice(0,HOME_SUGGEST_MAX);
+  if(!hits.length) return closeHomeSuggest();
+
+  box.innerHTML=`<div class="home-suggest-head">Already on your lists</div>`+
+    hits.map(({a})=>homeSuggestRowHTML(a,lists,q)).join('');
+  box.classList.add('open');
+}
+
+function homeSuggestRowHTML(a,lists,q){
+  const chip=activityListLabel(a,lists);
+  const di=a.completed?null:dateInfo(a);
+  const bits=[];
+  if(chip) bits.push(`<span class="list-chip">${esc(chip)}</span>`);
+  if(a.completed) bits.push(`<span class="badge b-done">Accomplished</span>`);
+  else if(di&&di.label) bits.push(`<span class="badge b-${di.cls}">${esc(di.label)}</span>`);
+
+  /* searchMark() is the one place a rendered string is not esc()'d
+     wholesale — it splits on the raw text and escapes each piece. */
+  return `<button class="home-suggest-item${a.completed?' done':''}"
+      onclick="openHomeSuggest('${a.id}')">
+    ${icon(a.completed?'check-circle':'circle')}
+    <span class="home-suggest-body">
+      <span class="home-suggest-name">${searchMark(a.name,q)}</span>
+      <span class="home-suggest-meta">${bits.join('')}</span>
+    </span>
+    <span class="home-suggest-chevron">${icon('chevron-right')}</span>
+  </button>`;
+}
+
+/* Taking the row clears the field. The text was a question, it has been
+   answered, and leaving it behind means the next tap on the go arrow
+   files a duplicate of the thing just opened. */
+function openHomeSuggest(id){
+  const input=$('homeComposerInput');
+  if(input){ input.value=''; }
+  closeHomeSuggest();
+  onHomeComposerInput();
+  openActDetail(id);
+}
+
+/* Same dismissal as the location dropdown: a tap anywhere outside the
+   composer closes it. Delegated from the document so nothing that
+   renders Home has to bind it. */
+document.addEventListener('click',e=>{
+  const box=$('homeSuggest');
+  if(!box||!box.classList.contains('open'))return;
+  if(!box.parentElement.contains(e.target)) closeHomeSuggest();
+});
 
 /* Home's composer hands off to the full activity sheet rather than
    filing the activity on the spot.
@@ -223,7 +391,11 @@ async function homeQuickAdd(){
      and leaving it behind here means it is sitting in two places and
      can be filed twice. */
   input.value='';onHomeComposerInput();
-  openNewActivity(name);
+  /* Asks whether this is a plan or a record before either sheet opens —
+     see startNewActivity(). Deliberately after the looksLikeUrl() branch
+     above: a shared link is a plan by construction, and asking there is
+     a question with only one answer. */
+  startNewActivity(name);
 }
 
 /* Completing from Home has no curListId, so the stats update needs the

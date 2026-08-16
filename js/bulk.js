@@ -51,7 +51,6 @@ function saveBulkFieldValues(){
     const n=$('bName_'+i);
     if(!n)return;
     entry._name=n.value;
-    entry._desc=($('bDesc_'+i)||{}).value||'';
     entry._loc=($('bLoc_'+i)||{}).value||'';
     entry._locLat=($('bLocLat_'+i)||{}).value||'';
     entry._locLng=($('bLocLng_'+i)||{}).value||'';
@@ -103,9 +102,6 @@ function renderBulkEntries(){
       <div class="bulk-field">
         <input id="bName_${i}" placeholder="Name" maxlength="100" value="${esc(entry._name||'')}"
                autocapitalize="sentences" enterkeyhint="next"/>
-      </div>
-      <div class="bulk-field">
-        <textarea id="bDesc_${i}" placeholder="Notes" rows="1">${esc(entry._desc||'')}</textarea>
       </div>
       <div class="bulk-field">
         <div class="loc-wrap">
@@ -164,7 +160,6 @@ async function saveBulkActivities(){
   const rows=keep.map(({_src:e})=>({
     name:e._name.trim(),
     collection_id:dest,
-    description:(e._desc||'').trim()||null,
     location:(e._loc||'').trim()||null,
     location_lat:parseFloat(e._locLat)||null,
     location_lng:parseFloat(e._locLng)||null,

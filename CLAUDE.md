@@ -139,7 +139,6 @@ There is no router and no URL state — reloading always lands on Home.
 | `page-home` | `home` | Home | `renderHome()` — the dashboard |
 | `page-upnext` | `upnext` | (pushed on Home) | `renderUpNext()` — every unfinished activity |
 | `page-done` | `done` | (pushed on Home) | `renderDone()` — everything ever completed |
-| `page-search` | `search` | (pushed on Home) | `renderSearch()` — one field over everything |
 | `page-lists` | `lists` | Lists | `renderCollections()` — every collection as a photo card |
 | `page-detail` | `detail` | (pushed on Lists) | `renderDetail()` — one collection's activities |
 | `page-globalmap` | `globalmap` | Map | `renderGlobalMap()` — every located activity |
@@ -202,7 +201,42 @@ undiscoverable for anyone with a short history, which is exactly the person
 still learning where things are.
 
 Home has no floating action button: the composer near the top is already the
-add affordance, and two competing ones on a single screen is one too many. It
+add affordance, and two competing ones on a single screen is one too many.
+
+##### One field, both questions
+
+People arrive at Home with one of two things in mind — *put this somewhere*
+and *where did I put that* — and the composer only ever answered the first.
+Typing "kayak" into it was a way to create a second kayaking activity beside
+the one already there. So as you type it also matches what you already have,
+in a dropdown under the field (`updateHomeSuggest()` in `home.js`).
+
+**It never blocks the add, and that is the whole contract.** It only draws a
+list; Return still opens the plan-or-record chooser, the go arrow still adds,
+a URL still routes to the import sheet, and a query matching nothing shows
+nothing. Everything the composer did, it still does.
+
+- **Synchronous, against the in-memory cache** — `cachedActivities()` /
+  `cachedCollections()`, the same read `dupeGuard()` does. Scoring every
+  activity on a keystroke is cheap; a round trip per keystroke is not, and a
+  spinner under a field you are typing into would be worse than no feature at
+  all. A cold cache means nothing to search and the dropdown stays shut, the
+  same way duplicate detection silently does nothing.
+- **`searchActivities()` and `searchMark()` live here now.** They were the
+  matching core of the Search screen; when that screen went, they moved into
+  `home.js` rather than being rewritten, so the tuned constants and the
+  highlight rule came across intact. See **Finding things again**.
+- **It replaced the Search screen outright** (see **Finding things again**).
+  Five rows, activities only, no collections and no filters — which is the
+  deliberate trade: the answer arrives where you already are, and the long
+  tail is gone. The header row (*Already on your lists*) exists so a list of
+  things that already exist, under a field labelled "Add…", cannot be misread
+  as autocomplete of what is being typed.
+- **Taking a row clears the field**, because the text was a question that has
+  now been answered — left in place, the next tap on the go arrow would file
+  a duplicate of the thing just opened.
+- `renderHome()` closes it, since the composer is static markup and the
+  dropdown would otherwise survive navigating away and back. It
 also has no lists shelf — that duplicated the Lists tab sitting in the tab bar.
 
 Because Home has no collection context, adding from here goes through the
@@ -403,7 +437,7 @@ storage is cheap — `storage.sql` carries a sweeper query in a comment.
 #### Guessing the location from the name
 
 `maybeGuessLocation()` in `location.js`, over a
-`{activity:{name,description}}` payload on the `unfurl` Edge Function. When a
+`{activity:{name}}` payload on the `unfurl` Edge Function. When a
 **new** activity's name names a place, the location field fills itself in.
 
 An activity with no location never appears on the map, and the location field
@@ -443,20 +477,49 @@ a `.loc-guess` caption and one tap clears it — `undoLocationGuess()` empties
 the field, because leaving a rejected value in place would be the silent write
 the design exists to avoid.
 
+**Making it arrive sooner.** The round trip is the whole cost, and the field
+it fills is one somebody is looking at. Four levers, none of which changes
+what the feature will *answer*:
+
+1. **It asks while you are still typing.** A debounced `input`
+   (`queueLocationGuess()`, `GUESS_IDLE_MS` = 650ms) fires at a pause, so the
+   request overlaps the rest of the sheet being filled rather than starting
+   when you leave the field. The original `change` handler stays as the
+   backstop. This is **one call per pause, never one per keystroke** — that
+   distinction is the whole reason the code used to say "not on input", and
+   it still holds.
+2. **`_guessCache`** remembers `name → result` for the session, **including
+   the misses**, which are the majority. A retyped name or the same activity
+   added twice returns instantly and free. A *failed request* is deliberately
+   not cached — it says nothing about the name. Not persisted: the point is
+   to kill repeats inside one sitting, not to build a gazetteer.
+3. **`effort: 'low'` and `max_tokens: 256`** on `predictPlace()`. The prompt
+   decides this answer — the rules and the worked examples do the work, not
+   depth of deliberation. If recall drops on names that plainly do name a
+   place, raise the effort before touching the prompt.
+4. **`PLACE_MODEL` is its own constant**, separate from the imports' `MODEL`,
+   and it is the lever left to pull: a smaller model is a fraction of the
+   latency for a closed two-field classification behind three more gates. It
+   is deliberately left equal to `MODEL` — swapping it trades some strictness
+   for speed and strictness is the feature — but it is one line, in one
+   place, when the trade is worth making.
+
 Things to keep:
 
 - **Only on create.** `openNewActivity()` arms it, `openEditAct()` disarms it.
   Renaming an existing activity is not an invitation to rewrite where it
   happens.
-- **`change`, not `input`.** This costs a model call; one per keystroke is
-  absurd. `openNewActivity(prefillName)` asks explicitly, because a name that
-  arrived from a composer was never typed into the field and `change` will
-  never fire for it — and that is the most common way an activity is created.
+- **A pause, not a keystroke.** This costs a model call, so the `input`
+  handler is debounced and `_guessFor` plus the cache stop it asking twice for
+  the same text. `openNewActivity(prefillName)` still asks explicitly, because
+  a name that arrived from a composer was never typed into the field and
+  neither handler will fire for it — and that is the most common way an
+  activity is created.
 - **Typing in the location field settles it** (`onActLocInput()`), and a
   dismissal is sticky for the life of the sheet. `_guessSeq` drops answers
   that arrive after the sheet has moved on.
-- **The cost is one model call per activity created this way**, and nothing
-  caches across sessions.
+- **The cost is one model call per distinct name**, cached for the session
+  and nothing across sessions.
 
 The same "read it, never infer it, never a whole country" rule is now in the
 import schema's `location` description, so a typed name, a shared link and a
@@ -529,6 +592,15 @@ than guessed at.
 `zoom=14` — the default returns a full postal address, which is both too
 precise to be useful and slightly unnerving to be shown back to you.
 
+**It runs the moment the fix is read, alongside the uploads rather than
+after them.** It used to wait for every upload to finish, on the grounds that
+the photos appearing is what the user is waiting on — but the lookup is a
+~1KB GET and the uploads are megabytes, so behind a video the chip arrived
+seconds after the photo it came from. Running them together costs the uploads
+nothing measurable, and `suggestLocationFromPhoto()` re-checks
+`needsLocationSuggestion()` on the far side of the round trip, so a user who
+typed a place in the meantime still wins.
+
 #### Working offline
 
 `js/offline.js`. Before it, "offline" meant the shell loaded and every
@@ -597,29 +669,28 @@ should say depends on how many writes are waiting.
 
 #### Finding things again
 
-`js/search.js`, over `js/fuzzy.js`. The detail screen has always had a
-search box, but it only searched the collection you were already
-standing in — the wrong shape for an app whose point is that an idea can
-be filed anywhere. "Where did I put that" is a question about the whole
-library.
+**There is no Search screen.** There was one — a pushed screen with its own
+field, filter segments and result sections, reachable from a bar button on
+Home, Lists, Up Next and Accomplished. It is gone, along with `js/search.js`,
+`css/search.css`, `#page-search` and every bar button that opened it.
 
-A **pushed screen, not a tab**: the tab bar is full at four, and search
-is somewhere you arrive with a question rather than a place you browse.
-Reachable from the bar button on Home, Lists, Up Next and Accomplished —
-not the Map (its chrome floats over the globe and already has a filter)
-or You.
+Home's composer answers the same question from the screen people already
+start on — see **One field, both questions**. A second, dedicated screen for
+it was a tab-bar button, a nav-bar button on four screens, and a whole file,
+to reach something now one keystroke away.
 
-Like `renderDetail()`, it is **split in two**: `renderSearch()` builds
-the screen, `renderSearchResults()` rebuilds only the results. The field
-is part of the page so it can pin under the nav bar, and rebuilding it
-per keystroke would drop focus. `refreshAfterChange('search')` calls the
-second one for the same reason.
+What survived the deletion lives in `home.js`, because the composer is its
+only caller: `SEARCH_MIN` and `SEARCH_ACT_WEIGHTS` (tuned constants — read
+the comments before touching them), `searchActivities()`, and `searchMark()`,
+which is still **the one place in the app that does not `esc()` a rendered
+string wholesale** — it splits on the raw text and escapes each piece itself,
+because only the literal query substring is highlighted and a fuzzy hit has
+no single span to point at. Don't "simplify" it.
 
-Only the **literal** query substring is highlighted, never the fuzzy
-match: a fuzzy hit has no single span to point at, and per-character
-marks read as corruption. `searchMark()` is therefore the one place in
-the app that does not `esc()` a rendered string wholesale — it splits on
-the raw text and escapes each piece itself. Don't "simplify" it.
+The detail screen keeps its own search box, which searches only the
+collection you are standing in. That is the right scope for it and always
+was; the Search screen existed because it was the *wrong* scope for the
+library, and the composer is the answer to that now.
 
 #### Catching duplicates
 
@@ -807,9 +878,10 @@ drop the text, which is precisely the half that fails.
 
 Joining by code is reachable from **Lists → Join a List**, a tile beside New
 List (and a button in the empty state, which is where someone invited into
-their first list actually lands). The You tab row remains. It is the floor
-under every link-based path, so it belongs on the screen the missing list was
-supposed to be on — not two taps away in a settings tab.
+their first list actually lands), and from the error state of a failed
+invite. There was a duplicate row in the You tab; it is gone. This is the
+floor under every link-based path, so it belongs on the screen the missing
+list was supposed to be on — not in a settings tab as well.
 
 #### An invite that survives creating an account
 
@@ -1180,6 +1252,47 @@ What survives: a shared list the caller *joined* is only left, and the
 other members keep it. A list the caller *owns* and has shared is
 deleted for everyone on it — there is nobody to hand ownership to
 without asking. The sheet says both in as many words.
+
+**Nothing the caller leaves behind may break for anybody else**, and
+that is harder than deleting their rows, because three things belonging
+to them are pointed at from lists that do not:
+
+- **Media.** `mediaKey()` in `media.js` keys the storage folder by the
+  *uploader*, `${uid}/…`, whichever list the photo lands on. So a photo
+  attached to an activity in a list the caller merely **joined** is
+  stored under the caller and shown to everyone else on that list.
+  Deleting the folder wholesale blanked those photos for the other
+  members — the exact thing this must not do. `mediaStillInUse()` now
+  reads the surviving activities in the lists the caller joined (read
+  from `collection_members` **before** those rows go, which is why that
+  is step 0 and why a failure there is fatal rather than tolerated),
+  collects every URL under `/${uid}/`, and deletes only the rest of the
+  folder. **The bias is always toward keeping**: a file wrongly kept
+  costs kilobytes, a file wrongly deleted costs somebody else a photo.
+  If the question cannot be answered at all, the whole folder stays.
+- **List links.** An activity homed in someone else's list can carry one
+  of the caller's collections in `extra_collection_ids`.
+  `unlinkDeletedCollections()` strips those out after the collections go,
+  rather than leaving a dangling id on another person's row.
+- **Claimed invites.** `invite_claims` is keyed by email address, so it
+  outlives the account unless it is deleted by hand. It now is, by both
+  `claimed_by` and the lower-cased address.
+
+Three things are deliberately *not* touched, and all three are how the
+guarantee is met rather than exceptions to it: an activity the caller
+added to somebody else's list is homed there, so it is never in the
+delete set; the completion notes and photos on it go with it; and a
+reminder they set on a shared activity stays, because `remind_at` is a
+column on the activity and the reminder belongs to the list. Invites are
+only creatable by a list's owner (the RLS insert policy checks
+`owns_collection`), so deleting the caller's `collection_invites` rows
+cannot revoke a link anybody else depends on.
+
+The one gap left: a list the caller was removed from, or left, before
+deleting their account is not knowable from `collection_members`, so
+media they uploaded there is deleted with the folder. That is the same
+orphan problem as the sweeper comment at the bottom of `storage.sql`,
+pointed the other way.
 
 **It is the one place in the app that makes you type something.** Every
 other destructive action is a single action sheet, which is right when
@@ -1695,14 +1808,17 @@ three reminder delivery paths:
 2. **Screenshot anything** — the camera button in the Home composer. See
    below; this is the general path and the one that finally makes
    Instagram work.
-3. **An iOS Shortcut** that opens `?share=<url>`. The user builds it once
-   and Bucket List is then in the real share sheet. The **You** tab has a
-   setup screen (`openShareSetup`) because there is no API to do this —
-   all the app can do is explain it and hand over the URL.
-4. **`share_target` in the manifest**, which gets Android and desktop
+3. **`share_target` in the manifest**, which gets Android and desktop
    Chrome for free.
 
-All three land on a query param. `readSharedInput()` runs at boot **before
+There used to be a fourth: an iOS Shortcut the user built by hand, with a
+setup screen in the **You** tab explaining the five steps and handing over
+`?share=`. It is gone. Five manual steps in a settings tab is not a tier
+anybody reaches — the screenshot path above covers the same case in one
+tap and does not care which app the thing came from — and `?share=` is
+still read at boot, so a Shortcut somebody already built keeps working.
+
+They all land on a query param. `readSharedInput()` runs at boot **before
 `restoreSession()`** — a link can be shared in while signed out, and the
 sign-in screen must not eat it — stashes it in the `pendingShare` global,
 and **strips the query string immediately** so a reload cannot import the
@@ -1725,6 +1841,36 @@ to make between them, and the loading state still shows — reading takes
 a few seconds and the sheet is what says so. Link imports keep the card
 at one result too: a link's row is built from metadata the user never
 saw, so the card is the first sight of it.
+
+**And a screenshot that reads as *nothing* skips the card too.**
+`importFailed()` splits the two paths, because what to do next genuinely
+differs:
+
+- A **link** keeps the failure card. Its offer — *read a screenshot
+  instead* — is the entire reason Instagram is usable, and pasting the
+  caption is a real second attempt at the same import. There is something
+  to do on that card, so `renderImportState()` still draws it (and is now
+  link-only: the `isShot` branches through its failure states are gone).
+- A **screenshot** does not. It *was* the fallback — the picture is the
+  last thing the app can read — so nothing on that card was a route back
+  to a filled-in draft. What it actually offered was a textarea for
+  describing the activity in words, which is the activity sheet with
+  fewer fields and an extra step in front of it. So the sheet opens
+  instead, carrying one line saying why it is empty.
+
+`SHOT_FAIL_NOTICE` names the reason (`no_model`, `too_large`, offline, a
+failed request) and `SHOT_FAIL_DEFAULT` covers "the model read it and
+found no activity", which is the common case. The line is drawn by
+**`setActivityNotice()`** into `#actNotice` (`.act-notice`), passed as
+`openNewActivity()`'s second argument — the only caller that passes one.
+It is cleared on every open of both `openNewActivity()` and
+`openEditAct()`, so it cannot leak into the next activity, and there is
+nothing to dismiss because it goes with the sheet.
+
+**It is deliberately not an error.** No red, no alert iconography — the
+sheet under it is a working form, not a failure state, and the user did
+nothing wrong. Failing into the form you were heading for beats failing
+into a page about the failure.
 
 **The composer changes what it does rather than Home growing a button.**
 `onHomeComposerInput()` swaps the go glyph to a link when what you typed
@@ -1795,11 +1941,13 @@ BAD     …+ "~$600 secondhand wing · practice ground-handling on open
 That last line is a real output from an earlier version of the prompt,
 and it is worth understanding why: the prompt had *asked* for "price,
 best season, gear needed", so the model dutifully supplied them and
-invented the rest. **`description` now defaults to `""`** and is
-reserved for a hard constraint stated in the source that could not be
-looked up later — a permit window, a booking lead time, a short season.
-Never a tip. The instruction "if you are unsure whether a detail
-belongs, it does not" is doing real work; don't soften it.
+invented the rest. It was then narrowed to `description` defaulting to
+`""`, and has now **lost the field entirely** — an activity is a name
+and a place, and there is nowhere for a stray detail to go. That is
+stated in the prompts as such, because a model with no sink for a detail
+it wants to keep will otherwise pack it into the name. The instruction
+"if you are unsure whether a detail belongs, it does not" is doing real
+work; don't soften it.
 
 `IMAGE_SYSTEM`, `SYSTEM` and the `SCHEMA` field descriptions all say
 this, so a screenshot and a link cannot produce differently-voiced rows,
@@ -1909,15 +2057,14 @@ Loaded in this order; **order matters**.
 | `layout.css` | The app shell: the translucent `.navbar` and its `.condensed` state, `.large-title`, the `.tabbar`, and the `.page` show/hide system with its push/fade animations. |
 | `components.css` | The reusable iOS primitives every screen builds from: `.group`/`.row` inset grouped lists, `.seg` segmented controls, `.btn` styles, `.searchfield`, `.badge`/`.tag`, **`.list-chip`** (a collection's name on any row that could have come from any list — Home's Up Next, the Up Next screen, search results, the duplicate sheet; sized to match `.tag` so the capsules on one row line up), the `.pri-*` priority marks, `.seg-pri`/`.pri-swatch` (the priority chooser), `.media-tile`/`.media-play` (one tile for a photo or a video, used by three screens), `.empty`, `.progress`, `.spinner`. Look here before inventing a new component. |
 | `auth.css` | The signed-out screen — no nav bar, no tab bar, its own centring. Plus `.auth-invite`, the tinted note shown when an invite link was opened while signed out; `.auth-notice`, the same shape for a confirmation link that could not be honoured, but carrying its own way out (a resend button) because "that link expired" with no way to get another is the same dead end the link was; and `.auth-check`, the quieter waiting-for-confirmation panel — nothing has gone wrong there, and the title above is already carrying the message. |
-| `home.css` | The dashboard: the greeting, the SVG progress ring, the context-free quick-add composer, the Up Next list, and the two `.shelf` grids (recently accomplished, your lists). |
+| `home.css` | The dashboard: the greeting, the SVG progress ring, the context-free quick-add composer (`.home-composer-wrap` owns the gutters so `.home-suggest`, its results dropdown, can position against the field), the Up Next list, and the two `.shelf` grids (recently accomplished, your lists). |
 | `collections.css` | The Lists tab: `.coll-card` photo cards and the "New List" tile. |
 | `detail.css` | A collection's screen: `.det-banner`, `.det-ctl-row`/`.det-sort` (the filter and sort controls sharing a line — the row owns the gutters so `.seg` can give up its own margins), `.act-row` list rows, `.composer` quick-add, `.act-card` grid cards, and the `.ad-*` activity detail sheet including `.ad-lists`/`.ad-list-chip`. |
 | `me.css` | The Me tab: the stats card, the progress card, the identity row. |
-| `modals.css` | The three presentation styles — `.modal`/`.sheet-*` bottom sheets, `.action-sheet`, `.lightbox` — plus the form controls that live inside a sheet: `.fg` and its `.fg-hero` (the field a sheet is *about* — only the activity name) and `.fg-pair` (two short choices on one line), `.picker-btn` (a value that opens a picker, sized to match a `<select>` beside it), `.chip-field`, `.photo-*`, the list picker's `.lp-*` (including `.lp-home`, the badge naming which of several chosen lists is the home one), and `.toast`. There are no disclosure styles here any more — `.more-toggle`/`.more-fields` went with the completion sheet's last collapsed section. |
+| `modals.css` | The three presentation styles — `.modal`/`.sheet-*` bottom sheets, `.action-sheet`, `.lightbox` — plus the form controls that live inside a sheet: `.fg` and its `.fg-hero` (the field a sheet is *about* — only the activity name) and `.fg-pair` (two short choices on one line), `.picker-btn` (a value that opens a picker, sized to match a `<select>` beside it), `.act-notice` (why a sheet opened the way it did — quiet, never red, gone with the sheet), `.chip-field`, `.photo-*`, the completion sheet's own `.comp-*` (`.comp-card`/`.comp-row` — inset grouped rows whose overflow must stay visible for the location dropdown — `.comp-sec`, `.comp-note`), the list picker's `.lp-*` (including `.lp-home`, the badge naming which of several chosen lists is the home one), and `.toast`. There are no disclosure styles here any more — `.more-toggle`/`.more-fields` went with the completion sheet's last collapsed section. |
 | `map.css` | Map containers (the full-bleed `.page-map` and the inset detail map), the CSS sky gradient behind the globe, the floating `.map-filter`/`.map-count`/`.map-fab` chrome, `.map-pin`/`.map-cluster` markers, MapLibre's own controls restyled, the `.loc-*` autocomplete dropdown, `.loc-suggest-*` — the "from your photo" chip, deliberately a tinted *offer* rather than a filled control, since it must not read as though the field is already answered — and `.loc-guess-*`, which is the opposite case and therefore shaped differently: a quiet caption marking a field the app has already filled in from the activity's name, with an ✕ that takes it back out. |
 | `bulk.css` | `.bulk-*` — the "add many at once" sheet, one card per row. |
-| `import.css` | `.imp-*` — the sheet a shared link or screenshot opens into (its result checklist, the screenshot preview, the duplicate mark, the waiting and caption-fallback states) — plus `.shr-*`, the iOS Shortcut setup sheet, which `sharing.css` also borrows. |
-| `search.css` | `.srch-*` — the pinned search field over the results, the section headings, and the `<mark>` wash. The rows themselves are `.act-row` from `detail.css`. |
+| `import.css` | `.imp-*` — the sheet a shared link or screenshot opens into (its result checklist, the screenshot preview, the duplicate mark, the waiting and caption-fallback states) — plus `.shr-*` (`.shr-lead`/`.shr-url`/`.shr-note`), written for the iOS Shortcut setup sheet that is gone and kept because `sharing.css` leans on all three for the invite and accept-an-invite cards. |
 | `dupes.css` | `.dupe-*` — the "you may already have this" sheet. Deliberately quiet: no red, no alert iconography, an ordinary tinted confirm. It interrupts the fastest path in the app, so it has to read as a question. |
 | `sharing.css` | `.shr-people-*`/`.shr-avatar`/`.shr-role` and `.join-*` — the invite sheet's roster and the accept-an-invite card — plus `.shr-code-head`/`.shr-code` (the invite as something that can be read off one screen and typed into another) and `.join-code-input`. Reuses `.shr-lead`/`.shr-url`/`.shr-note` from `import.css` on purpose: both are "here is a link, here is what to do with it". |
 | `pwa.css` | The offline banner, install bar, iOS Add-to-Home-Screen sheet. |
@@ -1944,7 +2091,7 @@ Loaded in this order; **order matters**.
 | File | Domain |
 | --- | --- |
 | `auth.js` | **`resetAccountState()`** — everything belonging to one account, cleared on every auth transition (see **One account at a time**) — **`ensureSessionLive`/`verifyLiveUser`/`authAnswerIsDefinitive`/`signOutStaleSession`/`resetSessionLiveCheck`/`recheckSessionSoon`/`startSessionWatch`/`stopSessionWatch`**, which is how a session belonging to a deleted account stops being trusted, on every device (see **Being signed into an account that no longer exists**) — **`inviteSweepDue()`/`authJustAuthenticated`**, which decide when to ask the server whether an invite is waiting for this address (see **An invite that survives creating an account**) — plus `showAuth`/`showApp` (swap `#authPage` against `#appWrap`; `showApp` boots into Home, loads the profile, triggers the iOS install hint, picks up any link shared in via `handleSharedInput()`, and starts the token auto-refresh). Also the `visibilitychange` handler that stops/starts auto-refresh — browsers suspend timers in a backgrounded PWA, and without restarting on resume the access token goes stale and the next request 401s, which reads to the user as being logged out — and the `onAuthStateChange` listener that keeps `currentUser` in step and only shows the login screen on a real `SIGNED_OUT`, `toggleAuthMode`/`applyAuthMode` (tracked by the `authIsSignUp` flag, not by reading the heading text), `setAuthError`, `handleAuth`, `handleSignOut`. Sign-up also inserts the `Users` profile row. Plus **the confirmation-email landing** — `readEmailConfirmation` (boot; reads `token_hash`/`code`/implicit tokens/`error`, and strips only its own keys), `consumeEmailConfirmation`, `confirmFailureHTML`, `confirmRedirectUrl`, `setAuthNotice`, `setAuthView`/`showCheckEmail`/`authBackToForm`, and the resend pair `sendConfirmationEmail`/`resendConfirmation`/`resendFromNotice`. See **Coming back through the confirmation email**. |
-| `nav.js` | `nav(page, listId)` — the single entry point for changing screens (see **Screens and navigation**). Plus `PAGE_TAB`, `TAB_ROOT`, `selectTab`, `goBack`, `dismissOverlays`, **`refreshAfterChange(src)`** (the single answer to "something was written, what redraws?" — see **Refreshing after a change**), `updateNavbar` (**where each screen's bar buttons are defined**), `applyNavCondense`, a debounced `resize` handler, **`setBodyScrollLock(lock)`** — the single place that touches body overflow — and **`syncTabbarToKeyboard()`**, which keeps the tab bar behind the software keyboard instead of riding up on top of it (see **Mobile layout rules**). |
+| `nav.js` | `nav(page, listId)` — the single entry point for changing screens (see **Screens and navigation**). Plus `PAGE_TAB`, `TAB_ROOT`, `selectTab`, `goBack`, `dismissOverlays`, **`refreshAfterChange(src)`** (the single answer to "something was written, what redraws?" — see **Refreshing after a change**), `updateNavbar` (**where each screen's bar buttons are defined**, and where the collection FAB is bound to `startNewActivity`; there is no search bar button — see **Finding things again**), `applyNavCondense`, a debounced `resize` handler, **`setBodyScrollLock(lock)`** — the single place that touches body overflow — and **`syncTabbarToKeyboard()`**, which keeps the tab bar behind the software keyboard instead of riding up on top of it (see **Mobile layout rules**). |
 | `gestures.js` | The two touch gestures, both delegated from `document`: **swipe a sheet down to dismiss it** (`.modal` and the action sheet) and **swipe sideways to change screen**. `overlayOpen`, `ownsHorizontal`/`ownsVertical` (surfaces with their own gesture), `SHEET_DISMISS_PX`/`SHEET_FLICK_PX`, `SWIPE_MIN`/`SWIPE_EDGE`, `TAB_ORDER` (in `nav.js`). See **Gestures** below. |
 | `modals.js` | `openModal` (**resets `.sheet-body` scrollTop** — see the note under *Sheets* below) / `closeModal` (they call `setBodyScrollLock`, so use them rather than toggling `.open` yourself), the scrim-click and Escape handlers, **`showActionSheet(opts)`** and `showConfirm` (iOS confirms destructive actions with an action sheet, not a dialog — `confirmDeleteCollection`/`confirmDeleteActivity` wrap it), the photo lightbox (swipe sideways to page, down to close), the list picker (`openListPicker`/`renderListPickerRows`/`listPickerPick`/`listPickerDone` — single- *and* multi-select, see **The list picker**), `ensurePickerRoom`/`releasePickerRoom` (see **Gestures**), and `showToast`. |
 
@@ -1953,8 +2100,8 @@ Loaded in this order; **order matters**.
 | File | Domain |
 | --- | --- |
 | `links.js` | The URL chip input: `aLinks`, `handleTagKey`, `removeTag`, `renderTagChips`. ⚠️ `getChipArr(which)` ignores its argument and always returns `aLinks` — vestigial from when there were two chip fields. Adding a second means fixing this first. |
-| `location.js` | Everything that resolves a place. `locSearch(input, resultsId)` — debounced (350ms) place search against the public **OpenStreetMap Nominatim** API — plus `geocodeOnce(q)` (one-shot, no debounce, no DOM: resolves a place name we already have — an imported link's location — to `{display, lat, lng}` or null), `reverseGeocode(lat, lng)` (the other direction, for a photo's EXIF fix — `zoom=14`, so a place rather than a postal address), `positionLocBox` (the bulk sheet's dropdown is `position:fixed` so it can escape the sheet's scroll container, and therefore has to be placed by hand) and `locPick`. Plus the **guess from the activity's name**: `maybeGuessLocation`, `guessMatchesName`, `resetLocationGuess`, `onActLocInput`, `undoLocationGuess`, `clearLocationGuessMark` — see **Guessing the location from the name**. |
-| `media.js` | Photos **and video**. `probeStorage()`/`storageReady()`, `uploadPhoto`/`uploadVideo` (→ the `media` Supabase Storage bucket), `videoPoster` (grabs a still so thumbnails and map pins have an image), `handleMedia`, `rmMedia`, `mediaTileHTML`, `renderThumbs`, and the ordering set — `coverIndex`, `moveMedia`, `makeCover`, `openMediaMenu`. Also the photo→location offer: `needsLocationSuggestion`, `suggestLocationFromPhoto`, `acceptPhotoLocation`, `dismissPhotoLocation`, `resetLocationSuggestion` (see **Where the photo was taken**). Working list is the `upMedia` global. Replaced `photos.js`; see **Media** below. |
+| `location.js` | Everything that resolves a place. `locSearch(input, resultsId)` — debounced (350ms) place search against the public **OpenStreetMap Nominatim** API — plus `geocodeOnce(q)` (one-shot, no debounce, no DOM: resolves a place name we already have — an imported link's location — to `{display, lat, lng}` or null), `reverseGeocode(lat, lng)` (the other direction, for a photo's EXIF fix — `zoom=14`, so a place rather than a postal address), `positionLocBox` (the bulk sheet's dropdown is `position:fixed` so it can escape the sheet's scroll container, and therefore has to be placed by hand) and `locPick`. Plus the **guess from the activity's name**: `maybeGuessLocation`, **`queueLocationGuess`** (the debounced `input` trigger) and the session-lived `_guessCache` — the two things that make the guess arrive while the sheet is still being filled — plus `guessMatchesName`, `resetLocationGuess`, `onActLocInput`, `undoLocationGuess`, `clearLocationGuessMark`. See **Guessing the location from the name**. |
+| `media.js` | Photos **and video**. `probeStorage()`/`storageReady()`, `uploadPhoto`/`uploadVideo` (→ the `media` Supabase Storage bucket), `videoPoster` (grabs a still so thumbnails and map pins have an image), `handleMedia`, `rmMedia`, `mediaTileHTML`, `renderThumbs` (which ends in `updateMediaRequirement()` — the completion sheet's media rule, owned by `activities.js`), and the ordering set — `coverIndex`, `moveMedia`, `makeCover`, `openMediaMenu`. Also the photo→location offer: `needsLocationSuggestion`, `suggestLocationFromPhoto`, `acceptPhotoLocation`, `dismissPhotoLocation`, `resetLocationSuggestion` (see **Where the photo was taken**). Working list is the `upMedia` global. Replaced `photos.js`; see **Media** below. |
 
 **Screens and features**
 
@@ -1962,16 +2109,15 @@ Loaded in this order; **order matters**.
 | --- | --- |
 | `dupes.js` | **Fuzzy duplicate detection.** `dupeGuard(opts, proceed)` — the single gate every add path goes through — plus `dupeGuardBatch()` (returns a promise for the subset to keep), `findDupes`, `dupeScore`, `dupeHintFor` (the mark in the import sheet), the sheet's handlers (`dupeAddAnyway`/`dupeSkipDuplicates`/`dupeOpenExisting`/`dupeCancel`/`dupeCancelBatch`), and the `DUPE_LIKELY`/`DUPE_POSSIBLE` thresholds. Loads before every screen that adds an activity. See **Catching duplicates**. |
 | `sharing.js` | **Shared lists.** `probeSharing`/`sharingReady`/`resetSharingProbe`, `ownsCollection`/`isSharedWithMe` (which buttons to draw), the invite sheet (`openShareList`/`renderShareList`/`createInvite`/`revokeInvite`/`copyInviteLink`/`copyInviteCode`/`sendInviteLink`/`removeMember`), leaving (`confirmLeaveList`/`leaveList`), and accepting (`readPendingJoin` at boot, `handlePendingJoin`/`acceptJoin`/`declineJoin`, `updateAuthInviteNotice`/`authInviteWaitingNotice` for the signed-out case, and the link-free path `openJoinByCode`/`submitJoinCode`/`parseInviteCode`), plus **`claimInviteForEmail`/`claimInvitesForMe`** — the server-side copy of the code, which is the only one that survives a sign-up confirmed on another device — and `makeInviteCode`/`inviteUrl`. See **Shared lists**, **Accepting an invite** for why that link-free group exists, and **An invite that survives creating an account** for the last pair. |
-| `search.js` | The Search screen pushed from Home: one fuzzy field over every activity and collection. `openSearch`, `renderSearch` (the screen) / `renderSearchResults` (**only the results** — rebuilding the field would drop focus), `searchActivities`/`searchCollections`, `searchRowHTML`, and `searchMark` — **the one place a rendered string is not `esc()`'d wholesale**; it splits on raw text and escapes each piece. See **Finding things again**. |
 | `upnext.js` | The Up Next screen pushed from Home: every unfinished activity, bucketed by `targetBand()`. Borrows its rows and sort from `home.js`. |
 | `done.js` | The Accomplished screen pushed from Home: everything completed, grouped by the month it was finished. Reuses Home's photo tiles. |
-| `home.js` | The Home tab. `renderHome()` plus one function per section, the shared `upNextRowHTML()`/`sortUpNext()` the Up Next screen also uses, the context-free composer (`homeQuickAdd`, which opens the full activity sheet — or routes to `importFromComposer()` when what was typed is a URL, see **Sharing a link in**), and `toggleCompleteFrom()` — Home's copy of the completion toggle, which cannot rely on `curListId`. |
+| `home.js` | The Home tab. `renderHome()` plus one function per section, the shared `upNextRowHTML()`/`sortUpNext()` the Up Next screen also uses, the context-free composer (`homeQuickAdd`, which asks plan-or-record via `startNewActivity()` — or routes to `importFromComposer()` when what was typed is a URL, see **Sharing a link in**), the composer's search half (`updateHomeSuggest`/`homeSuggestRowHTML`/`openHomeSuggest`/`closeHomeSuggest`, plus `searchActivities`/`searchMark`/`SEARCH_MIN`/`SEARCH_ACT_WEIGHTS` — all that survives of the deleted Search screen; see **One field, both questions** and **Finding things again**), and `toggleCompleteFrom()` — Home's copy of the completion toggle, which cannot rely on `curListId`. |
 | `collections.js` | `renderCollections()` (the Lists tab) plus the collection CRUD: `openNewList`, `openEditList`, `renderCoverPreview`, `clearCover`, `handleCoverUpload`, `saveList`, `delList`. `delList` deletes the collection's activities first — there is no DB cascade — and, once an activity can be in several lists, deletes only the ones with nowhere else to go and unlinks the rest. |
 | `detail.js` | One collection. Rendering is **deliberately split in two**: `renderDetail()` builds the banner and the controls, `renderActivitiesList()` rebuilds only the list. Search and filter call the second, so the search field never loses focus mid-typing. Also `activityRowHTML`/`activityCardHTML`, `sortButtonHTML()` (the sort control beside the filter), and the quick-add composer helpers (`composerHTML`, `onComposerKey`, `focusComposer`). |
-| `activities.js` | The whole activity flow. **Creating always goes through the sheet** — `quickAddActivity()` only takes the composer's text and opens `openNewActivity(name)` with it; nothing here inserts an activity directly except `commitSaveActivity()`, which is the sheet's own Save. `toggleComplete(id, isDone)` is the one-tap completion (see the note below). Then `openNewActivity`, `openEditAct`, `saveActivity`, `delActivity`, plus `renderActListPicker()`/`renderActListValue()`/`setTargetLists()` and the `targetListIds` global (with `targetListId` as a read-only alias for the home list) — the Lists row that lets an activity be filed from outside any collection, and which is hidden when there is no choice to make. Also `listFieldsFor()` and `removeActivityFromList()` — see **One activity, several lists**. Also `setPriorityChoice` (**the only way to set priority** — it keeps the swatched buttons and the hidden `#aPri` value in step), `openComp`/`openCompletedDate`/`confirmComplete` — the one completion sheet, every field on it (see **The two-speed activity flow**) — and `openActDetail` which builds the activity sheet. Plus `openCollectionMenu` (the ⋯ action sheet, which holds the view switcher and everything the old five-button hero row spelled out), `setFilter`, `setView`, and `openSortMenu`/`setSort`. |
-| `me.js` | `renderMe()` (stats), `renderMeIdentity()`, `openDeleteAccount`/`onDeleteAccountInput`/`deleteAccount` (see **Deleting an account**), `loadUserProfile()` (reads the `Users` row once per session into `userProfile` — **and creates it when missing**, via `createUserProfile`/`profileSeed`/`USERNAME_RE`; see **Signing up**), `confirmSignOut()`. The tab's three App rows are wired elsewhere: Add to Home Screen to `pwaShowInstallHelp()` in `pwa.js`, Share links into the app to `openShareSetup()` in `share.js`, and Join a shared list to `openJoinByCode()` in `sharing.js`. |
+| `activities.js` | The whole activity flow. **Creating always goes through a sheet** — `quickAddActivity()` only takes the composer's text and hands it to **`startNewActivity()`**, the plan-or-record chooser, which opens either `openNewActivity(name)` or **`openCompDraft(name)`** (see **Adding something you already did**, plus `setCompNameShape`/`renderCompListRow`/`commitCompDraft`). Nothing here inserts an activity directly except `commitSaveActivity()` and `commitCompDraft()`, which are those two sheets' own Saves. `toggleComplete(id, isDone)` is the one-tap completion (see the note below). Then `openNewActivity`, `openEditAct`, `saveActivity`, `delActivity`, plus `renderActListPicker()`/`renderActListValue()`/`setTargetLists()` and the `targetListIds` global (with `targetListId` as a read-only alias for the home list) — the Lists row that lets an activity be filed from outside any collection, and which is hidden when there is no choice to make. Also `listFieldsFor()` and `removeActivityFromList()` — see **One activity, several lists**. Also **`setActivityNotice`** — the one line the activity sheet can carry saying why it opened empty, written only by a screenshot import that could not be read (see **Sharing a link in**) — and `setPriorityChoice` (**the only way to set priority** — it keeps the swatched buttons and the hidden `#aPri` value in step), `openComp`/`openCompletedDate`/`confirmComplete` — the one completion sheet, every field on it — and `updateMediaRequirement()`, which is why that sheet will not save a *new* completion with no photo or video (see **The two-speed activity flow**) — and `openActDetail` which builds the activity sheet. Plus `openCollectionMenu` (the ⋯ action sheet, which holds the view switcher and everything the old five-button hero row spelled out), `setFilter`, `setView`, and `openSortMenu`/`setSort`. |
+| `me.js` | `renderMe()` (stats), `renderMeIdentity()`, `openDeleteAccount`/`onDeleteAccountInput`/`deleteAccount` (see **Deleting an account**), `loadUserProfile()` (reads the `Users` row once per session into `userProfile` — **and creates it when missing**, via `createUserProfile`/`profileSeed`/`USERNAME_RE`; see **Signing up**), `confirmSignOut()`. The tab's one App row, Add to Home Screen, is wired to `pwaShowInstallHelp()` in `pwa.js`. *Share links into the app* and *Join a shared list* both used to sit beside it; the first went with the Shortcut tier (see **Sharing a link in**) and the second lives on the Lists tab, which is the screen the missing list was supposed to be on. |
 | `bulk.js` | The "add many at once" sheet, one card per row. Row values live in `bulkEntries[]` and the DOM is re-rendered from it wholesale, so **`saveBulkFieldValues()` must flush the inputs back into the array before any redraw** — every mutation helper does this. `_skipSaveBulk` suppresses that flush in `bulkApplyDown` (the "copy row 1" pills), which has already updated the array itself. `openBulkAdd(listId)` takes an explicit destination in `bulkListId`, defaulting to `curListId`: the sheet normally opens from a collection, but an import from Home has no collection context and passes the chosen list. |
-| `share.js` | **Turning a shared link or a screenshot into an activity.** `readSharedInput()` (boot; parses and strips the query param), `handleSharedInput()` (called from `showApp()`), `openImportSheet`/`runUnfurl`/`renderImportState`/`IMPORT_FAIL_STATE`, `pickScreenshot`/`handleScreenshot` (downscale and send to the vision path), `handOffSingle`/`handOffMany`/`shareSourceLinks`, `looksLikeUrl`/`importFromComposer`, and `openShareSetup`/`shareTargetUrl`/`copyShareTargetUrl` for the iOS Shortcut. Loads after `activities.js` and `bulk.js` because it hands drafts to both. See **Sharing a link in** below. |
+| `share.js` | **Turning a shared link or a screenshot into an activity.** `readSharedInput()` (boot; parses and strips the query param), `handleSharedInput()` (called from `showApp()`), `openImportSheet`/`runUnfurl`/**`importFailed`** (the link-keeps-the-card / screenshot-goes-to-the-sheet split)/`renderImportState`/`IMPORT_FAIL_STATE`/`SHOT_FAIL_NOTICE`, `pickScreenshot`/`handleScreenshot` (downscale and send to the vision path), `handOffSingle`/`handOffMany`/`shareSourceLinks`, and `looksLikeUrl`/`importFromComposer`. Loads after `activities.js` and `bulk.js` because it hands drafts to both. See **Sharing a link in** below. |
 | `map.js` | All MapLibre GL. **`ensureMapLibre()`** — the library is loaded on demand here, not from `<head>`; at ~900KB it was the biggest single cost of a cold launch, blocking the parser on the way to a Home screen with no map on it. Both entry points await it and fall back to the "map unavailable" state if it cannot be fetched. Then `mapStyle()` (raster CARTO basemap + globe projection + sky), `webglOK()`, `actsToGeoJSON()`, and `attachActivityLayer()` — which adds the clustered GeoJSON source and syncs DOM markers (`makePinEl`, `makeClusterEl`) to the viewport. Then the two instances: the Map tab (`renderGlobalMap`, `fitGlobal`, `zoomGlobe`, `globeFillZoom`, `setGlobalMapFilter`) and the per-collection map (`renderMap`, `updateMapMarkers`). Plus `mapLoaded(map)` and `hasGeo`. Teardown is explicit — `destroyGlobalMap()`/`destroyDetailMap()` — because each map holds a WebGL context, but **only the detail map is torn down on navigation**. See **The immersive map** above for the traps. |
 | `pwa.js` | Service-worker registration and the install/offline UI: `isStandalone()`/`isIOS()` (which stamp `.standalone`/`.ios` on `<html>`), the `beforeinstallprompt` capture behind `pwaInstall()`, the iOS Add-to-Home-Screen sheet, `pwaShowInstallHelp()` (the Me tab row), and `pwaUpdateOnlineState()`. Dismissals persist in `localStorage` under `bl_*` keys. **It also calls `reg.update()` on foreground and on reconnect** — an installed PWA is rarely killed, and registration is the only moment the browser looks for a new `sw.js`, so without it a shipped fix can sit undelivered on the home-screen copy for days and look like it was never made. **`pwaHadController` gates the `controllerchange` reload** so it fires on an update and not on a first install — see **Shared lists**, where getting that wrong silently destroyed every invite link. |
 | `main.js` | Boot: `paintStaticIcons()` fills the empty icon placeholders left in `index.html` from the sprite map, then the three query-string readers run in a **fixed order** — `readEmailConfirmation()`, `readSharedInput()`, `readPendingJoin()` — all **before** the session restore, because a link can be shared in, an invite opened, or an address confirmed while signed out. Then `consumeEmailConfirmation()` is tried ahead of `restoreSession()`, and `showApp()`/`showAuth()` follows. **Loads last.** See **Staying signed in** (why `restoreSession()` is more than one `getSession()` call) and **Coming back through the confirmation email** (why the reader order is not arbitrary). |
@@ -1981,13 +2127,18 @@ Loaded in this order; **order matters**.
 The most important interaction decision in the app, and the reason several
 functions look redundant:
 
-- **Adding. ⚠️ NOTHING EVER INSERTS AN ACTIVITY WITHOUT SHOWING THE SHEET
+- **Adding. ⚠️ NOTHING EVER INSERTS AN ACTIVITY WITHOUT SHOWING A SHEET
   FIRST.** This is a hard rule, not a default — if you add a new way to create
-  an activity, it routes through `openNewActivity(prefillName)` too.
+  an activity, it routes through `openNewActivity(prefillName)` (a plan) or
+  `openCompDraft(prefillName)` (something already done) too.
 
   Both composers — the one on Home and the one at the end of a collection's
   list — are a way to *start* an activity, not a way to file one. They take a
-  name, clear themselves, and open the sheet with it prefilled.
+  name, clear themselves, and open a sheet with it prefilled.
+
+  **Which sheet is a question, asked first.** `startNewActivity(prefillName)`
+  shows a two-item action sheet — *New Activity* / *Completed Activity* — and
+  routes. See **Adding something you already did**.
 
   This is a deliberate reversal of the original design, in which the composers
   inserted on Return with only a name. That was the fastest path in the app and
@@ -1999,7 +2150,7 @@ functions look redundant:
   thinking about the thing.
 
   The bulk sheet (`js/bulk.js`) already satisfies this: its rows *are* the form,
-  carrying name, notes, location, target and priority before anything is
+  carrying name, location, target and priority before anything is
   written. So does an import, which hands off to the activity sheet for one
   result or the bulk sheet for several.
 
@@ -2008,8 +2159,8 @@ functions look redundant:
   Home's.
 
   **The activity sheet's shape.** Everything is on one screen: name, then
-  target date and list side by side, then priority, location, reminder,
-  notes and links. Three things hold it together and none of them is
+  target date and list side by side, then priority, location, reminder
+  and links. Three things hold it together and none of them is
   decoration:
 
   - **The name uses `.fg-hero`** — serif, 22px, its own tinted ring, and
@@ -2024,11 +2175,18 @@ functions look redundant:
     when the user has no lists and the date must then span the line.
     The List half is a `.picker-btn` rather than a `<select>` — it opens
     `openListPicker()`, which is the one way to assign a collection.
-  - **There is no "More options" disclosure.** Notes and links are shown
-    outright. Location was pulled out of it first, for the reason above;
-    the rest followed once the paired line made room, because a
-    collapsed field is one most people never open. Don't put it back —
-    the whole sheet fits a 320px screen without scrolling.
+  - **There is no "More options" disclosure.** Links are shown outright.
+    Location was pulled out of it first, for the reason above; the rest
+    followed once the paired line made room, because a collapsed field is
+    one most people never open. Don't put it back — the whole sheet fits
+    a 320px screen without scrolling.
+  - **There is no Notes field**, and this is not the disclosure argument
+    again. "Why is this on your list?" is the wrong question at the
+    moment of capture: the answer is the activity's name. The field sat
+    empty on nearly every row while costing the sheet a block of height,
+    and what you thought about the thing *afterwards* already has a
+    home — "How it went" on the completion sheet. `Activities.description`
+    still exists and nothing writes it; see **Back end**.
 - **Completing.** Tapping the check opens `openComp()` — **one sheet**, with
   every field on it: the name, the date, the place, the photos and video, and
   how it went. **Nothing is written until Save**, so an accidental tap costs a
@@ -2038,6 +2196,126 @@ functions look redundant:
   separate details one you had to go and find afterwards, three taps down
   inside the activity sheet. The moment you tick something off is the moment
   you have the photos, so they belong in the same place.
+
+  **The name is an editable `.fg-hero` field in all three modes** —
+  completing something, editing something already done, and logging
+  something that never existed as a plan. It was briefly a static heading
+  while completing, on the grounds that the name was a fact the user had
+  already written; that was wrong in practice. The moment you tick something
+  off is exactly when you notice the name is wrong, and having to save,
+  reopen and edit to fix it was worse than the box being there. (The
+  `.sheet-subject` style that heading used is gone with it — don't
+  reintroduce it here without reading this paragraph.)
+
+  **Below the name it is three blocks, not four fields.** It was four
+  identically-shaped `.fg` blocks in a column — same mono label, same 46px
+  box, same 22px gap — so nothing said which part was the record of what
+  happened and which was the story you tell about it, and the two one-word
+  answers were as visually loud as the photos. Now:
+
+  - **`.comp-card`** — Date and Where as inset grouped rows, icon and mono
+    label on the left, value on the right, split by a hairline inset past
+    the icon column. Worth ~80px. **Its overflow stays `visible`**: the
+    location dropdown hangs out of the bottom of it, so the rows carry no
+    background of their own and nothing needs clipping to the corner radius.
+    `.loc-wrap` is the *whole row*, not the input, or `.loc-results` would
+    drop at the width of the value rather than the width of the card. The
+    date input's native calendar glyph is suppressed, since the row already
+    leads with one.
+  - **The card's rows are Date, Where and List**, all three on every mode.
+    The **Date** row opens the picker from anywhere on the row
+    (`openCompDatePicker()` calls `showPicker()`): the native calendar glyph
+    is suppressed because the row leads with one, and on desktop that glyph
+    is the only part of a date input a click opens the picker from. The
+    **List** row is a move — `confirmComplete()` writes the list columns only
+    when the set actually changed (`compListsBefore`), because with the
+    multi-list migration absent `listFieldsFor()` returns `collection_id`
+    alone and writing it back unchanged would strip the activity out of every
+    list but its home. It matters most on a *completed* activity: the
+    activity sheet hides "Edit details" once something is done, so this is
+    the only way to refile one.
+  - **`.comp-sec`** — a mono head with its action on the same line, then the
+    content. The Add pill moved onto the photos head: it stays the small pill
+    the media section above requires, and gives up the line of its own that
+    it had no content to justify.
+  - **`.comp-note`** — "How it went" set in the **serif**, because that is
+    the face it is read back in (`.ad-note.prose`) and it is the one thing on
+    the sheet the user writes rather than picks. The placeholder stays sans.
+
+  **At least one photo or video is required to mark something
+  accomplished.** A completion with nothing attached is a date, and the media
+  is also what gives the activity a cover, a grid card and a map pin — so the
+  one moment the user certainly has it is the one moment to ask. Three parts,
+  and the third is the one that keeps it from being a wall:
+
+  - `confirmComplete()` refuses to save when `compNew && !upMedia.length`,
+    shaking and scrolling to `#compMediaSec`. An upload still in flight
+    (`_mediaPending`) gets its own message — the user has already done the
+    thing being asked for.
+  - **The rule applies on the way in only.** `compNew` gates all of it, so an
+    activity completed before the rule existed, or one whose media was
+    removed afterwards, can still be edited and saved. Enforcing it on the
+    edit pass would strand those rows — their owner could not fix a date or a
+    note without first finding a photo of something they did years ago.
+  - `updateMediaRequirement()` (`activities.js`) swaps the section's
+    qualifier between *optional* and *required* and shows `#compMediaHint`
+    while the rule is unmet. It is called from **`renderThumbs()`**, which
+    every change to `upMedia` ends in, so the hint cannot drift out of step
+    with the tiles. A requirement discovered by pressing the button you
+    thought would finish is a dead end, not a rule.
+
+  It is satisfiable offline: photos fall back to inline base64 without the
+  storage bucket or a connection. **Video is not** — it is refused offline —
+  so a tunnel means the requirement has to be met with a photo.
+
+#### Adding something you already did
+
+You ride in a helicopter on a whim. It counts, it belongs in the app, and
+there was no path to it: you had to create the plan and immediately complete
+it, which is two sheets and a fiction in between. The app was worst at
+exactly the thing it is for.
+
+**The completion sheet already was the form** — name, date, place, photos,
+how it went — so it grew a **draft mode** rather than a second sheet being
+built beside it. `openCompDraft(prefillName)` opens it with no row behind it
+and `commitCompDraft()` inserts instead of updating. Everything the sheet
+enforces still applies, the mandatory photo above all: something worth adding
+after the fact is something you have a picture of.
+
+- **`compNew` and `compDraft` are separate flags.** `compNew` means "this
+  save is the moment it becomes accomplished" (media required, title reads
+  *Accomplished*, Save inserts nothing); `compDraft` means "there is no row
+  yet, Save inserts one". Every completion path sets `compNew`; only this one
+  sets both.
+- **It grows one field: the list.** A third `.comp-row` in the card,
+  `renderCompListRow()`, hidden outside draft mode — an activity completed in
+  place is already filed, and moving it belongs on the activity sheet. It
+  shares `targetListIds` and `renderActListValue()` with the activity sheet
+  (the two are never open at once), so `listFieldsFor()` works unchanged and
+  the "3 lists" wording cannot drift between them.
+- **`target_date` is null and `priority` is the default.** Neither means
+  anything once something is done, and the app draws neither on a completed
+  activity.
+- **`dupeGuard()` runs, because this is an add path.** Fields are read off
+  the sheet before the check, as in `saveActivity()` — the check can open a
+  sheet on top of this one.
+
+**The chooser is on the three human entry points and nowhere else** — Home's
+composer, a collection's composer, and the FAB on a collection. Not inside
+`openNewActivity()` itself: a link import (`handOffSingle`) and the bulk
+sheet land there too, and both are plans by construction, so the question
+would have only one answer. On Home it sits **after** the `looksLikeUrl()`
+branch for the same reason — a pasted TikTok link is not something you
+already did.
+
+**It costs the fast path a tap.** The composers were tuned so capture costs
+one extra tap and it is now two. *New Activity* is first so the common answer
+stays under the thumb. If that ever grates, the fallback is keeping the
+composers going straight to the activity sheet and leaving the chooser on the
+FAB alone — you are typing a *plan* into a composer.
+
+There is no fourth entry point. The Search screen's "add what you typed"
+(`searchAddAsNew()`) used to be one; it went with the screen.
 
   The photos and notes then spent a while behind an "Add photos, video &
   notes" disclosure *on* this sheet, which was the same mistake one level in —
@@ -2053,10 +2331,19 @@ functions look redundant:
   **The activity sheet reads name → badges → photos → "How it went".** The
   title leads because it is what the sheet is about, and the state/date pair
   reads as the caption beneath it while still sitting directly above the media
-  it names. The name is centred on a completed activity, to sit over the
-  symmetric full-width pair of badges below it; a pending activity's badges are
-  small left-aligned chips, so its title stays left. Spacing runs downward from
-  the title — `.ad-title` has no top margin and `.ad-badges` carries the gap.
+  it names. **Both states carry the same pair of full-width badges** — state
+  and date when it is done, priority and deadline when it is not — sized to
+  the sheet's other controls rather than to the small chips the rest of the
+  app uses, because at 29px the serif title left them stranded in an empty
+  row. The deadline badge is bare coloured text everywhere else, so
+  `.ad-badges .badge` mixes its fill out of `currentColor`; that way the chip
+  cannot disagree with the urgency hue and no per-urgency token is needed. The
+  name is centred on a completed activity, where the sheet is a record rather
+  than a plan. Spacing runs downward from the title — `.ad-title` has no top
+  margin and `.ad-badges` carries the gap.
+
+  **There is no Target section.** The deadline badge in the header already
+  says it, and a second copy three sections down said it twice.
 
   **The media grid is capped at six tiles** (`AD_GRID_MAX` in
   `activities.js`) — two rows. Past that it shows five and folds the rest
@@ -2105,7 +2392,7 @@ they can be queued when there is no network.
 | Table | Columns |
 | --- | --- |
 | `Collections` | `id`, `created_at`, `name`, `description`, `cover_image`, `user_id`, `number_activities`, `activites_completed`, `category_tag` |
-| `Activities` | `id`, `created_at`, `collection_id`, `extra_collection_ids` *(optional — added by `multilist.sql`; see **One activity, several lists**)*, `name`, `description`, `target_date`, `priority`, `date_completed`, `experience_notes`, `photos`, `links`, `location`, `location_lat`, `location_lng`, `category_tag`, `remind_at` (see below) |
+| `Activities` | `id`, `created_at`, `collection_id`, `extra_collection_ids` *(optional — added by `multilist.sql`; see **One activity, several lists**)*, `name`, `description` *(dead — see below)*, `target_date`, `priority`, `date_completed`, `experience_notes`, `photos`, `links`, `location`, `location_lat`, `location_lng`, `category_tag`, `remind_at` (see below) |
 | `Users` | `id` (= `auth.users.id`), `created_at`, `display_name`, `username`, `icon` |
 | `collection_members` *(optional)* | `collection_id`, `user_id`, `role`, `display_name`, `created_at` — added by `sharing.sql` |
 | `collection_invites` *(optional)* | `code` (PK), `collection_id`, `created_by`, `role`, `revoked`, `expires_at`, `created_at` |
@@ -2131,6 +2418,16 @@ offline write queue tractable — see **Working offline**.
 
 Schema notes and traps:
 
+- **`Activities.description` is dead and must stay that way.** It was the
+  activity's "Notes / Why is this on your list?" field, which is gone from
+  the sheet, from the bulk rows, from the import drafts, from the activity
+  detail sheet, from both search paths and from `mapActivity()` — so
+  nothing in the app reads or writes it. **The column is deliberately not
+  dropped**: existing rows still hold whatever people typed, and a
+  `drop column` is the one step of this that cannot be undone. Run
+  `alter table "Activities" drop column description;` only if you are
+  certain nobody wants it back. `Collections.description` is a different
+  field and is very much alive — it is the blurb on a list's banner.
 - **`Collections.activites_completed` is misspelled in the database** (missing
   the second `i`). `api.js` matches the real column name. Don't "fix" it in code
   without renaming the column.
@@ -2199,7 +2496,7 @@ Four pieces make that work, and all four must stay in sync:
 1. **`manifest.webmanifest`** — `display: standalone`, `start_url: ./index.html`,
    a `share_target` (GET, into `./index.html`) that makes the app a share
    destination on Android and desktop Chrome — iOS ignores it, which is why
-   **Sharing a link in** has three tiers —
+   **Sharing a link in** has tiers at all —
    `theme_color`/`background_color` both `#efece6` (matching `--bg`, so the
    splash and status bar don't flash a different color), and three icons.
 2. **The `<head>` meta block in `index.html`.** iOS ignores the manifest's
@@ -2518,19 +2815,18 @@ Two things that will bite:
   is now worked around rather than open: the import sheet leads with "read a
   screenshot instead", which goes through the vision path and does not care
   what platform the picture came from.
-- **The iOS Shortcut is set up by hand.** There is no way to install one
-  programmatically, so tier 2 of **Sharing a link in** depends on the user
-  following five steps in the You tab. A downloadable `.shortcut` file
-  hosted alongside the app would cut that to one tap.
 - **An import costs an LLM call.** `unfurl` calls Claude per shared link
   (~1–2¢). Nothing caches by URL, so sharing the same link twice pays
   twice. A small `url → result` table would fix it.
 - **So does creating an activity, now.** The location guess is a model call
-  per new activity whose name is at least three characters, whether or not
-  it turns out to name a place — and the great majority do not, so most of
-  those calls buy nothing. A cheap client-side pre-filter (does the name
-  contain a capitalised word that is not the first?) would skip most of
-  them; a `name → place` cache would fix the repeats. Neither is written.
+  per *distinct* name of at least three characters, whether or not it turns
+  out to name a place — and the great majority do not, so most of those calls
+  buy nothing. The `name → place` cache is written and kills the repeats
+  within a session; it does not persist, so the same name asked tomorrow pays
+  again. The cheap client-side pre-filter (does the name contain a
+  capitalised word that is not the first?) would skip most of the remainder
+  and is deliberately **not** written: it is lossy, and a lowercase
+  "go to arches national park" is exactly the input it would silently drop.
 - **The location guess is unverified against a real model.** The gates, the
   rejection rule and the fill/undo path are all tested, but the prompt in
   `predictPlace()` has never been run against Claude from this app — the
@@ -2563,7 +2859,7 @@ Two things that will bite:
   Someone who signs up with a different address from the one they were
   invited at — a work address on the laptop, a personal one on the
   phone — gets nothing, and there is no way for the app to notice. They
-  fall back to **You → Join a shared list** with the code, which is why
+  fall back to **Lists → Join a List** with the code, which is why
   `sendInviteLink()` puts the code in the message body.
 - **There is no password reset.** The confirmation landing already redeems
   a `type=recovery` link — it goes through the same `verifyOtp()` — so
