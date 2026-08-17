@@ -305,6 +305,9 @@ async function showApp(){
      is what lets a change of home address move them. See "THIS
      ACTIVITY IS AT HOME" in api.js. */
   probeHomeFlag();
+  /* Spin the geo function's isolate up and open the connection, so the
+     first place search of the session pays for neither. */
+  warmGeo();
   /* Find out whether reminders are available, then re-render Home so the
      banner can appear, and ping anything already due. */
   /* Anything written while offline on an earlier visit is still in the

@@ -101,7 +101,7 @@ CLAUDE.md             This guide
 README.md             Human-facing setup + structure overview
 manifest.webmanifest  PWA metadata (name, icons, standalone display, theme color)
 sw.js                 Service worker — offline app shell + runtime caching. Must stay at the root.
-supabase/             Backend — schema.sql (reminders + reminder_deliveries), profiles.sql (the Users row, its RLS and the sign-up trigger), sharing.sql (shared lists), multilist.sql (one activity in several lists), home.sql (the saved Home address), storage.sql (the media bucket), cron.sql, and three Edge Functions: send-reminders, unfurl (shared links, screenshots *and* location prediction) and delete-account (erasing an account needs the service_role key, so it cannot live in the client). All optional except profiles.sql; each other piece probes for itself and the UI that needs it hides when it is absent.
+supabase/             Backend — schema.sql (reminders + reminder_deliveries), profiles.sql (the Users row, its RLS and the sign-up trigger), sharing.sql (shared lists), multilist.sql (one activity in several lists), home.sql (the saved Home address), storage.sql (the media bucket), cron.sql, and four Edge Functions: send-reminders, unfurl (shared links, screenshots *and* location prediction), geo (place search, holding the HERE key so the browser never does) and delete-account (erasing an account needs the service_role key, so it cannot live in the client). All optional except profiles.sql; each other piece probes for itself and the UI that needs it hides when it is absent.
 css/                  One stylesheet per concern (see CSS file map)
 js/                   One script per concern (see JS file map)
 icons/                App icon PNGs + generate.py, the script that draws them
@@ -437,9 +437,14 @@ storage is cheap — `storage.sql` carries a sweeper query in a comment.
 #### Searching for a place
 
 `locSearch()` and `placeSearch()` in `location.js`. **Two engines behind one
-shape** — `HERE_API_KEY` in `config.js` decides which. Everything downstream
+shape** — HERE, and Nominatim when HERE cannot answer. Everything downstream
 sees `{name, sub, lat, lng}` either way, so the dropdown, the shortcuts and
 the save-time resolve are written once.
+
+**The browser never talks to HERE.** It talks to
+`supabase/functions/geo`, which holds the key as a function secret. There is
+no key in `config.js` and one must not be added — see **Paying for the proxy**
+below, which is the whole reason that file is shaped the way it is.
 
 **Why HERE and not the free OpenStreetMap geocoders.** The field has to answer
 two different questions and the free options each answer only one. Measured,
@@ -458,9 +463,17 @@ ranks prominence well and has **no typo tolerance at all**. Tuning Photon's
 not a knob that fixes it. Running both and merging was the keyless option and
 is what the fallback approximates. HERE does both columns in one request.
 
-Without a key everything still works: `placeSearch()` falls back to Nominatim,
-which is what the app used before. You lose typo tolerance and near-me
-ranking, not the feature.
+Without the function deployed, or without the secret set, everything still
+works: `placeSearch()` falls back to Nominatim, which is what the app used
+before. You lose typo tolerance and near-me ranking, not the feature.
+
+**`null` and `[]` mean different things** coming back from `geoQuery()`.
+`null` is "the function could not answer" — not deployed, no secret, HERE
+5xx — and is the signal to try Nominatim. `[]` is "asked, and there is
+nothing", which is a real answer and is **not** retried, because asking a
+worse geocoder the same question spends a round trip to be told the same
+thing. The one exception is `geocodeOnce()`, where the answer blocks a save,
+so both cases fall through.
 
 Two HERE-specific things to keep:
 
@@ -485,6 +498,59 @@ JavaScript. It happened to work for apostrophes and would not have survived a
 backslash. `_locResults[resultsId]` plus `locPickIdx(id, i)` cannot be
 mis-escaped. `_locSeq` drops a slow response a newer keystroke has overtaken,
 the same guard `maybeGuessLocation()` has always had.
+
+#### Paying for the proxy
+
+The key could have shipped in `config.js` restricted by origin — that is what
+these keys are designed for and what Mapbox and Google Maps JS keys do. It was
+**considered and rejected**: an origin check is a header a determined caller
+sets themselves, so the key would be a working credential in every visitor's
+devtools, billable to the account. Nothing usable ships.
+
+That costs one extra hop, browser → `geo` → HERE, on a path where latency *is*
+the experience. Everything in **THE geo FUNCTION** in `location.js` and the
+header of `functions/geo/index.ts` is about paying it back, and most of it
+works by not making the request at all:
+
+1. **A session cache, misses included** (`_geoCache`). Typing is not a sequence
+   of distinct queries, it is one query typed and re-typed — backspacing,
+   fixing a typo, a second activity in the same place. All free. This is the
+   biggest win by a distance, and it is why the debounce could stay at 320ms
+   rather than being lengthened to compensate.
+2. **Prefix reuse on an empty answer** (`geoEmptyByPrefix`). If `jamba jui`
+   found nothing, `jamba juic` cannot either — the matching only narrows. So
+   the longer query is answered instantly, with no request.
+3. **A warm isolate.** `warmGeo()` at sign-in starts the function and the TLS
+   handshake, so the first search of a session pays for neither. Cold start is
+   the slowest request this feature ever makes.
+4. **GET with `Cache-Control: private`**, so the browser's own HTTP cache
+   absorbs what the session cache misses — across reloads, and across the four
+   sheets that each have their own location field. `private` matters: these
+   responses are keyed to a bias point, which is roughly where the user is
+   standing.
+
+Two things in the function are there for the same reason and look like
+over-care until you know why:
+
+- **It has no imports at all.** That is what a cold start actually costs. It
+  is also why this is not a branch inside `unfurl` — that function pulls in
+  the Anthropic SDK, so every keystroke-pause would pay for a dependency it
+  never calls.
+- **It trims the payload.** HERE returns a large object per item; the UI draws
+  four fields. Trimming server-side keeps the bytes off the slower hop.
+
+**The abort controllers are per-mode** (`_geoAbort`), not one shared. A
+save-time geocode and a type-ahead search are different questions asked at the
+same moment — the user presses Save while a search is in flight — and a single
+controller let whichever started second kill the first. A cancelled geocode
+reads as "we couldn't find that place" and blocks a save that should have gone
+through.
+
+**Never deploy `geo` with `--no-verify-jwt`**, for the same reason `unfurl`
+must not be: without the JWT check it is an open anonymous geocoding endpoint
+billed to your HERE account, and its URL is visible to anyone with devtools.
+The check is a local signature verification at the gateway and costs nothing
+measurable, so there is no speed argument for dropping it.
 
 #### The text and the coordinates must agree
 
@@ -2904,9 +2970,15 @@ Two things that will bite:
   the connection comes back, so it stays off the map until someone edits it.
   A sweep in `revalidate()` over rows with a `location` and null
   `location_lat` would close it.
-- **`HERE_API_KEY` is empty until you set one**, so place search runs on the
-  Nominatim fallback: no typo tolerance ("Jamab Juice" returns nothing) and no
-  near-me ranking. Everything works, less well. See **Searching for a place**.
+- **Place search needs `geo` deployed and `HERE_API_KEY` set as a secret**,
+  or it runs on the Nominatim fallback: no typo tolerance ("Jamab Juice"
+  returns nothing) and no near-me ranking. Everything works, less well. See
+  **Searching for a place**.
+- **The geo function has no server-side cache.** The client's session cache
+  and the browser's HTTP cache absorb most repeats, but two different users
+  searching the same thing are two HERE calls, and so is the same user
+  tomorrow. A small `query → results` table would fix it — the same table the
+  import path already wants.
 - **Nothing re-flags an activity as Home retroactively.** The `location_is_home` column defaults false, so activities set to your home address *before* this shipped do not follow a move. They have to be re-picked with the Home shortcut once.
 - **Home is one place, not several.** No Work, no saved favourites. The
   storage is three columns on `Users`; the point at which that stops being

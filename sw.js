@@ -9,7 +9,7 @@
    installs pick the new build up instead of serving a stale one.
    ============================================================== */
 
-const CACHE_VERSION = 'v60';
+const CACHE_VERSION = 'v61';
 const SHELL_CACHE = `bucketlist-shell-${CACHE_VERSION}`;
 const VENDOR_CACHE = `bucketlist-vendor-${CACHE_VERSION}`;
 const IMAGE_CACHE = `bucketlist-images-${CACHE_VERSION}`;
@@ -90,15 +90,21 @@ const IMAGE_HOSTS = [
 ];
 
 /* Never cache: live data and the geocoder. Supabase auth in particular must
-   always hit the network or a signed-out user could be served a stale session. */
+   always hit the network or a signed-out user could be served a stale session.
+
+   Note what this does NOT do to place search. The geo function is on
+   supabase.co, so it lands here and the worker returns without calling
+   respondWith — which hands the request back to normal browser handling,
+   HTTP cache included. That is deliberate: geo answers a GET with
+   `Cache-Control: private, max-age=…`, and the browser cache is the right
+   place to honour it. Taking these responses into a Cache Storage bucket
+   here would ignore that header and outlive it.
+
+   hereapi.com is deliberately absent: the browser never contacts HERE
+   directly. See THE geo FUNCTION in js/location.js. */
 const NEVER_CACHE_HOSTS = [
   'supabase.co',
   'nominatim.openstreetmap.org',
-  /* Place search. Every request carries a different query and a
-     different bias point, so a cache would only ever accumulate
-     one-shot entries — and it would hold the API key in the cache
-     key. */
-  'hereapi.com',
 ];
 
 const matchesHost = (url, hosts) => hosts.some(h => url.hostname === h || url.hostname.endsWith('.' + h));

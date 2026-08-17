@@ -1,21 +1,20 @@
 /* ==============================================================
    LOCATION AUTOCOMPLETE
 
-   Two engines behind one shape. HERE's Autosuggest when
-   HERE_API_KEY is set (see the comment on it in config.js for the
-   measurements behind that choice), OpenStreetMap Nominatim when it
-   is not — which is what the app used before and still works.
+   Two engines behind one shape. HERE's Autosuggest — reached through
+   supabase/functions/geo, never directly, so the key stays off the
+   browser — and OpenStreetMap Nominatim when that cannot answer, which
+   is what the app used before and still works.
 
    Everything downstream of placeSearch() sees the same
    {name, sub, lat, lng} regardless of which one answered, so the
    dropdown, the shortcuts and the save-time resolve are written once.
    ============================================================== */
 
-const HERE_AUTOSUGGEST='https://autosuggest.search.hereapi.com/v1/autosuggest';
-const HERE_GEOCODE='https://geocode.search.hereapi.com/v1/geocode';
+/* No HERE endpoint or key appears in this file, and that is the point:
+   the browser only ever talks to our own function. See THE geo
+   FUNCTION below. */
 const NOMINATIM='https://nominatim.openstreetmap.org';
-
-function hereReady(){ return typeof HERE_API_KEY==='string'&&HERE_API_KEY.length>0; }
 
 /* ---- Where "near me" comes from ----
 
@@ -66,49 +65,134 @@ async function primeBias(){
   }catch(e){/* Safari has thrown on unsupported names; going without is fine. */}
 }
 
-/* ---- HERE ----
+/* ==============================================================
+   THE geo FUNCTION — HERE, without the key ever reaching a browser
 
-   Two result shapes are deliberately dropped. `chainQuery` and
-   `categoryQuery` items ("Coffee", meaning *search for coffee places*)
-   carry NO position, so picking one would file an activity with a name
-   and no coordinates — the exact failure this whole change exists to
-   close. Filtering on `position` catches them and anything else
-   malformed in one test. */
-function hereName(item){
-  const a=item.address||{};
-  const bits=[item.title];
-  const seen=()=>bits.join(', ').toLowerCase();
-  const city=a.city||a.county||'';
-  if(city&&!seen().includes(city.toLowerCase())) bits.push(city);
-  const wide=a.state||a.countryName||'';
-  if(wide&&!seen().includes(wide.toLowerCase())) bits.push(wide);
-  return bits.join(', ');
+   A domain-restricted client key is the normal answer here and it was
+   deliberately rejected: nothing usable ships. So search goes
+   browser → supabase/functions/geo → HERE, and the extra hop is real.
+   Four things claw it back, and between them a typical search is
+   faster than the single-hop version was, because most searches never
+   leave the device at all:
+
+   1. **A session cache, including the misses.** Typing is not a
+      sequence of distinct queries — it is one query typed and
+      re-typed. Backspacing a character, correcting a typo, opening a
+      second activity in the same place: all free. This is the biggest
+      win by a distance and it is why the debounce could stay where it
+      is rather than being lengthened to compensate.
+   2. **Prefix reuse on an empty answer.** If "jamba jui" returned
+      nothing, "jamba juic" cannot return anything either — HERE's
+      matching only narrows. So a longer query whose prefix came back
+      empty is answered instantly, without a request.
+   3. **A warm isolate.** warmGeo() at sign-in spins the function up
+      and opens the TLS connection, so the first search of a session
+      finds both already there. Cold, that is the slowest request the
+      feature ever makes; warm, it is one of the fastest.
+   4. **GET with Cache-Control**, so the browser's own HTTP cache
+      absorbs anything the session cache misses — across reloads, and
+      across the three sheets that each have their own field.
+
+   And an AbortController, so a superseded request stops competing for
+   the connection instead of racing to be ignored.
+   ============================================================== */
+const GEO_URL=`${SUPABASE_URL}/functions/v1/geo`;
+const GEO_CACHE_MAX=300;          /* plenty for a session; bounded so it cannot grow forever */
+const _geoCache=new Map();
+/* Per mode, not one shared controller. A save-time geocode and a
+   type-ahead search are different questions asked at the same moment —
+   the user presses Save while a search is still in flight — and a
+   single controller made whichever started second kill the first. A
+   cancelled geocode reads as "we couldn't find that place" and blocks
+   a save that should have gone through. */
+const _geoAbort={suggest:null,geocode:null};
+
+/* Memoised so a keystroke does not await the auth layer. getSession()
+   reads from memory when the token is live, but it is still a promise
+   and this is the one path where that is worth avoiding. */
+let _geoTok=null,_geoTokAt=0;
+async function geoToken(){
+  if(_geoTok&&Date.now()-_geoTokAt<60000) return _geoTok;
+  try{
+    const{data}=await sb.auth.getSession();
+    _geoTok=data&&data.session?data.session.access_token:null;
+  }catch(e){ _geoTok=null; }
+  _geoTokAt=Date.now();
+  return _geoTok;
 }
 
-function hereSub(item){
-  const label=(item.address&&item.address.label)||'';
-  if(!label) return '';
-  const parts=label.split(',').map(s=>s.trim()).filter(Boolean);
-  /* The label repeats the place name as its first segment; the useful
-     part is the street and city after it. */
-  if(parts.length>1&&item.title&&item.title.toLowerCase().startsWith(parts[0].toLowerCase())) parts.shift();
-  return parts.join(', ');
+/* Rounded to ~1km. The bias point only decides ranking, so a fix that
+   wobbles by a few metres between keystrokes must not miss the cache. */
+function geoCacheKey(mode,q,at){
+  const p=at?`${at.lat.toFixed(2)},${at.lng.toFixed(2)}`:'';
+  return `${mode}|${q.toLowerCase()}|${p}`;
 }
 
-async function hereSearch(q,limit){
+/* "jamba jui" found nothing, so "jamba juic" cannot either. */
+function geoEmptyByPrefix(mode,q,at){
+  const key=geoCacheKey(mode,q,at);
+  const head=key.slice(0,key.indexOf('|')+1);
+  const text=q.toLowerCase();
+  for(const [k,v] of _geoCache){
+    if(v.length||!k.startsWith(head)) continue;
+    const cachedQ=k.slice(head.length,k.lastIndexOf('|'));
+    if(cachedQ&&text.startsWith(cachedQ)) return true;
+  }
+  return false;
+}
+
+function geoRemember(key,items){
+  if(_geoCache.size>=GEO_CACHE_MAX) _geoCache.delete(_geoCache.keys().next().value);
+  _geoCache.set(key,items);
+}
+
+/* Called once at sign-in. Starts the isolate and the TLS handshake so
+   the first real search pays for neither. Deliberately un-awaited and
+   silent — it is an optimisation, and a failed one changes nothing. */
+function warmGeo(){
+  if(!SUPABASE_URL) return;
+  geoToken().then(tok=>{
+    fetch(`${GEO_URL}?warm=1`,{headers:tok?{Authorization:`Bearer ${tok}`}:{}}).catch(()=>{});
+  }).catch(()=>{});
+}
+
+/* Resolves to an array, or null when the function could not answer at
+   all — which is the signal to fall back to Nominatim. An empty array
+   means "asked, and there is nothing", which is a real answer. */
+async function geoQuery(mode,q,limit){
   const at=biasPoint();
-  const params=new URLSearchParams({q,limit:String(limit),lang:'en',apiKey:HERE_API_KEY});
-  /* `at` biases without restricting — Paris still wins for "eiffel
-     tower" from San Francisco. Without any bias HERE needs one of `at`
-     or `in`, so fall back to a whole-world `in` rather than omitting. */
+  const key=geoCacheKey(mode,q,at);
+  if(_geoCache.has(key)) return _geoCache.get(key);
+  if(geoEmptyByPrefix(mode,q,at)){ geoRemember(key,[]); return []; }
+
+  /* A superseded request of the SAME kind should stop, not finish and
+     be discarded. Across kinds they never cancel each other. */
+  if(_geoAbort[mode]) _geoAbort[mode].abort();
+  const ctl=new AbortController();
+  _geoAbort[mode]=ctl;
+
+  const params=new URLSearchParams({q,mode,limit:String(limit||8)});
   if(at) params.set('at',`${at.lat},${at.lng}`);
-  else params.set('in','bbox:-180,-90,180,90');
-  const res=await fetch(`${HERE_AUTOSUGGEST}?${params}`);
-  if(!res.ok) throw new Error('here '+res.status);
-  const data=await res.json();
-  return (data.items||[])
-    .filter(i=>i.position&&isFinite(i.position.lat)&&isFinite(i.position.lng))
-    .map(i=>({name:hereName(i),sub:hereSub(i),lat:i.position.lat,lng:i.position.lng}));
+
+  try{
+    const tok=await geoToken();
+    const res=await fetch(`${GEO_URL}?${params}`,{
+      signal:ctl.signal,
+      headers:tok?{Authorization:`Bearer ${tok}`}:{},
+    });
+    if(!res.ok) return null;
+    const data=await res.json();
+    /* no_key / here_5xx / fetch_failed all mean "ask Nominatim". */
+    if(data.error) return null;
+    const items=data.items||[];
+    geoRemember(key,items);
+    return items;
+  }catch(e){
+    if(e&&e.name==='AbortError') return [];   /* superseded; the newer call owns the box */
+    return null;
+  }finally{
+    if(_geoAbort[mode]===ctl) _geoAbort[mode]=null;
+  }
 }
 
 /* ---- Nominatim (the no-key fallback) ---- */
@@ -126,12 +210,21 @@ async function nominatimSearch(q,limit){
 }
 
 /* The one entry point. Always resolves to an array — a failing engine
-   returns nothing rather than throwing into the caller's UI. */
+   returns nothing rather than throwing into the caller's UI.
+
+   HERE via the geo function first; Nominatim when it cannot answer,
+   which covers the function not being deployed, HERE_API_KEY not being
+   set as a secret, and HERE itself failing. A null from geoQuery() is
+   that signal; an empty array is a real "nothing matches" and is NOT
+   retried against Nominatim, because asking a worse geocoder the same
+   question wastes a round trip on the answer we already have. */
 async function placeSearch(q,limit){
   const query=(q||'').trim();
   if(query.length<2) return [];
   try{
-    return hereReady()?await hereSearch(query,limit||8):await nominatimSearch(query,limit||6);
+    const viaHere=await geoQuery('suggest',query,limit||8);
+    if(viaHere) return viaHere;
+    return await nominatimSearch(query,limit||6);
   }catch(e){
     console.warn('placeSearch:',e&&e.message||e);
     return [];
@@ -437,20 +530,17 @@ async function requireLocation(inputId,errorId,btn){
 async function geocodeOnce(q){
   const query=(q||'').trim();
   if(query.length<2) return null;
-  if(hereReady()){
-    try{
-      const at=biasPoint();
-      const params=new URLSearchParams({q:query,limit:'1',lang:'en',apiKey:HERE_API_KEY});
-      if(at) params.set('at',`${at.lat},${at.lng}`);
-      const res=await fetch(`${HERE_GEOCODE}?${params}`);
-      if(res.ok){
-        const data=await res.json();
-        const item=(data.items||[]).find(i=>i.position);
-        if(item) return {display:hereName(item),lat:item.position.lat,lng:item.position.lng};
-      }
-    }catch(e){ console.warn('geocodeOnce(here):',e); }
-    /* fall through to Nominatim rather than failing outright */
+  /* Same two-engine order as placeSearch, and the same cache — a name
+     the user typed has very often just been searched for. */
+  const viaHere=await geoQuery('geocode',query,1);
+  if(viaHere&&viaHere.length){
+    const hit=viaHere[0];
+    return {display:hit.name,lat:hit.lat,lng:hit.lng};
   }
+  /* Null means the function could not answer; an empty array means it
+     answered "nothing". Only the first is worth asking Nominatim about
+     — but a geocode is a save-blocking answer, so the fallback runs for
+     both rather than refusing a save on one geocoder's opinion. */
   try{
     const res=await fetch(
       `${NOMINATIM}/search?q=${encodeURIComponent(query)}&format=json&limit=1`,

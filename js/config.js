@@ -63,14 +63,29 @@ const VAPID_PUBLIC_KEY='BGkQr3oXiXD5Cs1iyVT6YI5lagtApiNOkFXOk6KPXVnZrnOgWMt-ikNC
 /* ==============================================================
    PLACE SEARCH — HERE
 
-   The API key for HERE's Autosuggest endpoint, which is what the
-   location field searches against. Like SUPABASE_KEY above it is a
-   public, client-side key by design; restrict it to this app's origins
-   in the HERE portal (Access Manager → your app → Credentials) rather
-   than trying to hide it.
+   ⚠️ THERE IS NO KEY IN THIS FILE, AND ONE MUST NOT BE ADDED.
 
-   Free tier is 250k requests/month, which is far past what this app
-   will use. Get one at https://platform.here.com.
+   The location field searches HERE, but the browser never talks to
+   HERE. It talks to supabase/functions/geo, which holds the key as a
+   function secret:
+
+     supabase secrets set HERE_API_KEY=...
+     supabase functions deploy geo
+
+   A domain-restricted client key is the industry-normal answer to this
+   and it was considered and rejected: an origin check is a header a
+   determined caller sets themselves, so a key in this file is a
+   working credential in every visitor's devtools, billable to your
+   account. The proxy costs one extra hop and js/location.js is written
+   around making that hop close to free — read THE geo FUNCTION there
+   before changing any of it.
+
+   Free tier is 250k requests/month, far past what this app will use.
+   Get a key at https://platform.here.com.
+
+   Without the function deployed, or without the secret set, place
+   search falls back to Nominatim — what the app used before. You lose
+   typo tolerance and near-me ranking, not the feature.
 
    ---- Why HERE rather than the OpenStreetMap geocoders ----
 
@@ -85,12 +100,7 @@ const VAPID_PUBLIC_KEY='BGkQr3oXiXD5Cs1iyVT6YI5lagtApiNOkFXOk6KPXVnZrnOgWMt-ikNC
    Nominatim ranks prominence well and has no typo tolerance at all.
    Running both and merging was the keyless option. HERE returns the
    nearby Jamba Juices AND puts Paris first, in one request.
-
-   Left empty, everything still works: locSearch() falls back to
-   Nominatim, which is what the app used before. You lose typo
-   tolerance and near-me ranking, not the feature.
    ============================================================== */
-const HERE_API_KEY='';
 
 /* Default cover images */
 const COVERS=[
