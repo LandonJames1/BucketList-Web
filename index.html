@@ -289,6 +289,15 @@
       <span class="row-body"><span class="row-title">Reminder alerts</span></span>
       <span class="row-trailing"><span id="meNotifyValue"></span></span>
     </button>
+    <!-- One saved place. It is the "Home" shortcut at the top of every
+         location dropdown, and — quietly, and more usefully — the bias
+         point that makes place search mean "near me" without ever
+         raising a geolocation prompt. See HOME in me.js. -->
+    <button class="row tappable has-leading" id="meHomeRow" onclick="openHomeSheet()">
+      <span class="row-leading li-green" id="meHomeIcon"></span>
+      <span class="row-body"><span class="row-title">Home</span></span>
+      <span class="row-trailing"><span id="meHomeValue">Not set</span></span>
+    </button>
     <button class="row tappable has-leading" onclick="pwaShowInstallHelp()">
       <span class="row-leading li-blue"></span>
       <span class="row-body"><span class="row-title">Add to Home Screen</span></span>
@@ -467,7 +476,7 @@
            ever shows up on the map, so hiding it meant most activities
            silently never did. -->
       <div class="fg">
-        <label>Location<span class="opt"> optional</span></label>
+        <label>Location</label>
         <div class="loc-wrap">
           <input id="aLoc" placeholder="Search for a place" maxlength="200" autocomplete="off"
                  oninput="onActLocInput();locSearch(this,'aLocResults')"
@@ -475,6 +484,7 @@
           <input type="hidden" id="aLocLat" /><input type="hidden" id="aLocLng" />
           <div class="loc-results" id="aLocResults"></div>
         </div>
+        <p class="fg-hint" id="aLocError" style="display:none"></p>
         <!-- Shown when maybeGuessLocation() has written the field from
              the activity's name. Unlike the EXIF chip on the completion
              sheet this marks a value already in the box rather than
@@ -527,6 +537,38 @@
      values into the hidden inputs there — nothing is written until the
      activity itself is saved, so backing out of either one changes
      nothing. -->
+<!-- Home — one saved place, set from the You tab. See HOME in me.js. -->
+<div class="modal-overlay" id="homeSheet">
+  <div class="modal">
+    <div class="sheet-grabber"></div>
+    <div class="sheet-bar">
+      <button class="navbtn" onclick="closeModal('homeSheet')">Cancel</button>
+      <div class="sheet-title">Home</div>
+      <button class="navbtn strong" id="homeSaveBtn" onclick="saveHomeSheet()">Save</button>
+    </div>
+    <div class="sheet-body">
+      <div class="fg">
+        <label>Your home address</label>
+        <div class="loc-wrap">
+          <input id="homeLoc" placeholder="Search for a place" maxlength="200" autocomplete="off"
+                 oninput="locSearch(this,'homeLocResults')"
+                 onfocus="locSearch(this,'homeLocResults')" />
+          <input type="hidden" id="homeLocLat" /><input type="hidden" id="homeLocLng" />
+          <div class="loc-results" id="homeLocResults"></div>
+        </div>
+        <p class="fg-hint" id="homeError"></p>
+        <p class="fg-hint">Used for the &ldquo;Home&rdquo; shortcut when you set an activity&rsquo;s
+          location, and to put nearby places first when you search &mdash; so
+          &ldquo;coffee&rdquo; finds the ones near you.</p>
+      </div>
+      <div class="sheet-actions">
+        <button class="btn btn-destructive btn-block" id="homeClearBtn"
+                onclick="clearHomePlace()">Remove Home</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="remindSheet">
   <div class="modal">
     <div class="sheet-grabber"></div>

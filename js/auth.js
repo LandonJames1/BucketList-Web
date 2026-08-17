@@ -48,6 +48,11 @@ function resetAccountState(){
   stopSessionWatch();
   _recheckAfter=0;
   userProfile=null;
+  /* The saved Home address is per-account, and it is mirrored into
+     localStorage — so without this the next person to sign in on this
+     device inherits the previous one's home address as their search
+     bias and their "Home" shortcut. */
+  resetHomePlace();
   /* The globe is kept alive across navigation, so nothing else would
      dispose it — and its pins are the previous account's places. */
   destroyGlobalMap();
@@ -278,6 +283,10 @@ async function showApp(){
      gates the first paint, and awaiting any of it would put it back on
      the critical path this function exists to keep clear. */
   loadUserProfile();
+  /* The saved Home address — the location field's no-typing shortcut and
+     the bias point for place search. Reads localStorage synchronously
+     first, so the shortcut is there before the round trip lands. */
+  loadHomePlace();
   pwaUpdateOnlineState();
   /* Only offer the iOS install walkthrough once someone is signed in;
      installing a login screen is pointless. */
@@ -292,6 +301,10 @@ async function showApp(){
      stores photos and whether it accepts video at all. Probed once,
      early, so the first upload does not have to find out. */
   probeStorage();
+  /* Whether an activity can remember that its location IS home, which
+     is what lets a change of home address move them. See "THIS
+     ACTIVITY IS AT HOME" in api.js. */
+  probeHomeFlag();
   /* Find out whether reminders are available, then re-render Home so the
      banner can appear, and ping anything already due. */
   /* Anything written while offline on an earlier visit is still in the

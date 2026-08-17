@@ -54,6 +54,7 @@ function saveBulkFieldValues(){
     entry._loc=($('bLoc_'+i)||{}).value||'';
     entry._locLat=($('bLocLat_'+i)||{}).value||'';
     entry._locLng=($('bLocLng_'+i)||{}).value||'';
+    entry._locHome=locIsHome('bLoc_'+i);
     entry._date=($('bDate_'+i)||{}).value||'';
     entry._pri=($('bPri_'+i)||{}).value||'medium';
   });
@@ -73,8 +74,8 @@ function bulkApplyDown(field){
     const v=first._pri||'medium';
     bulkEntries.forEach(e=>e._pri=v);
   } else if(field==='loc'){
-    const v=first._loc||'',lat=first._locLat||'',lng=first._locLng||'';
-    bulkEntries.forEach(e=>{e._loc=v;e._locLat=lat;e._locLng=lng;});
+    const v=first._loc||'',lat=first._locLat||'',lng=first._locLng||'',home=!!first._locHome;
+    bulkEntries.forEach(e=>{e._loc=v;e._locLat=lat;e._locLng=lng;e._locHome=home;});
   }
   _skipSaveBulk=true;
   renderBulkEntries();
@@ -105,8 +106,12 @@ function renderBulkEntries(){
       </div>
       <div class="bulk-field">
         <div class="loc-wrap">
+          <!-- data-is-home has to be written back out here: these rows are
+               re-rendered from bulkEntries wholesale, so a flag living only
+               on the DOM node would be lost on the next redraw and the row
+               would silently stop following the home address. -->
           <input id="bLoc_${i}" placeholder="Location" maxlength="200" autocomplete="off"
-                 value="${esc(entry._loc||'')}"
+                 value="${esc(entry._loc||'')}"${entry._locHome?' data-is-home="1"':''}
                  oninput="locSearch(this,'bLocRes_${i}')" onfocus="locSearch(this,'bLocRes_${i}')"/>
           <input type="hidden" id="bLocLat_${i}" value="${esc(entry._locLat||'')}"/>
           <input type="hidden" id="bLocLng_${i}" value="${esc(entry._locLng||'')}"/>
@@ -144,6 +149,19 @@ async function saveBulkActivities(){
   const dest=bulkListId||curListId;
   if(!dest){showToast('Create a list first');return;}
 
+  /* Every activity needs a location, here as everywhere else. The check
+     is on the whole batch rather than row by row for the same reason
+     the duplicate check is: being stopped ten times in a row is
+     intolerable. The first offending row is what gets focused. */
+  const noLoc=valid.find(e=>!(e._loc||'').trim());
+  if(noLoc){
+    const i=bulkEntries.indexOf(noLoc);
+    const el=$('bLoc_'+i);
+    if(el){shakeEl(el);el.focus();el.scrollIntoView({block:'center',behavior:'smooth'});}
+    showToast('Every activity needs a location.');
+    return;
+  }
+
   /* A batch is checked as a whole rather than row by row. Stopping on
      the first collision would mean fixing one row and being stopped
      again by the next, which is intolerable at ten rows — so the user
@@ -156,7 +174,23 @@ async function saveBulkActivities(){
   if(!keep.length) return;
 
   const btn=$('bulkSaveBtn');
-  btn.disabled=true;btn.textContent='Adding…';
+  btn.disabled=true;
+
+  /* Turn typed text into coordinates for any row where the user did not
+     pick from the dropdown, so a bulk-added activity lands on the map
+     like a singly-added one does. Only unresolved rows cost a request,
+     and offline this is skipped entirely rather than blocking the add —
+     the same trade requireLocation() makes. */
+  const unresolved=keep.map(({_src:e})=>e).filter(e=>!e._locLat||!e._locLng);
+  if(unresolved.length&&navigator.onLine){
+    btn.textContent='Finding places…';
+    for(const e of unresolved){
+      const hit=await geocodeOnce(e._loc);
+      if(hit){e._locLat=hit.lat;e._locLng=hit.lng;}
+    }
+  }
+
+  btn.textContent='Adding…';
   const rows=keep.map(({_src:e})=>({
     name:e._name.trim(),
     collection_id:dest,
@@ -166,6 +200,7 @@ async function saveBulkActivities(){
     target_date:e._date||null,
     priority:e._pri||'medium',
     links:e.links||[],
+    ...(homeFlagReady()?{location_is_home:!!e._locHome}:{}),
   }));
   const{error,offline}=await dbInsert('Activities',rows);
   btn.disabled=false;btn.textContent='Add All';

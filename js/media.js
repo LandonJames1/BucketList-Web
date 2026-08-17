@@ -338,6 +338,10 @@ function acceptPhotoLocation(){
   $('compLoc').value=_photoLoc.display;
   $('compLocLat').value=_photoLoc.lat;
   $('compLocLng').value=_photoLoc.lng;
+  /* These coordinates belong to this exact text, so say so — otherwise
+     the save-time resolve treats the field as unresolved and geocodes
+     a place the photo already told us. */
+  locGeoMark($('compLoc'));
   /* Accepted counts as settled: the field is no longer empty, so
      nothing would offer again anyway, but this keeps the chip from
      lingering next to a field it has already filled. */

@@ -42,6 +42,7 @@ function paintStaticIcons(){
   set('actListChevron',icon('chevron-right'));
   set('aRemindChevron',icon('chevron-right'));
   set('meNotifyIcon',icon('clock'));
+  set('meHomeIcon',icon('home'));
   set('listPickerSearchIcon',icon('search'));
   set('listPickerNewIcon',icon('plus'));
   set('meInstallChevron',icon('chevron-right'));

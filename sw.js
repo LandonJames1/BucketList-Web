@@ -9,7 +9,7 @@
    installs pick the new build up instead of serving a stale one.
    ============================================================== */
 
-const CACHE_VERSION = 'v58';
+const CACHE_VERSION = 'v60';
 const SHELL_CACHE = `bucketlist-shell-${CACHE_VERSION}`;
 const VENDOR_CACHE = `bucketlist-vendor-${CACHE_VERSION}`;
 const IMAGE_CACHE = `bucketlist-images-${CACHE_VERSION}`;
@@ -94,6 +94,11 @@ const IMAGE_HOSTS = [
 const NEVER_CACHE_HOSTS = [
   'supabase.co',
   'nominatim.openstreetmap.org',
+  /* Place search. Every request carries a different query and a
+     different bias point, so a cache would only ever accumulate
+     one-shot entries — and it would hold the API key in the cache
+     key. */
+  'hereapi.com',
 ];
 
 const matchesHost = (url, hosts) => hosts.some(h => url.hostname === h || url.hostname.endsWith('.' + h));

@@ -56,8 +56,11 @@ function mapActivity(row){
       photos:media.map(m=>m.type==='video'?m.poster:m.url).filter(Boolean),
       location:row.location||'',
       locationLat:row.location_lat||null,locationLng:row.location_lng||null,
+      /* Undefined without the column, which reads as false — exactly
+         the behaviour we want before supabase/home.sql is run. */
+      locationIsHome:row.location_is_home===true,
       remindAt:row.remind_at||null,remindNote:row.reminder_note||'',createdAt:row.created_at};
-  }catch(e){console.error('mapActivity error:',e,row);return{id:row.id,listId:row.collection_id,listIds:[row.collection_id].filter(Boolean),name:row.name||'',targetDate:null,priority:'medium',links:[],completed:!!row.date_completed,completedDate:row.date_completed||null,completionNotes:'',media:[],photos:[],location:'',locationLat:null,locationLng:null,remindAt:null,remindNote:'',createdAt:row.created_at};}
+  }catch(e){console.error('mapActivity error:',e,row);return{id:row.id,listId:row.collection_id,listIds:[row.collection_id].filter(Boolean),name:row.name||'',targetDate:null,priority:'medium',links:[],completed:!!row.date_completed,completedDate:row.date_completed||null,completionNotes:'',media:[],photos:[],location:'',locationLat:null,locationLng:null,locationIsHome:false,remindAt:null,remindNote:'',createdAt:row.created_at};}
 }
 
 /* ==============================================================
@@ -181,6 +184,44 @@ async function probeRemindColumn(){
   return _remindReady;
 }
 function remindersReady(){ return _remindReady===true; }
+
+/* ==============================================================
+   "THIS ACTIVITY IS AT HOME"
+
+   A boolean on the activity, set only when its location was chosen
+   with the Home shortcut. It exists so that changing your home address
+   moves the activities that meant *home* and nothing else.
+
+   WHY THIS IS NOT A TEXT MATCH. The obvious implementation is to find
+   activities whose `location` equals the old home address and rewrite
+   them. That is wrong, and wrong in the worst way this app has:
+   silently. If Home is "Denver, Colorado" and the user separately
+   searched for and picked Denver for a hike — because the hike is in
+   Denver, not because they live there — then moving house to Austin
+   would drag the hike to Austin too. Nothing on screen would say so.
+   That is the same class of defect as the stale-coordinates bug the
+   geoFor contract exists to close, so it is not worth trading a
+   migration to avoid.
+
+   The flag records *intent*, which text cannot. Picking Home means "my
+   home, whatever that is"; picking a place that happens to be the same
+   town means that town, permanently.
+
+   Optional like everything else here — without the column, changing
+   your home address updates nothing and the app says so once.
+   ============================================================== */
+let _homeFlagReady=null;
+
+async function probeHomeFlag(){
+  try{
+    const{error}=await sb.from('Activities').select('location_is_home').limit(1);
+    _homeFlagReady=!error;
+    if(error) console.info('[home] no location_is_home column — activities set to Home will not '+
+      'follow a change of home address. Run supabase/home.sql.');
+  }catch(e){ _homeFlagReady=false; }
+  return _homeFlagReady;
+}
+function homeFlagReady(){ return _homeFlagReady===true; }
 
 /* ==============================================================
    THE CACHE

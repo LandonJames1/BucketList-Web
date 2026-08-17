@@ -1,55 +1,459 @@
 /* ==============================================================
-   LOCATION AUTOCOMPLETE — place search via OpenStreetMap Nominatim.
-   Debounced so typing does not hammer the public API.
+   LOCATION AUTOCOMPLETE
+
+   Two engines behind one shape. HERE's Autosuggest when
+   HERE_API_KEY is set (see the comment on it in config.js for the
+   measurements behind that choice), OpenStreetMap Nominatim when it
+   is not — which is what the app used before and still works.
+
+   Everything downstream of placeSearch() sees the same
+   {name, sub, lat, lng} regardless of which one answered, so the
+   dropdown, the shortcuts and the save-time resolve are written once.
    ============================================================== */
 
+const HERE_AUTOSUGGEST='https://autosuggest.search.hereapi.com/v1/autosuggest';
+const HERE_GEOCODE='https://geocode.search.hereapi.com/v1/geocode';
+const NOMINATIM='https://nominatim.openstreetmap.org';
+
+function hereReady(){ return typeof HERE_API_KEY==='string'&&HERE_API_KEY.length>0; }
+
+/* ---- Where "near me" comes from ----
+
+   The bias point is what turns "coffee" into the cafés on your street
+   rather than Coffee County, Georgia. Two sources, in order:
+
+     1. a real geolocation fix, if we have one;
+     2. the user's Home address, which costs no permission at all.
+
+   Note what does NOT happen here: focusing the location field never
+   triggers a permission prompt. A browser dialog appearing because you
+   tapped a text box is startling and, answered "no" in that moment,
+   permanently. So the fix is only ever fetched when the user has
+   ALREADY granted permission (primeBias, which asks the Permissions
+   API and never the user) or when they explicitly tap "Current
+   location" in the dropdown. Everyone else is biased by Home. */
+let _biasPos=null,_biasTried=false;
+
+function biasPoint(){
+  if(_biasPos) return _biasPos;
+  const home=homePlace();
+  if(home&&home.lat!=null&&home.lng!=null) return {lat:home.lat,lng:home.lng};
+  return null;
+}
+
+function requestBiasPoint(){
+  _biasTried=true;
+  return new Promise(res=>{
+    if(!navigator.geolocation) return res(null);
+    navigator.geolocation.getCurrentPosition(
+      p=>{_biasPos={lat:p.coords.latitude,lng:p.coords.longitude};res(_biasPos);},
+      ()=>res(null),
+      /* High accuracy is pointless for a search bias and costs a GPS
+         warm-up; a ten-minute-old fix is fine. */
+      {enableHighAccuracy:false,timeout:10000,maximumAge:600000});
+  });
+}
+
+/* Fetch a fix ONLY if permission is already granted — never prompt.
+   Called when a location field is focused. Browsers without the
+   Permissions API simply go without, biased by Home instead. */
+async function primeBias(){
+  if(_biasTried||_biasPos) return;
+  if(!navigator.permissions||!navigator.permissions.query) return;
+  try{
+    const st=await navigator.permissions.query({name:'geolocation'});
+    if(st.state==='granted') requestBiasPoint();
+  }catch(e){/* Safari has thrown on unsupported names; going without is fine. */}
+}
+
+/* ---- HERE ----
+
+   Two result shapes are deliberately dropped. `chainQuery` and
+   `categoryQuery` items ("Coffee", meaning *search for coffee places*)
+   carry NO position, so picking one would file an activity with a name
+   and no coordinates — the exact failure this whole change exists to
+   close. Filtering on `position` catches them and anything else
+   malformed in one test. */
+function hereName(item){
+  const a=item.address||{};
+  const bits=[item.title];
+  const seen=()=>bits.join(', ').toLowerCase();
+  const city=a.city||a.county||'';
+  if(city&&!seen().includes(city.toLowerCase())) bits.push(city);
+  const wide=a.state||a.countryName||'';
+  if(wide&&!seen().includes(wide.toLowerCase())) bits.push(wide);
+  return bits.join(', ');
+}
+
+function hereSub(item){
+  const label=(item.address&&item.address.label)||'';
+  if(!label) return '';
+  const parts=label.split(',').map(s=>s.trim()).filter(Boolean);
+  /* The label repeats the place name as its first segment; the useful
+     part is the street and city after it. */
+  if(parts.length>1&&item.title&&item.title.toLowerCase().startsWith(parts[0].toLowerCase())) parts.shift();
+  return parts.join(', ');
+}
+
+async function hereSearch(q,limit){
+  const at=biasPoint();
+  const params=new URLSearchParams({q,limit:String(limit),lang:'en',apiKey:HERE_API_KEY});
+  /* `at` biases without restricting — Paris still wins for "eiffel
+     tower" from San Francisco. Without any bias HERE needs one of `at`
+     or `in`, so fall back to a whole-world `in` rather than omitting. */
+  if(at) params.set('at',`${at.lat},${at.lng}`);
+  else params.set('in','bbox:-180,-90,180,90');
+  const res=await fetch(`${HERE_AUTOSUGGEST}?${params}`);
+  if(!res.ok) throw new Error('here '+res.status);
+  const data=await res.json();
+  return (data.items||[])
+    .filter(i=>i.position&&isFinite(i.position.lat)&&isFinite(i.position.lng))
+    .map(i=>({name:hereName(i),sub:hereSub(i),lat:i.position.lat,lng:i.position.lng}));
+}
+
+/* ---- Nominatim (the no-key fallback) ---- */
+async function nominatimSearch(q,limit){
+  const res=await fetch(
+    `${NOMINATIM}/search?q=${encodeURIComponent(q)}&format=json&addressdetails=1&limit=${limit}`,
+    {headers:{'Accept-Language':'en'}});
+  if(!res.ok) throw new Error('nominatim '+res.status);
+  const data=await res.json();
+  return data.map(r=>({
+    name:r.display_name.split(',').slice(0,3).join(',').trim(),
+    sub:r.display_name.split(',').slice(1,4).join(',').trim(),
+    lat:parseFloat(r.lat),lng:parseFloat(r.lon),
+  }));
+}
+
+/* The one entry point. Always resolves to an array — a failing engine
+   returns nothing rather than throwing into the caller's UI. */
+async function placeSearch(q,limit){
+  const query=(q||'').trim();
+  if(query.length<2) return [];
+  try{
+    return hereReady()?await hereSearch(query,limit||8):await nominatimSearch(query,limit||6);
+  }catch(e){
+    console.warn('placeSearch:',e&&e.message||e);
+    return [];
+  }
+}
+
+/* ==============================================================
+   THE DROPDOWN
+
+   Results are held here and referenced by index rather than being
+   interpolated into an inline onmousedown. The old code escaped the
+   display name twice (a backslash pass, then esc()) to survive being
+   written into an HTML attribute that is then parsed as JavaScript,
+   which worked for apostrophes and would not have survived a
+   backslash. An index cannot be mis-escaped.
+   ============================================================== */
 let locTimer=null;
+let _locSeq=0;                 /* drops a slow response that a newer one has overtaken */
+const _locResults=Object.create(null);   /* resultsId → the array currently drawn */
+
+function locItemHTML(resultsId,r,i){
+  return `<button class="loc-item" onmousedown="locPickIdx('${resultsId}',${i})">
+      ${icon('pin')}
+      <span class="loc-item-body">
+        <span class="loc-item-main">${esc(r.name)}</span>
+        ${r.sub?`<span class="loc-item-sub">${esc(r.sub)}</span>`:''}
+      </span>
+    </button>`;
+}
+
+/* Home and Current location, above the results. They are the two
+   answers that need no typing, so they show while the field is empty —
+   which is exactly when the user has not yet decided what to type. */
+function locShortcutsHTML(resultsId){
+  const out=[];
+  const home=homePlace();
+  if(home&&home.location){
+    out.push(`<button class="loc-item loc-item-shortcut" onmousedown="locUseHome('${resultsId}')">
+        ${icon('home')}
+        <span class="loc-item-body">
+          <span class="loc-item-main">Home</span>
+          <span class="loc-item-sub">${esc(home.location)}</span>
+        </span>
+      </button>`);
+  }
+  out.push(`<button class="loc-item loc-item-shortcut" onmousedown="locUseCurrent('${resultsId}')">
+      ${icon('locate')}
+      <span class="loc-item-body"><span class="loc-item-main">Current location</span></span>
+    </button>`);
+  return out.join('');
+}
+
+function locOpen(box,input,html){
+  box.innerHTML=html;
+  box.classList.add('open');
+  positionLocBox(box,input);
+}
+
+function locClose(box){
+  if(!box)return;
+  box.classList.remove('open');
+  box.innerHTML='';
+}
 
 function locSearch(input,resultsId){
   const q=input.value.trim();
   const box=$(resultsId);
   if(!box)return;
-  if(q.length<2){box.classList.remove('open');box.innerHTML='';return;}
+  primeBias();
+  /* Typed text and the coordinates last picked have to agree, or a
+     renamed place saves against the old pin. See locGeoMark(). */
+  locInvalidateIfChanged(input);
   clearTimeout(locTimer);
+
+  if(q.length<2){ locOpen(box,input,locShortcutsHTML(resultsId)); return; }
+
+  const seq=++_locSeq;
   locTimer=setTimeout(async()=>{
-    try{
-      const res=await fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&addressdetails=1&limit=6`,
-        {headers:{'Accept-Language':'en'}});
-      const data=await res.json();
-      if(!data.length){
-        box.innerHTML='<div class="loc-empty">No places found</div>';
-        box.classList.add('open');positionLocBox(box,input);return;
-      }
-      box.innerHTML=data.map(r=>{
-        const main=r.display_name.split(',')[0];
-        const sub=r.display_name.split(',').slice(1,3).join(',').trim();
-        const safe=r.display_name.replace(/'/g,"\\'");
-        return `<button class="loc-item" onmousedown="locPick(this,'${resultsId}','${esc(safe)}',${r.lat},${r.lon})">
-          ${icon('pin')}
-          <span class="loc-item-body">
-            <span class="loc-item-main">${esc(main)}</span>
-            ${sub?`<span class="loc-item-sub">${esc(sub)}</span>`:''}
-          </span>
-        </button>`;
-      }).join('');
-      box.classList.add('open');
-      positionLocBox(box,input);
-    }catch(e){console.error('locSearch:',e);}
-  },350);
+    /* The wait is a debounce plus a network round trip. Saying so beats
+       a field that looks broken for half a second. */
+    locOpen(box,input,'<div class="loc-loading">'+icon('search')+'Searching&hellip;</div>');
+    const items=await placeSearch(q,8);
+    if(seq!==_locSeq) return;                /* a newer keystroke owns the box now */
+    if(!document.body.contains(input)) return;
+    _locResults[resultsId]=items;
+    locOpen(box,input,items.length
+      ? items.map((r,i)=>locItemHTML(resultsId,r,i)).join('')
+      : '<div class="loc-empty">No places found</div>');
+  },320);
+}
+
+function locPickIdx(resultsId,i){
+  const r=(_locResults[resultsId]||[])[i];
+  if(!r) return;
+  locApply(resultsId,r);
+}
+
+/* Write a resolved place into whichever trio of inputs this dropdown
+   belongs to, and record WHICH text the coordinates are for.
+
+   `isHome` records that this value came from the Home shortcut rather
+   than from a search. That is intent, not text — see "THIS ACTIVITY IS
+   AT HOME" in api.js for why the difference has to be stored. Anything
+   picked from the results clears it, because choosing a place that
+   happens to be your home town is not the same as choosing home. */
+function locApply(resultsId,r,isHome){
+  const box=$(resultsId);
+  if(!box) return;
+  const wrap=box.parentElement;
+  const input=wrap.querySelector('input:not([type="hidden"])');
+  const latInput=wrap.querySelector('input[id*="Lat"]');
+  const lngInput=wrap.querySelector('input[id*="Lng"]');
+  if(input){
+    input.value=r.name; locGeoMark(input);
+    if(isHome) input.dataset.isHome='1'; else delete input.dataset.isHome;
+  }
+  if(latInput) latInput.value=r.lat;
+  if(lngInput) lngInput.value=r.lng;
+  locClose(box);
+  /* The activity sheet marks a location it filled in from the name.
+     A place the user chose themselves is not that, so take the mark
+     off — otherwise the caption claims credit for their answer. */
+  if(input&&input.id==='aLoc'&&typeof clearLocationGuessMark==='function') clearLocationGuessMark();
+}
+
+async function locUseCurrent(resultsId){
+  const box=$(resultsId);
+  if(box) box.innerHTML='<div class="loc-loading">'+icon('locate')+'Finding you&hellip;</div>';
+  /* This is the one path allowed to raise the permission prompt: the
+     user asked for it by name. */
+  const p=await requestBiasPoint();
+  if(!p){
+    if(box) box.innerHTML='<div class="loc-empty">Couldn’t get your location</div>';
+    return;
+  }
+  const named=await reverseGeocode(p.lat,p.lng);
+  locApply(resultsId,{name:(named&&named.display)||`${p.lat.toFixed(4)}, ${p.lng.toFixed(4)}`,
+                      lat:p.lat,lng:p.lng});
+}
+
+function locUseHome(resultsId){
+  const home=homePlace();
+  if(!home||!home.location) return;
+  locApply(resultsId,{name:home.location,lat:home.lat,lng:home.lng},true);
+}
+
+/* ==============================================================
+   KEEPING THE TEXT AND THE COORDINATES TOGETHER
+
+   Coordinates used to be written by one path only — tapping a
+   dropdown row — while the text box was free to say anything. Two
+   things went wrong, and the second is the worse one:
+
+     - Type "Kyoto", press Save without tapping a suggestion, and the
+       activity stored a location with no coordinates. It then never
+       appeared on the map, which is the one thing the field is for.
+     - Open an activity that HAS a location, change the text to
+       somewhere else, press Save without tapping: the new name was
+       stored against the OLD coordinates. A silently wrong pin, which
+       is worse than no pin, because nothing about it looks wrong.
+
+   So a text input carries `dataset.geoFor` — the exact string its
+   coordinates were resolved for. Anything else is treated as
+   unresolved: the coordinates are dropped the moment the text stops
+   matching, and resolveLocationField() re-resolves before a save.
+   ============================================================== */
+function locGeoMark(input){ if(input) input.dataset.geoFor=input.value.trim(); }
+
+/* Whether the field currently holds Home, as chosen rather than as
+   typed. Read by every save path; see listFieldsFor()'s neighbour
+   homeFieldsFor() in activities.js. */
+function locIsHome(inputId){
+  const el=$(inputId);
+  return !!(el&&el.dataset.isHome==='1');
+}
+
+function locSetHome(inputId,on){
+  const el=$(inputId);
+  if(!el) return;
+  if(on) el.dataset.isHome='1'; else delete el.dataset.isHome;
+}
+
+function locFieldsFor(input){
+  const wrap=input&&input.closest('.loc-wrap');
+  if(!wrap) return {};
+  return {lat:wrap.querySelector('input[id*="Lat"]'),lng:wrap.querySelector('input[id*="Lng"]')};
+}
+
+function locInvalidateIfChanged(input){
+  if(!input) return;
+  if(input.dataset.geoFor===input.value.trim()) return;
+  const {lat,lng}=locFieldsFor(input);
+  if(lat) lat.value='';
+  if(lng) lng.value='';
+  delete input.dataset.geoFor;
+  /* Typing over a location that was Home severs the link. The user is
+     naming a place now, not deferring to wherever they live. */
+  delete input.dataset.isHome;
+}
+
+/* Called before a save. Returns:
+     {empty:true}            nothing typed
+     {ok:true}               coordinates are present and match the text
+     {ok:false}              typed a place we could not resolve
+
+   The geocode only happens when the text is unresolved, so someone who
+   picked from the dropdown pays nothing. */
+async function resolveLocationField(inputId){
+  const input=$(inputId);
+  if(!input) return {empty:true};
+  const text=input.value.trim();
+  if(!text) return {empty:true};
+
+  const {lat,lng}=locFieldsFor(input);
+  const has=lat&&lng&&lat.value!==''&&lng.value!=='';
+  if(has&&input.dataset.geoFor===text) return {ok:true};
+
+  const hit=await geocodeOnce(text);
+  if(!hit){
+    /* Offline, or a name no geocoder knows. Keeping stale coordinates
+       here is what produced the wrong-pin bug, so they stay cleared. */
+    if(lat) lat.value='';
+    if(lng) lng.value='';
+    delete input.dataset.geoFor;
+    return {ok:false};
+  }
+  if(lat) lat.value=hit.lat;
+  if(lng) lng.value=hit.lng;
+  /* The typed text is kept, not overwritten with the geocoder's label:
+     the user wrote "Grandma's cabin" and meant it. Only the coordinates
+     were missing. */
+  locGeoMark(input);
+  return {ok:true};
+}
+
+/* ==============================================================
+   A LOCATION IS REQUIRED
+
+   Every activity needs one. The reasoning is the same one that pulled
+   the field out of the old "More options" disclosure: an activity with
+   no location never appears on the map, never appears in a place
+   search, and the field was the one people skipped — so most
+   activities silently never did.
+
+   TWO THINGS THIS DELIBERATELY DOES NOT DO:
+
+   - **It does not block a save while offline.** Resolving text to
+     coordinates needs the network, and refusing to save without it
+     would break capture in exactly the place this app is meant to
+     work — "ideas arrive on planes and in tunnels" is the whole
+     argument for js/offline.js. Offline, typed text is accepted as-is
+     and the activity syncs without coordinates.
+   - **It does not apply to an activity that is already completed.**
+     confirmComplete()'s edit pass is exempt for the same reason the
+     media rule is (see updateMediaRequirement): enforcing a new
+     requirement on the edit path strands every row created before it,
+     whose owner then cannot fix a typo without first satisfying it.
+
+   It DOES block an unresolvable place while online, which is the
+   strict reading: a location that cannot be found is a location that
+   will not be on the map, and accepting it silently is the failure
+   this replaced. If that proves too strict in practice, returning
+   `true` instead of `false` in the `!res.ok` branch below relaxes it
+   to "any text will do" in one line.
+   ============================================================== */
+async function requireLocation(inputId,errorId,btn){
+  const input=$(inputId);
+  const err=errorId?$(errorId):null;
+  /* Sheets with somewhere to put a message use it; the completion sheet
+     has no room in its inset card, so it says the same thing in a toast
+     — which is what its media requirement already does. */
+  const setErr=m=>{
+    if(err){ err.textContent=m||''; err.style.display=m?'':'none'; }
+    else if(m) showToast(m);
+  };
+  setErr('');
+
+  const text=input?input.value.trim():'';
+  if(!text){
+    setErr('Add a location so this shows up on your map.');
+    if(input){ shakeEl(input); input.focus(); }
+    return false;
+  }
+
+  if(btn) btn.disabled=true;
+  const res=await resolveLocationField(inputId);
+  if(btn) btn.disabled=false;
+  if(res.ok) return true;
+
+  /* No network to look it up with. Take the text and move on — the
+     alternative is refusing to capture the idea at all. */
+  if(!navigator.onLine) return true;
+
+  setErr('We couldn’t find that place. Try picking one from the list.');
+  if(input){ shakeEl(input); input.focus(); }
+  return false;
 }
 
 /* One-shot lookup for a place name we already have — an imported link's
-   location, say. Unlike locSearch this is not debounced and does not
-   touch the DOM: it just resolves a string to coordinates, or null.
-   The unfurl function geocodes server-side too; this is the fallback
-   for when it could not, and for a place the user edits by hand. */
+   location, a name typed but never picked from the dropdown. Unlike
+   locSearch this is not debounced and does not touch the DOM: it just
+   resolves a string to coordinates, or null. */
 async function geocodeOnce(q){
   const query=(q||'').trim();
   if(query.length<2) return null;
+  if(hereReady()){
+    try{
+      const at=biasPoint();
+      const params=new URLSearchParams({q:query,limit:'1',lang:'en',apiKey:HERE_API_KEY});
+      if(at) params.set('at',`${at.lat},${at.lng}`);
+      const res=await fetch(`${HERE_GEOCODE}?${params}`);
+      if(res.ok){
+        const data=await res.json();
+        const item=(data.items||[]).find(i=>i.position);
+        if(item) return {display:hereName(item),lat:item.position.lat,lng:item.position.lng};
+      }
+    }catch(e){ console.warn('geocodeOnce(here):',e); }
+    /* fall through to Nominatim rather than failing outright */
+  }
   try{
     const res=await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`,
+      `${NOMINATIM}/search?q=${encodeURIComponent(query)}&format=json&limit=1`,
       {headers:{'Accept-Language':'en'}});
     if(!res.ok) return null;
     const data=await res.json();
@@ -273,6 +677,9 @@ async function maybeGuessLocation(){
   locEl.value=data.location;
   $('aLocLat').value=data.lat==null?'':data.lat;
   $('aLocLng').value=data.lng==null?'':data.lng;
+  /* The guess resolved the name and the coordinates together, so the
+     save-time resolve has nothing left to do for this value. */
+  if(data.lat!=null) locGeoMark(locEl);
   _guessFilled=true;
 
   const box=$('aLocGuess');
@@ -293,21 +700,20 @@ function positionLocBox(box,input){
   box.style.width=r.width+'px';
 }
 
-function locPick(el,resultsId,display,lat,lng){
-  const box=$(resultsId);
-  const wrap=box.parentElement;
-  const input=wrap.querySelector('input:not([type="hidden"])');
-  const latInput=wrap.querySelector('input[id*="Lat"]');
-  const lngInput=wrap.querySelector('input[id*="Lng"]');
-  if(input) input.value=display;
-  if(latInput) latInput.value=lat;
-  if(lngInput) lngInput.value=lng;
-  box.classList.remove('open');box.innerHTML='';
-}
-
 /* Dismiss any open dropdown on an outside tap. */
 document.addEventListener('click',e=>{
   document.querySelectorAll('.loc-results.open').forEach(b=>{
     if(!b.parentElement.contains(e.target)) b.classList.remove('open');
   });
 });
+
+/* The bulk sheet's dropdown is position:fixed so it can escape that
+   sheet's scroll container, which means it does not travel with the
+   field it belongs to. Re-place it while it is open, or it detaches
+   and hangs over an unrelated row. */
+document.addEventListener('scroll',()=>{
+  document.querySelectorAll('.loc-results.open').forEach(b=>{
+    const input=b.parentElement&&b.parentElement.querySelector('input:not([type="hidden"])');
+    if(input) positionLocBox(b,input);
+  });
+},true);

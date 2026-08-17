@@ -405,6 +405,9 @@ async function handOffSingle(draft,notice){
   $('aLoc').value=draft.location||'';
   $('aLocLat').value=draft.lat??'';
   $('aLocLng').value=draft.lng??'';
+  /* The import resolved these together, so mark them as belonging to
+     each other and save the resolve a wasted round trip. */
+  if(draft.location&&draft.lat!=null) locGeoMark($('aLoc'));
   aLinks=shareSourceLinks();
   renderTagChips('aLinks');
 }

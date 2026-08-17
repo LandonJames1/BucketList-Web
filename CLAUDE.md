@@ -101,7 +101,7 @@ CLAUDE.md             This guide
 README.md             Human-facing setup + structure overview
 manifest.webmanifest  PWA metadata (name, icons, standalone display, theme color)
 sw.js                 Service worker — offline app shell + runtime caching. Must stay at the root.
-supabase/             Backend — schema.sql (reminders + reminder_deliveries), profiles.sql (the Users row, its RLS and the sign-up trigger), sharing.sql (shared lists), multilist.sql (one activity in several lists), storage.sql (the media bucket), cron.sql, and three Edge Functions: send-reminders, unfurl (shared links, screenshots *and* location prediction) and delete-account (erasing an account needs the service_role key, so it cannot live in the client). All optional except profiles.sql; each other piece probes for itself and the UI that needs it hides when it is absent.
+supabase/             Backend — schema.sql (reminders + reminder_deliveries), profiles.sql (the Users row, its RLS and the sign-up trigger), sharing.sql (shared lists), multilist.sql (one activity in several lists), home.sql (the saved Home address), storage.sql (the media bucket), cron.sql, and three Edge Functions: send-reminders, unfurl (shared links, screenshots *and* location prediction) and delete-account (erasing an account needs the service_role key, so it cannot live in the client). All optional except profiles.sql; each other piece probes for itself and the UI that needs it hides when it is absent.
 css/                  One stylesheet per concern (see CSS file map)
 js/                   One script per concern (see JS file map)
 icons/                App icon PNGs + generate.py, the script that draws them
@@ -433,6 +433,187 @@ un-completing writes has to preserve that.
 Deleting a photo drops the URL from the row; it does not delete the
 object. There is no reference counting here to make deletion safe, and
 storage is cheap — `storage.sql` carries a sweeper query in a comment.
+
+#### Searching for a place
+
+`locSearch()` and `placeSearch()` in `location.js`. **Two engines behind one
+shape** — `HERE_API_KEY` in `config.js` decides which. Everything downstream
+sees `{name, sub, lat, lng}` either way, so the dropdown, the shortcuts and
+the save-time resolve are written once.
+
+**Why HERE and not the free OpenStreetMap geocoders.** The field has to answer
+two different questions and the free options each answer only one. Measured,
+same bias point:
+
+| | Nominatim | Photon | HERE |
+| --- | --- | --- | --- |
+| `Jamab Juice` | **0 results** | nearby Jamba locations | nearby Jamba locations |
+| `eiffel tower` | Paris | a peak in **Alberta** | Paris |
+| `kyoto` | Kyoto, Japan | a restaurant in **Berkeley** | Kyoto Prefecture |
+| `coffee` | Coffee County, Georgia | nearby cafés | nearby cafés |
+
+Photon is a prefix/POI matcher with no sense of global prominence; Nominatim
+ranks prominence well and has **no typo tolerance at all**. Tuning Photon's
+`location_bias_scale` across 0.05–0.6 never surfaces Paris or Kyoto — it is
+not a knob that fixes it. Running both and merging was the keyless option and
+is what the fallback approximates. HERE does both columns in one request.
+
+Without a key everything still works: `placeSearch()` falls back to Nominatim,
+which is what the app used before. You lose typo tolerance and near-me
+ranking, not the feature.
+
+Two HERE-specific things to keep:
+
+- **`lang=en`**, or results come back as `京都府` and `La Tour Eiffel`.
+- **Items with no `position` are dropped.** HERE returns `chainQuery` and
+  `categoryQuery` rows — "Coffee", meaning *search for coffee places* — that
+  carry no coordinates. Picking one would file an activity with a name and no
+  pin, which is the exact failure the rest of this section exists to close.
+
+**Where "near me" comes from** is `biasPoint()`: a real geolocation fix if we
+have one, otherwise the user's **Home** address. Note what deliberately does
+*not* happen — focusing the location field never raises a permission prompt.
+`primeBias()` asks the **Permissions API**, not the user, and fetches a fix
+only when permission is already granted; the only path allowed to prompt is
+the user tapping *Current location*. Everyone else is biased by Home, which
+costs no permission at all. That is the quieter half of why Home exists.
+
+**Results are referenced by index, not interpolated into the handler.** The
+old code escaped a display name twice — a backslash pass, then `esc()` — to
+survive being written into an HTML attribute that is then parsed as
+JavaScript. It happened to work for apostrophes and would not have survived a
+backslash. `_locResults[resultsId]` plus `locPickIdx(id, i)` cannot be
+mis-escaped. `_locSeq` drops a slow response a newer keystroke has overtaken,
+the same guard `maybeGuessLocation()` has always had.
+
+#### The text and the coordinates must agree
+
+**This shipped broken and the second half was the worse one.** Coordinates
+were written by exactly one path — tapping a dropdown row — while the text box
+was free to say anything:
+
+- Type "Kyoto", press Save without tapping a suggestion, and the activity
+  stored a location with **no coordinates**. It then never appeared on the
+  map, which is the one thing the field is for.
+- Open an activity that *has* a location, change the text to somewhere else,
+  press Save without tapping: the new name was stored against the **old
+  coordinates**. A silently wrong pin, which is worse than no pin, because
+  nothing about it looks wrong.
+
+So a location input carries **`dataset.geoFor`** — the exact string its
+coordinates were resolved for. Anything else is unresolved:
+`locInvalidateIfChanged()` drops the coordinates the moment the text stops
+matching, and `resolveLocationField()` re-resolves before a save.
+
+**Everything that writes coordinates must call `locGeoMark(input)`**, or the
+save-time resolve will geocode a value that was already resolved — a wasted
+round trip on every edit. The callers are `locApply()`, `openEditAct()`,
+`openComp()`, `acceptPhotoLocation()` (`media.js`), `handOffSingle()`
+(`share.js`) and `maybeGuessLocation()`.
+
+`resolveLocationField()` **keeps the typed text and only fills in the
+coordinates** — the user wrote "Grandma's cabin" and meant it; only the pin
+was missing.
+
+#### A location is required
+
+Every activity needs one, enforced by `requireLocation()` in `location.js` and
+called from `saveActivity()`, `confirmComplete()` (draft mode only) and
+`saveBulkActivities()`. Same argument that pulled the field out of the old
+"More options" disclosure: an activity with no location never appears on the
+map and the field was the one people skipped.
+
+Two exemptions, and both are load-bearing:
+
+- **It never blocks a save while offline.** Resolving text to coordinates
+  needs the network, and refusing without it would break capture in exactly
+  the place the app is built for — "ideas arrive on planes and in tunnels" is
+  the whole argument for `offline.js`. Offline, typed text is accepted as-is
+  and syncs without coordinates.
+- **It does not apply to an activity that is already completed.**
+  `confirmComplete()`'s edit pass is exempt for the same reason the media rule
+  is (see `updateMediaRequirement()`): enforcing a new requirement on the edit
+  path strands every row created before it, whose owner then cannot fix a typo
+  without first satisfying it.
+
+It **does** block an unresolvable place while online, which is the strict
+reading — a location that cannot be found will not be on the map. If that
+proves too strict, returning `true` instead of `false` in the `!res.ok` branch
+relaxes it to "any text will do" in one line.
+
+#### Home
+
+One saved place per user, set from the You tab (`openHomeSheet()` in `me.js`),
+doing two jobs: the **Home** shortcut at the top of every location dropdown,
+and the **bias point** for place search when there is no geolocation fix —
+which is most of the time, per the permission rule above.
+
+**Storage is two-layered on purpose.** The real home is three columns on
+`Users` (`supabase/home.sql`), so it follows the account to a new device. But
+the app has to work before that migration is run, and **a missing column would
+otherwise take the whole profile query down with it** — so the columns are
+read in their own query, a failure is noted once in the console and tolerated,
+and localStorage carries the value on this device either way. Once the columns
+exist, a value saved locally is pushed up on the next load.
+
+**The localStorage key is per-user** (`bl_home:<uid>`) and `resetHomePlace()`
+is called from `resetAccountState()`. A shared key would show the previous
+account's home address to the next person to sign in on the device — see
+**One account at a time**.
+
+#### Moving house
+
+Change your home address and every activity whose location **is** home moves
+with it (`updateHomeActivities()` in `me.js`). "Book a plumber", "clear the
+gutters", "finish the garage" are at home rather than at an address; after a
+move they would otherwise sit on the map at a house somebody else lives in,
+and re-pointing them one at a time is exactly the chore nobody does.
+
+**Which activities: the ones carrying `Activities.location_is_home`, not the
+ones whose location text happens to equal the old address.** That distinction
+is the whole design and it is worth stating plainly, because the text match is
+the obvious implementation and needs no migration:
+
+> Home is "Denver, Colorado". The user separately searched for and picked
+> Denver for a hike — because the hike is in Denver, not because they live
+> there. They move to Austin. A text match drags the hike to Austin too, and
+> nothing on screen says so.
+
+The flag records **intent**, which text cannot. Picking *Home* means "my home,
+wherever that is"; picking a place that happens to be the same town means that
+town, permanently. Same class of defect as the stale-coordinates bug the
+`geoFor` contract closes, so it is not worth trading a migration to avoid.
+
+How the flag is kept honest:
+
+- `locApply(id, r, isHome)` sets it, and **only `locUseHome()` passes true**.
+  Anything picked from the results clears it.
+- `locInvalidateIfChanged()` clears it when the text is typed over — naming a
+  place is not deferring to wherever you live.
+- `openEditAct()` and `openComp()` call `locSetHome()` from
+  `a.locationIsHome`, so an edit that never touches the location does not
+  quietly sever the link.
+- **Bulk rows re-render from `bulkEntries` wholesale**, so `renderBulkEntries()`
+  writes `data-is-home` back into the markup. A flag living only on the DOM
+  node would be lost on the next redraw and the row would silently stop
+  following.
+
+It is **one `dbUpdate` against `location_is_home`**, so it costs a single round
+trip however many rows match, and `applyOp()` patches the cache and the on-disk
+snapshot from the same match — no refetch.
+
+**The user is told, in a toast naming the count.** This rewrites rows they are
+not looking at, which nothing else in the app does silently; the toast is what
+keeps it from being a silent write, and setting the old address back reverses
+it. If that turns out to be too casual for the number of rows involved, the
+place to put a confirmation is `saveHomeSheet()`, between the save and the
+cascade.
+
+**Removing Home severs rather than moves** (`clearHomeActivityFlags()`). The
+activities keep the location they have — they are still at that place — but
+they stop following a *future* home address, which the user has just said they
+do not have. Without that, setting a new home months later would move rows
+nobody remembers flagging.
 
 #### Guessing the location from the name
 
@@ -2077,14 +2258,14 @@ Loaded in this order; **order matters**.
 
 | File | Domain |
 | --- | --- |
-| `config.js` | `SUPABASE_URL`/`SUPABASE_KEY`, the `sb` client (auth options spelled out rather than defaulted — note `detectSessionInUrl:false`, the one that is *not* a default: `auth.js` handles the email-confirmation landing itself), the `COVERS` array of default Unsplash covers, and `randCover(existingCovers)` (picks a cover the user isn't already using). |
+| `config.js` | `SUPABASE_URL`/`SUPABASE_KEY`, **`HERE_API_KEY`** (place search; public by design, restrict it by origin in the HERE portal — empty falls back to Nominatim), the `sb` client (auth options spelled out rather than defaulted — note `detectSessionInUrl:false`, the one that is *not* a default: `auth.js` handles the email-confirmation landing itself), the `COVERS` array of default Unsplash covers, and `randCover(existingCovers)` (picks a cover the user isn't already using). |
 | `state.js` | Every shared mutable global: `currentUser`, the navigation triple (`curTab`, `curPage`, `backTab`), `curListId`, `editingListId`, `editingActId`, `completingId`, `curFilter`, **`curSort`** (see **Sorting a collection**), `curView`, `upMedia`, `coverPhoto`, `userProfile`, `pendingShare` (a link shared in, held from boot until there is a signed-in user to file it for), and the map handles. Other files declare their own feature-local globals next to their code (`aLinks`, `bulkEntries`, `actMap`, `lbPhotos`, `locTimer`). |
 | `utils.js` | `$` (getElementById), `esc` (HTML-escape — **use it on every interpolated value**, all rendering is template strings), **`uuidv4`/`isUuid`** (client-minted row ids — read the warning under **Working offline** before touching them), `cap`, `todayISO`, `fmtDate(s, withYear)` (omits the year when it's the current one, unless `withYear` — a completed date is a record you look back on, so it always carries its year), `dateInfo(a)` (turns a target date like "This Year" into a `{label, cls}` urgency badge), `shakeEl`, `compress`, `confetti`, the priority pair `priClass`/`priTagHTML` (see **Showing priority**), **`ACT_SORTS`/`DEFAULT_ACT_SORT`/`sortActivities`** (see **Sorting a collection**), **`activityListLabel(a, lists)`** — what the `.list-chip` on a row says, now that an activity can be in several lists — and **`bootKeep`/`bootRead`/`bootDrop`**, the sessionStorage shelf that keeps `?join=`/`?share=` alive across a reload (see **Shared lists**; reading deliberately does not remove), plus **`bootKeepLong`/`bootReadLong`/`bootDropLong`** — the same shelf on localStorage with a 7-day TTL, so an invite survives the tab being closed while the recipient goes to find their password. |
 | `exif.js` | `exifReadLocation(file)` — the GPS fix out of a photo's EXIF, or null. Handles **JPEG and HEIC/HEIF/AVIF**, dispatching on magic bytes rather than `file.type`. Underneath: the JPEG walk (`exifFindTiff`), the HEIC box walk (`isoBoxes`, `isoType`, `heicReadLocation`, `heicExifExtent`, `heicExifItemId`, `heicItemExtent`, `heicTiffStart`, `isTiffAt`), and the shared TIFF reader both land on (`exifGpsFrom`, `exifTagValue`, `exifDMS`). Pure, no dependencies, every failure path returns null rather than throwing. **Must be called against the original `File`**: a canvas re-encode strips every tag. See **Where the photo was taken**. |
 | `fuzzy.js` | Approximate string matching, shared by duplicate detection and search. `similarity(a,b)` (symmetric — are these the same thing?) and `matchScore(q,text)` (asymmetric — does this row answer what is being typed?), plus `scoreFields()` and the primitives underneath: `fuzzyNorm`, `fuzzyTokens`, `fuzzyStem`, `fuzzyTokenSim`, `fuzzySoftDice`, `fuzzyTrigrams`, `fuzzyDice`, `fuzzyEditRatio`. Pure and synchronous. **See How the fuzzy matching works** — the constants are tuned, not derived. |
 | `icons.js` | `ICON_PATHS`, the app's own inline-SVG glyph set (`sort` is the newest), plus `ICON_FILLED` (glyphs already solid, which must not be stroked) and `icon(name, cls)`. Icons inherit `currentColor`. **Add new glyphs here**, not inline in a template string. |
 | `offline.js` | **Reading from disk, queueing writes, syncing on reconnect.** The IndexedDB wrapper (`idbOpen`/`idbGet`/`idbAll`/`idbPut`/`idbDelete`/`idbClear`), the row snapshot (`snapshotSave`/`snapshotLoad`/`snapshotAge`/`snapshotClear`), the write queue (`queueWrite`/`queueLoadCount`/`pendingWrites`/`flushQueue`), **`dbInsert`/`dbUpdate`/`dbDelete` — which every mutation site calls instead of `sb.from(...)`** — the per-user `uid` stamp on every queued op — plus `applyOp`, `stampRow`, `isNetworkError`, `updateSyncUI` (the offline banner's text), `offlineSignOut` and `offlineInit`. Loads before `api.js`. See **Working offline**. |
-| `api.js` | **Every Supabase read, and the cache in front of them.** `mapCollection`/`mapActivity` translate snake_case columns into the camelCase shapes the UI uses; `normMedia`/`denormMedia` do the same for the two shapes the `photos` column holds; **`activityListIds`/`splitListIds`/`rowInAnyList`** assemble and take apart the home-list-plus-array pair (see **One activity, several lists**), and **`probeMultiList`/`multiListReady`** decide whether that column exists at all. Then `readRows` (network or disk — the one place that chooses), `fetchCollections`, `fetchActivitiesFor`, `fetchAllActivities`, `fetchActivity`, `fetchCollection`, and the cache: **`cacheOwnerCheck`** (the cache refuses to answer a user it was not filled for — see **One account at a time**), `invalidateCollections`/`invalidateActivities`/`invalidateAll`, **`primeActivities`/`primeCollections`** (patch it from a computed row set instead of dropping it — called by `applyOp`), **`primeFromSnapshot`** (paint before the network; called once, by `showApp`), `collectionsScope`, `cacheWarm`, `cachedActivities`/`cachedCollections` (synchronous reads, for the duplicate check), `revalidate`. Plus `updateCollectionStats`/`recountCollection`/`cancelPendingStats` — deliberately **off** the critical path, see the cache section. New queries belong here, not inline in a screen file. **Writes go through `offline.js`.** |
+| `api.js` | **Every Supabase read, and the cache in front of them.** `mapCollection`/`mapActivity` translate snake_case columns into the camelCase shapes the UI uses; `normMedia`/`denormMedia` do the same for the two shapes the `photos` column holds; **`activityListIds`/`splitListIds`/`rowInAnyList`** assemble and take apart the home-list-plus-array pair (see **One activity, several lists**), and **`probeMultiList`/`multiListReady`** decide whether that column exists at all; **`probeHomeFlag`/`homeFlagReady`** do the same for `location_is_home` (see **Moving house**). Then `readRows` (network or disk — the one place that chooses), `fetchCollections`, `fetchActivitiesFor`, `fetchAllActivities`, `fetchActivity`, `fetchCollection`, and the cache: **`cacheOwnerCheck`** (the cache refuses to answer a user it was not filled for — see **One account at a time**), `invalidateCollections`/`invalidateActivities`/`invalidateAll`, **`primeActivities`/`primeCollections`** (patch it from a computed row set instead of dropping it — called by `applyOp`), **`primeFromSnapshot`** (paint before the network; called once, by `showApp`), `collectionsScope`, `cacheWarm`, `cachedActivities`/`cachedCollections` (synchronous reads, for the duplicate check), `revalidate`. Plus `updateCollectionStats`/`recountCollection`/`cancelPendingStats` — deliberately **off** the critical path, see the cache section. New queries belong here, not inline in a screen file. **Writes go through `offline.js`.** |
 
 **Shell and shared UI**
 
@@ -2100,7 +2281,7 @@ Loaded in this order; **order matters**.
 | File | Domain |
 | --- | --- |
 | `links.js` | The URL chip input: `aLinks`, `handleTagKey`, `removeTag`, `renderTagChips`. ⚠️ `getChipArr(which)` ignores its argument and always returns `aLinks` — vestigial from when there were two chip fields. Adding a second means fixing this first. |
-| `location.js` | Everything that resolves a place. `locSearch(input, resultsId)` — debounced (350ms) place search against the public **OpenStreetMap Nominatim** API — plus `geocodeOnce(q)` (one-shot, no debounce, no DOM: resolves a place name we already have — an imported link's location — to `{display, lat, lng}` or null), `reverseGeocode(lat, lng)` (the other direction, for a photo's EXIF fix — `zoom=14`, so a place rather than a postal address), `positionLocBox` (the bulk sheet's dropdown is `position:fixed` so it can escape the sheet's scroll container, and therefore has to be placed by hand) and `locPick`. Plus the **guess from the activity's name**: `maybeGuessLocation`, **`queueLocationGuess`** (the debounced `input` trigger) and the session-lived `_guessCache` — the two things that make the guess arrive while the sheet is still being filled — plus `guessMatchesName`, `resetLocationGuess`, `onActLocInput`, `undoLocationGuess`, `clearLocationGuessMark`. See **Guessing the location from the name**. |
+| `location.js` | Everything that resolves a place. **`placeSearch(q, limit)`** — the one search entry point, HERE Autosuggest or Nominatim depending on `HERE_API_KEY` (`hereReady`, `hereSearch`, `nominatimSearch`, `hereName`, `hereSub`) — and `locSearch(input, resultsId)`, the debounced dropdown around it (`locItemHTML`, `locShortcutsHTML`, `locOpen`/`locClose`, `locPickIdx`, `locApply`, `locUseHome`, `locUseCurrent`, and the `_locSeq` race guard). Then the bias point (`biasPoint`, `requestBiasPoint`, `primeBias`) and **the text/coordinate contract** — `locGeoMark`, `locFieldsFor`, `locInvalidateIfChanged`, `resolveLocationField`, `requireLocation`, and the Home-intent pair `locIsHome`/`locSetHome`. See **Searching for a place**, **The text and the coordinates must agree** and **A location is required**. Plus `geocodeOnce(q)` (one-shot, no debounce, no DOM: resolves a place name we already have — an imported link's location — to `{display, lat, lng}` or null), `reverseGeocode(lat, lng)` (the other direction, for a photo's EXIF fix — `zoom=14`, so a place rather than a postal address), `positionLocBox` (the bulk sheet's dropdown is `position:fixed` so it can escape the sheet's scroll container, and therefore has to be placed by hand) and `locPick`. Plus the **guess from the activity's name**: `maybeGuessLocation`, **`queueLocationGuess`** (the debounced `input` trigger) and the session-lived `_guessCache` — the two things that make the guess arrive while the sheet is still being filled — plus `guessMatchesName`, `resetLocationGuess`, `onActLocInput`, `undoLocationGuess`, `clearLocationGuessMark`. See **Guessing the location from the name**. |
 | `media.js` | Photos **and video**. `probeStorage()`/`storageReady()`, `uploadPhoto`/`uploadVideo` (→ the `media` Supabase Storage bucket), `videoPoster` (grabs a still so thumbnails and map pins have an image), `handleMedia`, `rmMedia`, `mediaTileHTML`, `renderThumbs` (which ends in `updateMediaRequirement()` — the completion sheet's media rule, owned by `activities.js`), and the ordering set — `coverIndex`, `moveMedia`, `makeCover`, `openMediaMenu`. Also the photo→location offer: `needsLocationSuggestion`, `suggestLocationFromPhoto`, `acceptPhotoLocation`, `dismissPhotoLocation`, `resetLocationSuggestion` (see **Where the photo was taken**). Working list is the `upMedia` global. Replaced `photos.js`; see **Media** below. |
 
 **Screens and features**
@@ -2115,7 +2296,7 @@ Loaded in this order; **order matters**.
 | `collections.js` | `renderCollections()` (the Lists tab) plus the collection CRUD: `openNewList`, `openEditList`, `renderCoverPreview`, `clearCover`, `handleCoverUpload`, `saveList`, `delList`. `delList` deletes the collection's activities first — there is no DB cascade — and, once an activity can be in several lists, deletes only the ones with nowhere else to go and unlinks the rest. |
 | `detail.js` | One collection. Rendering is **deliberately split in two**: `renderDetail()` builds the banner and the controls, `renderActivitiesList()` rebuilds only the list. Search and filter call the second, so the search field never loses focus mid-typing. Also `activityRowHTML`/`activityCardHTML`, `sortButtonHTML()` (the sort control beside the filter), and the quick-add composer helpers (`composerHTML`, `onComposerKey`, `focusComposer`). |
 | `activities.js` | The whole activity flow. **Creating always goes through a sheet** — `quickAddActivity()` only takes the composer's text and hands it to **`startNewActivity()`**, the plan-or-record chooser, which opens either `openNewActivity(name)` or **`openCompDraft(name)`** (see **Adding something you already did**, plus `setCompNameShape`/`renderCompListRow`/`commitCompDraft`). Nothing here inserts an activity directly except `commitSaveActivity()` and `commitCompDraft()`, which are those two sheets' own Saves. `toggleComplete(id, isDone)` is the one-tap completion (see the note below). Then `openNewActivity`, `openEditAct`, `saveActivity`, `delActivity`, plus `renderActListPicker()`/`renderActListValue()`/`setTargetLists()` and the `targetListIds` global (with `targetListId` as a read-only alias for the home list) — the Lists row that lets an activity be filed from outside any collection, and which is hidden when there is no choice to make. Also `listFieldsFor()` and `removeActivityFromList()` — see **One activity, several lists**. Also **`setActivityNotice`** — the one line the activity sheet can carry saying why it opened empty, written only by a screenshot import that could not be read (see **Sharing a link in**) — and `setPriorityChoice` (**the only way to set priority** — it keeps the swatched buttons and the hidden `#aPri` value in step), `openComp`/`openCompletedDate`/`confirmComplete` — the one completion sheet, every field on it — and `updateMediaRequirement()`, which is why that sheet will not save a *new* completion with no photo or video (see **The two-speed activity flow**) — and `openActDetail` which builds the activity sheet. Plus `openCollectionMenu` (the ⋯ action sheet, which holds the view switcher and everything the old five-button hero row spelled out), `setFilter`, `setView`, and `openSortMenu`/`setSort`. |
-| `me.js` | `renderMe()` (stats), `renderMeIdentity()`, `openDeleteAccount`/`onDeleteAccountInput`/`deleteAccount` (see **Deleting an account**), `loadUserProfile()` (reads the `Users` row once per session into `userProfile` — **and creates it when missing**, via `createUserProfile`/`profileSeed`/`USERNAME_RE`; see **Signing up**), `confirmSignOut()`. The tab's one App row, Add to Home Screen, is wired to `pwaShowInstallHelp()` in `pwa.js`. *Share links into the app* and *Join a shared list* both used to sit beside it; the first went with the Shortcut tier (see **Sharing a link in**) and the second lives on the Lists tab, which is the screen the missing list was supposed to be on. |
+| `me.js` | `renderMe()` (stats), `renderMeIdentity()`, **Home** — `homePlace`/`loadHomePlace`/`saveHomePlace`/`resetHomePlace`/`renderMeHome`/`openHomeSheet`/`saveHomeSheet`/`clearHomePlace` and the `bl_home:<uid>` localStorage mirror (see **Home**), plus **`updateHomeActivities`/`clearHomeActivityFlags`** — the cascade that moves everything set to Home when the home address changes (see **Moving house**) — `openDeleteAccount`/`onDeleteAccountInput`/`deleteAccount` (see **Deleting an account**), `loadUserProfile()` (reads the `Users` row once per session into `userProfile` — **and creates it when missing**, via `createUserProfile`/`profileSeed`/`USERNAME_RE`; see **Signing up**), `confirmSignOut()`. The tab's one App row, Add to Home Screen, is wired to `pwaShowInstallHelp()` in `pwa.js`. *Share links into the app* and *Join a shared list* both used to sit beside it; the first went with the Shortcut tier (see **Sharing a link in**) and the second lives on the Lists tab, which is the screen the missing list was supposed to be on. |
 | `bulk.js` | The "add many at once" sheet, one card per row. Row values live in `bulkEntries[]` and the DOM is re-rendered from it wholesale, so **`saveBulkFieldValues()` must flush the inputs back into the array before any redraw** — every mutation helper does this. `_skipSaveBulk` suppresses that flush in `bulkApplyDown` (the "copy row 1" pills), which has already updated the array itself. `openBulkAdd(listId)` takes an explicit destination in `bulkListId`, defaulting to `curListId`: the sheet normally opens from a collection, but an import from Home has no collection context and passes the chosen list. |
 | `share.js` | **Turning a shared link or a screenshot into an activity.** `readSharedInput()` (boot; parses and strips the query param), `handleSharedInput()` (called from `showApp()`), `openImportSheet`/`runUnfurl`/**`importFailed`** (the link-keeps-the-card / screenshot-goes-to-the-sheet split)/`renderImportState`/`IMPORT_FAIL_STATE`/`SHOT_FAIL_NOTICE`, `pickScreenshot`/`handleScreenshot` (downscale and send to the vision path), `handOffSingle`/`handOffMany`/`shareSourceLinks`, and `looksLikeUrl`/`importFromComposer`. Loads after `activities.js` and `bulk.js` because it hands drafts to both. See **Sharing a link in** below. |
 | `map.js` | All MapLibre GL. **`ensureMapLibre()`** — the library is loaded on demand here, not from `<head>`; at ~900KB it was the biggest single cost of a cold launch, blocking the parser on the way to a Home screen with no map on it. Both entry points await it and fall back to the "map unavailable" state if it cannot be fetched. Then `mapStyle()` (raster CARTO basemap + globe projection + sky), `webglOK()`, `actsToGeoJSON()`, and `attachActivityLayer()` — which adds the clustered GeoJSON source and syncs DOM markers (`makePinEl`, `makeClusterEl`) to the viewport. Then the two instances: the Map tab (`renderGlobalMap`, `fitGlobal`, `zoomGlobe`, `globeFillZoom`, `setGlobalMapFilter`) and the per-collection map (`renderMap`, `updateMapMarkers`). Plus `mapLoaded(map)` and `hasGeo`. Teardown is explicit — `destroyGlobalMap()`/`destroyDetailMap()` — because each map holds a WebGL context, but **only the detail map is torn down on navigation**. See **The immersive map** above for the traps. |
@@ -2392,8 +2573,8 @@ they can be queued when there is no network.
 | Table | Columns |
 | --- | --- |
 | `Collections` | `id`, `created_at`, `name`, `description`, `cover_image`, `user_id`, `number_activities`, `activites_completed`, `category_tag` |
-| `Activities` | `id`, `created_at`, `collection_id`, `extra_collection_ids` *(optional — added by `multilist.sql`; see **One activity, several lists**)*, `name`, `description` *(dead — see below)*, `target_date`, `priority`, `date_completed`, `experience_notes`, `photos`, `links`, `location`, `location_lat`, `location_lng`, `category_tag`, `remind_at` (see below) |
-| `Users` | `id` (= `auth.users.id`), `created_at`, `display_name`, `username`, `icon` |
+| `Activities` | `id`, `created_at`, `collection_id`, `extra_collection_ids` *(optional — added by `multilist.sql`; see **One activity, several lists**)*, `name`, `description` *(dead — see below)*, `target_date`, `priority`, `date_completed`, `experience_notes`, `photos`, `links`, `location`, `location_lat`, `location_lng`, `location_is_home` *(optional — added by `home.sql`; see **Moving house**)*, `category_tag`, `remind_at` (see below) |
+| `Users` | `id` (= `auth.users.id`), `created_at`, `display_name`, `username`, `icon`, `home_location`, `home_lat`, `home_lng` *(the last three optional — added by `home.sql`; see **Home**)* |
 | `collection_members` *(optional)* | `collection_id`, `user_id`, `role`, `display_name`, `created_at` — added by `sharing.sql` |
 | `collection_invites` *(optional)* | `code` (PK), `collection_id`, `created_by`, `role`, `revoked`, `expires_at`, `created_at` |
 | `invite_claims` *(optional)* | `email`, `code` (composite PK), `created_at`, `claimed_at`, `claimed_by` — added by `sharing.sql` section 5. An invite waiting for an account that does not exist yet. **RLS on with no policies**, so only the two `SECURITY DEFINER` RPCs can see it. |
@@ -2717,6 +2898,24 @@ Two things that will bite:
 
 ## Known issues / cleanup backlog
 
+- **A location typed offline never gets coordinates.** `requireLocation()`
+  accepts the text and lets the activity sync without a pin, because blocking
+  capture in a tunnel is the worse failure — but nothing re-resolves it when
+  the connection comes back, so it stays off the map until someone edits it.
+  A sweep in `revalidate()` over rows with a `location` and null
+  `location_lat` would close it.
+- **`HERE_API_KEY` is empty until you set one**, so place search runs on the
+  Nominatim fallback: no typo tolerance ("Jamab Juice" returns nothing) and no
+  near-me ranking. Everything works, less well. See **Searching for a place**.
+- **Nothing re-flags an activity as Home retroactively.** The `location_is_home` column defaults false, so activities set to your home address *before* this shipped do not follow a move. They have to be re-picked with the Home shortcut once.
+- **Home is one place, not several.** No Work, no saved favourites. The
+  storage is three columns on `Users`; the point at which that stops being
+  enough is the point it becomes a `user_places` table, and `home.sql` says so
+  in its header.
+- **The location requirement is not enforced on existing rows.** Activities
+  created before it still have no location and are only fixed by hand. The
+  edit path is deliberately exempt (see **A location is required**), so
+  nothing forces the issue.
 - **Rows written before the `media` bucket existed still carry base64
   photos.** They render fine, and are converted only if that activity's media
   happens to be edited. A one-off backfill that uploads them and rewrites the

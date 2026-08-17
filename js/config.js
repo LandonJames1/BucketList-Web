@@ -60,6 +60,38 @@ const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{
    ============================================================== */
 const VAPID_PUBLIC_KEY='BGkQr3oXiXD5Cs1iyVT6YI5lagtApiNOkFXOk6KPXVnZrnOgWMt-ikNCa_XiHne4GWfjjcE73LlcqMPonu_RpkI';
 
+/* ==============================================================
+   PLACE SEARCH — HERE
+
+   The API key for HERE's Autosuggest endpoint, which is what the
+   location field searches against. Like SUPABASE_KEY above it is a
+   public, client-side key by design; restrict it to this app's origins
+   in the HERE portal (Access Manager → your app → Credentials) rather
+   than trying to hide it.
+
+   Free tier is 250k requests/month, which is far past what this app
+   will use. Get one at https://platform.here.com.
+
+   ---- Why HERE rather than the OpenStreetMap geocoders ----
+
+   The field has to answer two different questions, and the free OSM
+   options each answer only one. Measured, same bias point:
+
+     "Jamab Juice"   Nominatim: 0 results.   Photon: the nearby Jamba
+                     locations, typo and all.
+     "eiffel tower"  Photon: a mountain in Alberta.  Nominatim: Paris.
+
+   Photon is a prefix/POI matcher with no sense of global prominence;
+   Nominatim ranks prominence well and has no typo tolerance at all.
+   Running both and merging was the keyless option. HERE returns the
+   nearby Jamba Juices AND puts Paris first, in one request.
+
+   Left empty, everything still works: locSearch() falls back to
+   Nominatim, which is what the app used before. You lose typo
+   tolerance and near-me ranking, not the feature.
+   ============================================================== */
+const HERE_API_KEY='';
+
 /* Default cover images */
 const COVERS=[
   'https://images.unsplash.com/photo-1501785888041-af3ef285b470?w=1600&q=90',

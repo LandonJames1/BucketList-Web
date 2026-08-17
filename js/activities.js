@@ -171,6 +171,10 @@ async function openComp(id,source){
   $('compLoc').value=a.location||'';
   $('compLocLat').value=a.locationLat||'';
   $('compLocLng').value=a.locationLng||'';
+  /* Stored location and stored coordinates are resolved by
+     construction; mark them so re-saving does not re-geocode. */
+  if(a.location&&a.locationLat!=null) locGeoMark($('compLoc')); else delete $('compLoc').dataset.geoFor;
+  locSetHome('compLoc',a.locationIsHome);
   $('compNotes').value=a.completionNotes||'';
   /* Clear any chip left over from the last activity completed this
      session, and un-stick a dismissal so it can be offered again for
@@ -319,6 +323,12 @@ async function confirmComplete(){
     showToast('Add a photo or video to mark this accomplished.');
     return;
   }
+  /* A draft is a brand-new activity, so it meets the location
+     requirement like every other add. An edit of something already
+     completed is exempt — see A LOCATION IS REQUIRED in location.js
+     for why the edit pass is not the place to enforce a new rule. */
+  if(compDraft&&!await requireLocation('compLoc',null,$('compSaveBtn'))) return;
+
   const fields={
     name,
     date_completed:$('compDate').value||todayISO(),
@@ -326,7 +336,8 @@ async function confirmComplete(){
     location_lat:parseFloat($('compLocLat').value)||null,
     location_lng:parseFloat($('compLocLng').value)||null,
     experience_notes:$('compNotes').value.trim()||null,
-    photos:denormMedia(upMedia)
+    photos:denormMedia(upMedia),
+    ...homeFieldsFor('compLoc'),
   };
 
   /* A draft is an add, so it goes through the same gate every other add
@@ -458,6 +469,8 @@ async function openNewActivity(prefillName,notice){
   await renderActListPicker();
   $('aName').value=prefillName||'';
   $('aLoc').value='';$('aLocLat').value='';$('aLocLng').value='';
+  delete $('aLoc').dataset.geoFor;   /* nothing here belongs to the last activity */
+  locSetHome('aLoc',false);
   resetLocationGuess(true);
   resetDateOptions();
   $('aDate').value=DEFAULT_TARGET_DATE;
@@ -484,6 +497,10 @@ async function openEditAct(id){
   await renderActListPicker();
   $('aName').value=a.name;
   $('aLoc').value=a.location||'';$('aLocLat').value=a.locationLat||'';$('aLocLng').value=a.locationLng||'';
+  if(a.location&&a.locationLat!=null) locGeoMark($('aLoc')); else delete $('aLoc').dataset.geoFor;
+  /* Preserve the Home link across an edit that never touches the
+     location — without this, saving would quietly sever it. */
+  locSetHome('aLoc',a.locationIsHome);
   resetLocationGuess(false);
   /* An activity saved before "Someday"/"No date" were retired still
      carries that value. Put it back as an option for this one row, so
@@ -649,6 +666,13 @@ function setRemindField(value,note){
   updateRemindRow();
 }
 
+/* The Home flag, ready to merge into a write — or nothing at all
+   without the column, since sending one the table does not have
+   fails the whole insert. Same shape as listFieldsFor(). */
+function homeFieldsFor(inputId){
+  return homeFlagReady()?{location_is_home:locIsHome(inputId)}:{};
+}
+
 async function saveActivity(){
   const name=$('aName').value.trim();
   if(!name){shakeEl($('aName'));$('aName').focus();return;}
@@ -656,6 +680,10 @@ async function saveActivity(){
   if($('aDate').value===CUSTOM_DATE&&!$('aDateCustom').value){
     shakeEl($('aDateCustom'));$('aDateCustom').focus();return;
   }
+  /* A location is required, and this is also what turns typed text into
+     coordinates — so the fields below are read AFTER it, not before.
+     See A LOCATION IS REQUIRED in js/location.js. */
+  if(!await requireLocation('aLoc','aLocError',$('actSaveBtn'))) return;
   const fields={
     name,
     location:$('aLoc').value.trim()||null,
@@ -663,7 +691,10 @@ async function saveActivity(){
     location_lng:parseFloat($('aLocLng').value)||null,
     target_date:readTargetDate(),
     priority:$('aPri').value,
-    links:aLinks
+    links:aLinks,
+    /* Whether this location IS home, so changing the home address
+       later moves it. See "THIS ACTIVITY IS AT HOME" in api.js. */
+    ...homeFieldsFor('aLoc'),
   };
   /* Only send the column if the database actually has it, or every
      insert fails for people who have not run the migration. */
