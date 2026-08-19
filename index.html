@@ -950,6 +950,32 @@
   </div>
 </div>
 
+<!-- Everything at one point on the map.
+
+     A map pin is a place, and a place routinely holds more than one
+     activity — "home" most of all. Zooming in never separated those,
+     so tapping the stack opened whichever pin happened to be on top
+     and the rest were unreachable. Clustering now stays on at every
+     zoom (see attachActivityLayer in map.js), so coincident activities
+     are always one bubble, and tapping it lists them here.
+
+     Tapping a row closes this sheet and opens the activity, rather than
+     stacking a second sheet on top of it: the activity sheet has half a
+     dozen buttons that close it in order to open something else, and a
+     return registered here would resurrect this sheet on top of each
+     one of them. -->
+<div class="modal-overlay" id="placeSheet">
+  <div class="modal">
+    <div class="sheet-grabber"></div>
+    <div class="sheet-bar">
+      <button class="navbtn" onclick="closeModal('placeSheet')">Done</button>
+      <div class="sheet-title">Place</div>
+      <span class="navbtn" style="pointer-events:none;opacity:0">Done</span>
+    </div>
+    <div class="sheet-body" id="placeBody"></div>
+  </div>
+</div>
+
 <!-- Activity detail -->
 <div class="modal-overlay" id="actDetailSheet">
   <div class="modal barless">

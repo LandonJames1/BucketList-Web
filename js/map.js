@@ -129,19 +129,31 @@ function emptyMapHTML(title,sub){
 function actsToGeoJSON(acts){
   return {
     type:'FeatureCollection',
-    features:acts.filter(a=>a.locationLat&&a.locationLng).map(a=>({
-      type:'Feature',
-      geometry:{type:'Point',coordinates:[parseFloat(a.locationLng),parseFloat(a.locationLat)]},
-      properties:{
-        id:a.id,name:a.name,done:a.completed?1:0,
-        /* Pending pins are coloured by priority on the same scale the
-           lists use, and a high one is drawn larger as well — on a map
-           you are reading pins against each other, not against a
-           legend. Completed pins stay olive: done outranks priority. */
-        pri:a.completed?'':(a.priority||'medium'),
-        photo:(a.photos&&a.photos[0])||'',location:a.location||'',
-      },
-    })),
+    features:acts.filter(a=>a.locationLat&&a.locationLng).map(a=>{
+      const lng=parseFloat(a.locationLng),lat=parseFloat(a.locationLat);
+      return {
+        type:'Feature',
+        geometry:{type:'Point',coordinates:[lng,lat]},
+        properties:{
+          id:a.id,name:a.name,done:a.completed?1:0,
+          /* Pending pins are coloured by priority on the same scale the
+             lists use, and a high one is drawn larger as well — on a map
+             you are reading pins against each other, not against a
+             legend. Completed pins stay olive: done outranks priority. */
+          pri:a.completed?'':(a.priority||'medium'),
+          photo:(a.photos&&a.photos[0])||'',location:a.location||'',
+          /* The coordinates again, as plain numbers. A cluster's own
+             geometry is the average of its children, which says nothing
+             about how far apart they are — so the source aggregates
+             min/max of these into every cluster and samePlaceCluster()
+             reads the span back off the feature that was tapped. No
+             leaf query, no round trip, and it is available at draw time
+             too, which is what lets a stacked cluster be drawn as a
+             stack. */
+          x:lng,y:lat,
+        },
+      };
+    }),
   };
 }
 
@@ -260,18 +272,41 @@ function ensurePhotoIcon(map,id,src,done,pri,onReady){
   img.src=src;
 }
 
-/* A cluster bubble with its count baked in. One image per (count, state)
-   pair, generated on demand and cached. Drawing the number into the
-   image avoids needing a `glyphs` font endpoint for a symbol layer. */
-function ensureClusterIcon(map,count,allDone){
-  const id='cluster-'+count+'-'+(allDone?'d':'p');
+/* A cluster bubble with its count baked in. One image per
+   (count, state, stacked) triple, generated on demand and cached.
+   Drawing the number into the image avoids needing a `glyphs` font
+   endpoint for a symbol layer.
+
+   `stacked` says the cluster's children are all at one place, so
+   zooming will never pull them apart — tapping it opens the place
+   sheet instead. That is a different answer from the same-looking
+   control, so it gets a different look: a second disc peeking out
+   behind the first, the way a stack of cards reads. */
+function ensureClusterIcon(map,count,allDone,stacked){
+  const id='cluster-'+count+'-'+(allDone?'d':'p')+(stacked?'-s':'');
   if(iconSet(map).has(id))return id;
   const r=count>=10?25:count>=5?22:19;
-  const size=r*2+6;
+  const off=stacked?5:0;
+  const size=r*2+6+off*2;
   const{canvas,ctx,dpr}=makeCanvas(size);
   const c=size/2;
-  ctx.beginPath();ctx.arc(c,c,r,0,Math.PI*2);
-  ctx.fillStyle=allDone?cssVar('--green'):cssVar('--tint');
+  const fill=allDone?cssVar('--green'):cssVar('--tint');
+  if(stacked){
+    /* The card behind. Drawn first and slightly smaller, with the same
+       white ring, so the front disc reads as sitting on top of it. */
+    ctx.beginPath();ctx.arc(c+off,c-off,r-1.5,0,Math.PI*2);
+    ctx.fillStyle=fill;
+    ctx.shadowColor='rgba(0,0,0,.3)';ctx.shadowBlur=6;ctx.shadowOffsetY=2;
+    ctx.fill();
+    ctx.shadowColor='transparent';
+    ctx.lineWidth=2.5;ctx.strokeStyle='#fff';ctx.stroke();
+  }
+  /* The front disc stays on the canvas centre, which is where the
+     symbol layer anchors the image — so growing the canvas for the
+     card behind does not shift the bubble off its coordinate. */
+  const cx=c,cy=c;
+  ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);
+  ctx.fillStyle=fill;
   ctx.shadowColor='rgba(0,0,0,.35)';ctx.shadowBlur=7;ctx.shadowOffsetY=2;
   ctx.fill();
   ctx.shadowColor='transparent';
@@ -279,7 +314,7 @@ function ensureClusterIcon(map,count,allDone){
   ctx.fillStyle='#fff';
   ctx.font='600 13px ui-monospace, SFMono-Regular, Menlo, monospace';
   ctx.textAlign='center';ctx.textBaseline='middle';
-  ctx.fillText(String(count),c,c+.5);
+  ctx.fillText(String(count),cx,cy+.5);
   addCanvasImage(map,id,canvas,dpr);
   iconSet(map).add(id);
   return id;
@@ -294,12 +329,35 @@ function cssVar(name){
    LAYER WIRING
    ============================================================== */
 
+/* How close two activities have to be before they count as the same
+   place rather than as neighbours: about 25m at the equator, which is
+   under the width of one pin at the map's deepest zoom. Coordinates
+   picked from the same search result — or from the Home shortcut — are
+   identical, so this only has to absorb the case where the same address
+   was geocoded twice and came back a few metres apart. */
+const SAME_PLACE_DEG=0.00022;
+
+/* Does this cluster hold activities that are all at one point? Reads
+   the min/max the source aggregates (see clusterProperties below), so
+   it needs no leaf query and works inside a style expression too. */
+const CLUSTER_SPAN_X=['-',['get','x1'],['get','x0']];
+const CLUSTER_SPAN_Y=['-',['get','y1'],['get','y0']];
+const CLUSTER_STACKED=['all',
+  ['<',CLUSTER_SPAN_X,SAME_PLACE_DEG],
+  ['<',CLUSTER_SPAN_Y,SAME_PLACE_DEG]];
+
+function samePlaceCluster(p){
+  if(!p||p.x1===undefined)return false;
+  return (p.x1-p.x0)<SAME_PLACE_DEG && (p.y1-p.y0)<SAME_PLACE_DEG;
+}
+
 /* Cluster properties are generated by MapLibre, so a cluster's icon has
    to be selected by expression rather than stamped on. The id it builds
    matches what ensureClusterIcon() registers. */
 const CLUSTER_ICON_EXPR=['concat','cluster-',
   ['to-string',['get','point_count']],
-  ['case',['==',['get','done'],['get','point_count']],'-d','-p']];
+  ['case',['==',['get','done'],['get','point_count']],'-d','-p'],
+  ['case',CLUSTER_STACKED,'-s','']];
 
 const SYMBOL_LAYOUT={
   'icon-image':['get','_icon'],
@@ -343,17 +401,36 @@ function stampPointIcons(map,state,push){
 
 function attachActivityLayer(map,acts,state){
   state.geojson=actsToGeoJSON(acts);
+  state.byId=indexActs(acts);
   stampPointIcons(map,state,false);
 
   map.addSource('acts',{
     type:'geojson',
     data:state.geojson,
     cluster:true,
+    /* Roughly a pin's width, so "clustered" means "these pins would be
+       drawn on top of each other". */
     clusterRadius:56,
-    clusterMaxZoom:13,
-    /* Sum of completed children, so a cluster can be tinted by whether
-       everything inside it is done. */
-    clusterProperties:{done:['+',['get','done']]},
+    /* Clustering used to stop at zoom 13, and that was the bug behind
+       "several activities at one address are unreachable": past 13 every
+       point drew its own pin, so a house with five activities at it was
+       five pins stacked on the same pixel and a tap opened whichever was
+       on top. The radius is in screen pixels, so keeping clustering on
+       all the way to the map's own maxZoom costs nothing at street
+       level — anything genuinely metres apart separates on its own —
+       and leaves only the coincident ones bundled, which is exactly the
+       set the place sheet exists to open. */
+    clusterMaxZoom:map.getMaxZoom(),
+    clusterProperties:{
+      /* Sum of completed children, so a cluster can be tinted by whether
+         everything inside it is done. */
+      done:['+',['get','done']],
+      /* The bounding box of the children. A cluster's own geometry is
+         their average, which cannot say whether they are one place or a
+         whole neighbourhood — this can. See samePlaceCluster(). */
+      x0:['min',['get','x']], x1:['max',['get','x']],
+      y0:['min',['get','y']], y1:['max',['get','y']],
+    },
   });
 
   map.addLayer({id:'points',type:'symbol',source:'acts',
@@ -372,25 +449,44 @@ function attachActivityLayer(map,acts,state){
     catch(e){ return; }
     const before=iconSet(map).size;
     feats.forEach(f=>ensureClusterIcon(map,f.properties.point_count,
-      f.properties.done===f.properties.point_count));
+      f.properties.done===f.properties.point_count,
+      samePlaceCluster(f.properties)));
     if(iconSet(map).size!==before) map.triggerRepaint();
   };
   map.on('data',e=>{ if(e.sourceId==='acts'&&e.isSourceLoaded) ensureClusterIcons(); });
   map.on('moveend',ensureClusterIcons);
   state.ensureClusterIcons=ensureClusterIcons;
 
+  /* Tapping a cluster zooms into it — unless zooming cannot help,
+     which is the whole point of this change. A cluster whose children
+     are all at one address stays a cluster however far you zoom, so
+     easing towards it forever was a control that visibly did nothing.
+     Those open the place sheet instead. The expansion-zoom check
+     behind it is the belt to that brace: it catches anything supercluster
+     cannot split for a reason the bounding box does not describe. */
   map.on('click','clusters',e=>{
     const f=e.features&&e.features[0];
     if(!f)return;
     const src=map.getSource('acts');
     if(!src)return;
+    const at=f.geometry.coordinates;
+    if(samePlaceCluster(f.properties)) return openClusterPlace(map,state,f);
     Promise.resolve(src.getClusterExpansionZoom(f.properties.cluster_id))
-      .then(z=>map.easeTo({center:f.geometry.coordinates,zoom:z+.3,duration:560}))
+      .then(z=>{
+        if(z>map.getMaxZoom()) return openClusterPlace(map,state,f);
+        map.easeTo({center:at,zoom:z+.3,duration:560});
+      })
       .catch(()=>{});
   });
   map.on('click','points',e=>{
-    const f=e.features&&e.features[0];
-    if(f) openActDetail(f.properties.id);
+    const fs=e.features||[];
+    if(!fs.length)return;
+    /* Clustering is on at every zoom now, so coincident points should
+       already have been bundled — but a query can still return more
+       than one overlapping pin, and picking [0] is how the original bug
+       looked from the outside. */
+    if(fs.length>1) return openPlaceSheet(placeActs(state,fs.map(f=>f.properties.id)));
+    openActDetail(fs[0].properties.id);
   });
   ['clusters','points'].forEach(l=>{
     map.on('mouseenter',l,()=>{map.getCanvas().style.cursor='pointer';});
@@ -402,9 +498,157 @@ function attachActivityLayer(map,acts,state){
 function setLayerData(map,state,acts){
   if(!map||!map.getSource('acts'))return;
   state.geojson=actsToGeoJSON(acts);
+  state.byId=indexActs(acts);
   stampPointIcons(map,state,false);
   map.getSource('acts').setData(state.geojson);
   if(state.ensureClusterIcons) setTimeout(state.ensureClusterIcons,60);
+}
+
+/* ==============================================================
+   ONE POINT, SEVERAL ACTIVITIES
+
+   A pin is a place, and a place holds as many activities as you put
+   there — "home" most of all, which collects every chore you will ever
+   file. Zooming in never separated those (they share one coordinate),
+   so the map had a stack of pins on one pixel and a tap opened whichever
+   was on top. The rest were, in the app's own terms, in the database and
+   reachable from nowhere.
+
+   The fix is in two halves. Clustering now runs at every zoom, so a
+   stack is always one bubble carrying its count rather than N pins
+   pretending to be one — see attachActivityLayer(). And a bubble that
+   zooming cannot split opens this sheet, which is the missing half: the
+   list of what is actually there.
+
+   The activities come from the layer's own index rather than from a
+   fetch, so the sheet shows exactly the set the map is showing — the
+   Map tab's To Go / Done filter and the collection map's search included.
+   ============================================================== */
+
+/* id → activity, rebuilt with the layer data. The GeoJSON carries only
+   what the pins need to draw; the sheet wants the whole row. */
+function indexActs(acts){
+  const m={};
+  acts.forEach(a=>{m[a.id]=a;});
+  return m;
+}
+
+function placeActs(state,ids){
+  const by=state&&state.byId||{};
+  return ids.map(id=>by[id]).filter(Boolean);
+}
+
+/* Enough for any real address. A cluster with more than this in it is
+   not one place, it is a city, and it will have expanded long before. */
+const PLACE_MAX=250;
+
+/* A cluster's children, resolved back into activities. getClusterLeaves
+   is the only thing here that is asynchronous — the clustering lives in
+   a worker — so the sheet opens a frame later than the tap. */
+function openClusterPlace(map,state,f){
+  const src=map.getSource('acts');
+  if(!src)return;
+  Promise.resolve(src.getClusterLeaves(f.properties.cluster_id,PLACE_MAX,0))
+    .then(leaves=>{
+      const acts=placeActs(state,(leaves||[]).map(l=>l.properties.id));
+      if(acts.length===1) return openActDetail(acts[0].id);
+      if(acts.length) openPlaceSheet(acts);
+    })
+    .catch(e=>console.warn('[map] could not read cluster:',e&&e.message));
+}
+
+/* What to call the point. The activities at one coordinate were each
+   given their location text separately, so they can disagree in wording
+   — take the one the most of them wrote, and fall back to coordinates
+   rather than to an empty title. */
+function placeTitle(acts){
+  const counts={};
+  let best='',bestN=0;
+  acts.forEach(a=>{
+    const t=(a.location||'').trim();
+    if(!t)return;
+    counts[t]=(counts[t]||0)+1;
+    if(counts[t]>bestN){best=t;bestN=counts[t];}
+  });
+  if(best)return best;
+  const a=acts[0];
+  return a&&a.locationLat?`${(+a.locationLat).toFixed(4)}, ${(+a.locationLng).toFixed(4)}`:'This place';
+}
+
+/* Pending first and in the order Up Next would put them — the sheet is
+   read to decide what to do next, and something already done has no
+   next. Completed rows follow, most recent first, so the place still
+   reads as a record of what happened there. */
+function sortPlaceActs(acts){
+  return acts.slice().sort((a,b)=>
+    (a.completed?1:0)-(b.completed?1:0) ||
+    (a.completed
+      ? new Date(b.completedDate||0)-new Date(a.completedDate||0)
+      : daysToTarget(a)-daysToTarget(b) || priorityRank(a)-priorityRank(b)) ||
+    new Date(b.createdAt)-new Date(a.createdAt));
+}
+
+/* Built on .act-row rather than on a row of its own: these are the same
+   objects the collection screen lists, and the only thing that differs
+   is that they can have come from any list, so the meta line carries a
+   .list-chip the way the Up Next rows do. */
+function placeRowHTML(a,lists){
+  const di=dateInfo(a);
+  const thumb=a.photos&&a.photos.length
+    ? `<img class="act-thumb" src="${esc(a.photos[0])}" alt="" loading="lazy"/>` : '';
+  const bits=[`<span class="list-chip">${esc(activityListLabel(a,lists))}</span>`];
+  if(a.completed){
+    if(a.completedDate) bits.push(`<span class="pl-when">${esc(fmtDate(a.completedDate,true))}</span>`);
+  } else if(di.label){
+    bits.push(`<span class="badge b-${di.cls}">${esc(di.label)}</span>`);
+  }
+  return `<div class="act-row${a.completed?' done':''}${priClass(a)}" onclick="placeOpenActivity('${a.id}')">
+    <button class="act-check" onclick="event.stopPropagation();placeToggleActivity('${a.id}')"
+            aria-label="${a.completed?'Mark as not done':'Mark as done'}">
+      ${icon(a.completed?'check-circle':'circle')}
+    </button>
+    <button class="act-main">
+      <span class="act-name">${esc(a.name)}</span>
+      <span class="act-meta">${priTagHTML(a)}${bits.join('')}</span>
+    </button>
+    ${thumb}
+    <span class="act-chevron">${icon('chevron-right')}</span>
+  </div>`;
+}
+
+function openPlaceSheet(acts){
+  if(!acts||!acts.length)return;
+  const list=sortPlaceActs(acts);
+  const lists=cachedCollections();
+  const done=list.filter(a=>a.completed).length;
+  const n=list.length;
+  const counts=[`${n} ${n===1?'activity':'activities'}`];
+  if(done) counts.push(`${done} done`);
+  $('placeBody').innerHTML=`
+    <div class="pl-head">
+      <div class="t-eyebrow">${esc(counts.join(' · '))}</div>
+      <h2 class="pl-title">${esc(placeTitle(list))}</h2>
+    </div>
+    <div class="pl-list">${list.map(a=>placeRowHTML(a,lists)).join('')}</div>`;
+  openModal('placeSheet');
+}
+
+/* Both row actions close this sheet first. The activity sheet and the
+   completion sheet are earlier in the document than this one, so an
+   overlay opened on top of it would render underneath it — and the
+   activity sheet in particular has half a dozen buttons that close
+   themselves to open something else, which a registered return would
+   resurrect this sheet on top of. Tapping the pin again is the way
+   back, and it costs one tap. */
+function placeOpenActivity(id){
+  closeModal('placeSheet');
+  openActDetail(id);
+}
+function placeToggleActivity(id){
+  closeModal('placeSheet');
+  /* No source: refreshAfterChange() then redraws whichever map is
+     actually on screen, which is the one this sheet was opened from. */
+  toggleCompleteFrom('',id);
 }
 
 /* Resolves when a map has finished loading its style — or immediately

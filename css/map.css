@@ -289,3 +289,38 @@
        swimming against it during a pan. Their colours come from the
        palette via cssVar(), so they still follow light/dark mode. */
 
+
+/*  ============================================================
+    THE PLACE SHEET
+
+    Everything at one point on the map. Its rows are .act-row from
+    detail.css unchanged — they are the same objects the collection
+    screen lists, and reusing the row means a completed one is struck
+    through, a priority rail runs down its edge and the check target is
+    the same size, all for free. Only the container and the header are
+    new, because .act-group carries screen gutters this sheet must not.
+    ============================================================ */
+    /* .sheet-body has no horizontal padding — every child insets
+       itself, the same way .fg does. */
+    .pl-head { margin: 0 var(--gx-r) 14px var(--gx-l); }
+    .pl-title {
+      font-family: var(--serif); font-size: 25px; font-weight: 600;
+      letter-spacing: -.015em; line-height: 1.2; color: var(--label);
+      margin-top: 5px;
+      /* A place name can be a full postal address. Two lines, then
+         ellipsis — the sheet is about what is at the place, not about
+         the name of it. */
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .pl-list {
+      margin: 0 var(--gx-r) 0 var(--gx-l);
+      background: var(--bg-elevated); border-radius: var(--r-row);
+      overflow: hidden;
+      box-shadow: var(--shadow-sm), 0 0 0 .5px var(--separator);
+    }
+    /* .act-meta is nowrap with a single shrinkable child, so whichever
+       chip is allowed to give has to say so. The list name is that
+       chip here, exactly as it is on an Up Next row. */
+    .pl-list .act-meta .list-chip { min-width: 0; }
+    .pl-when { flex: 0 0 auto; color: var(--label-3); }

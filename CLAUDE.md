@@ -1310,6 +1310,67 @@ as you zoom in — the Google Earth behaviour. Things worth knowing:
 The per-collection map inside the detail screen uses the same code but stays
 flat — at one collection's scale a globe is unhelpful.
 
+#### Several activities at one point
+
+A pin is a **place**, and a place holds as many activities as you file
+there — Home most of all, which collects every chore you will ever have.
+That case was unreachable: clustering stopped at zoom 13, so past it every
+activity drew its own pin, five activities at one address were five pins on
+one pixel, and a tap opened whichever happened to be on top. The rest were
+in the database and reachable from nowhere — the same failure the
+"an activity must always be in at least one list" rule exists to prevent,
+arrived at from the other direction.
+
+Two halves, and neither works without the other.
+
+**Clustering now runs at every zoom** — `clusterMaxZoom` is the map's own
+`maxZoom` rather than 13. `clusterRadius` is in *screen pixels* (56, about a
+pin's width), so "clustered" means "these pins would be drawn on top of each
+other", which is true at street level exactly when it is true: anything
+genuinely metres apart separates on its own as you zoom, and only the
+coincident ones stay bundled. A stack is therefore always **one bubble
+carrying its count**, never N pins pretending to be one.
+
+**And a bubble that zooming cannot split opens the place sheet**
+(`openPlaceSheet()`), which is the half that was missing: the list of what is
+actually there. `#placeSheet` shows the place's name, a count, and one
+`.act-row` per activity — the same row the collection screen uses, so a
+completed one is struck through and the priority rail runs down its edge for
+free — pending first in Up Next's order, then completed most-recent-first.
+
+Things to keep:
+
+- **"Same place" is read off the cluster, not from a leaf query.**
+  `actsToGeoJSON()` stamps each point's own `x`/`y` into its properties and
+  the source aggregates `min`/`max` of them into every cluster
+  (`clusterProperties`), so `samePlaceCluster()` answers from the feature that
+  was tapped, with no round trip. A cluster's own geometry is the *average* of
+  its children and says nothing about how far apart they are.
+- **That test is available at draw time too**, which is what lets a stacked
+  cluster be drawn as a stack — `CLUSTER_STACKED` selects the `-s` icon
+  variant, a second disc peeking out behind the first. It has to look
+  different, because it *behaves* differently: an identical-looking control
+  that zooms in one case and opens a sheet in the other is the kind of thing
+  people learn as "the map is flaky".
+- **The expansion-zoom check stays as the belt to that brace.** If
+  `getClusterExpansionZoom()` comes back past the map's `maxZoom`, zooming
+  cannot help whatever the bounding box says, and the sheet opens anyway.
+- **`SAME_PLACE_DEG` (0.00022°, ~25m) is not the interesting number.**
+  Coordinates picked from the same search result — or from the Home shortcut —
+  are *identical*, so this only absorbs the case where one address was
+  geocoded twice and came back a few metres apart.
+- **The sheet lists what the map is showing**, not what the database holds:
+  the activities come from `state.byId`, rebuilt beside the layer data, so the
+  Map tab's To Go / Done filter and the collection map's search are already
+  applied. `setLayerData()` must keep that index in step.
+- **Its rows close the sheet before opening anything.** `#placeSheet` is
+  later in `index.html` than the activity and completion sheets, so an overlay
+  opened on top of it would render *underneath* it — and `onSheetClose()` is
+  not the answer either: the activity sheet has half a dozen buttons that
+  close themselves in order to open something else, and a return registered
+  here would resurrect this sheet on top of every one of them. Tapping the pin
+  again is the way back, and it costs one tap.
+
 #### Staying signed in
 
 Being asked to log in again is the failure users notice most, so the boot path
@@ -2309,7 +2370,7 @@ Loaded in this order; **order matters**.
 | `detail.css` | A collection's screen: `.det-banner`, `.det-ctl-row`/`.det-sort` (the filter and sort controls sharing a line — the row owns the gutters so `.seg` can give up its own margins), `.act-row` list rows, `.composer` quick-add, `.act-card` grid cards, and the `.ad-*` activity detail sheet including `.ad-lists`/`.ad-list-chip`. |
 | `me.css` | The Me tab: the stats card, the progress card, the identity row. |
 | `modals.css` | The three presentation styles — `.modal`/`.sheet-*` bottom sheets, `.action-sheet`, `.lightbox` — plus the form controls that live inside a sheet: `.fg` and its `.fg-hero` (the field a sheet is *about* — only the activity name) and `.fg-pair` (two short choices on one line), `.picker-btn` (a value that opens a picker, sized to match a `<select>` beside it), `.act-notice` (why a sheet opened the way it did — quiet, never red, gone with the sheet), `.chip-field`, `.photo-*`, the completion sheet's own `.comp-*` (`.comp-card`/`.comp-row` — inset grouped rows whose overflow must stay visible for the location dropdown — `.comp-sec`, `.comp-note`), the list picker's `.lp-*` (including `.lp-home`, the badge naming which of several chosen lists is the home one), and `.toast`. There are no disclosure styles here any more — `.more-toggle`/`.more-fields` went with the completion sheet's last collapsed section. |
-| `map.css` | Map containers (the full-bleed `.page-map` and the inset detail map), the CSS sky gradient behind the globe, the floating `.map-filter`/`.map-count`/`.map-fab` chrome, `.map-pin`/`.map-cluster` markers, MapLibre's own controls restyled, the `.loc-*` autocomplete dropdown, `.loc-suggest-*` — the "from your photo" chip, deliberately a tinted *offer* rather than a filled control, since it must not read as though the field is already answered — and `.loc-guess-*`, which is the opposite case and therefore shaped differently: a quiet caption marking a field the app has already filled in from the activity's name, with an ✕ that takes it back out. |
+| `map.css` | Map containers (the full-bleed `.page-map` and the inset detail map), the CSS sky gradient behind the globe, the floating `.map-filter`/`.map-count`/`.map-fab` chrome, `.map-pin`/`.map-cluster` markers, MapLibre's own controls restyled, the `.loc-*` autocomplete dropdown, `.loc-suggest-*` — the "from your photo" chip, deliberately a tinted *offer* rather than a filled control, since it must not read as though the field is already answered — `.loc-guess-*`, which is the opposite case and therefore shaped differently: a quiet caption marking a field the app has already filled in from the activity's name, with an ✕ that takes it back out — and `.pl-*`, the place sheet (everything at one point on the map), whose rows are `.act-row` from `detail.css` unchanged so only its container and header are new. |
 | `bulk.css` | `.bulk-*` — the "add many at once" sheet, one card per row. |
 | `import.css` | `.imp-*` — the sheet a shared link or screenshot opens into (its result checklist, the screenshot preview, the duplicate mark, the waiting and caption-fallback states) — plus `.shr-*` (`.shr-lead`/`.shr-url`/`.shr-note`), written for the iOS Shortcut setup sheet that is gone and kept because `sharing.css` leans on all three for the invite and accept-an-invite cards. |
 | `dupes.css` | `.dupe-*` — the "you may already have this" sheet. Deliberately quiet: no red, no alert iconography, an ordinary tinted confirm. It interrupts the fastest path in the app, so it has to read as a question. |
@@ -2365,7 +2426,7 @@ Loaded in this order; **order matters**.
 | `me.js` | `renderMe()` (stats), `renderMeIdentity()`, **Home** — `homePlace`/`loadHomePlace`/`saveHomePlace`/`resetHomePlace`/`renderMeHome`/`openHomeSheet`/`saveHomeSheet`/`clearHomePlace` and the `bl_home:<uid>` localStorage mirror (see **Home**), plus **`updateHomeActivities`/`clearHomeActivityFlags`** — the cascade that moves everything set to Home when the home address changes (see **Moving house**) — `openDeleteAccount`/`onDeleteAccountInput`/`deleteAccount` (see **Deleting an account**), `loadUserProfile()` (reads the `Users` row once per session into `userProfile` — **and creates it when missing**, via `createUserProfile`/`profileSeed`/`USERNAME_RE`; see **Signing up**), `confirmSignOut()`. The tab's one App row, Add to Home Screen, is wired to `pwaShowInstallHelp()` in `pwa.js`. *Share links into the app* and *Join a shared list* both used to sit beside it; the first went with the Shortcut tier (see **Sharing a link in**) and the second lives on the Lists tab, which is the screen the missing list was supposed to be on. |
 | `bulk.js` | The "add many at once" sheet, one card per row. Row values live in `bulkEntries[]` and the DOM is re-rendered from it wholesale, so **`saveBulkFieldValues()` must flush the inputs back into the array before any redraw** — every mutation helper does this. `_skipSaveBulk` suppresses that flush in `bulkApplyDown` (the "copy row 1" pills), which has already updated the array itself. `openBulkAdd(listId)` takes an explicit destination in `bulkListId`, defaulting to `curListId`: the sheet normally opens from a collection, but an import from Home has no collection context and passes the chosen list. |
 | `share.js` | **Turning a shared link or a screenshot into an activity.** `readSharedInput()` (boot; parses and strips the query param), `handleSharedInput()` (called from `showApp()`), `openImportSheet`/`runUnfurl`/**`importFailed`** (the link-keeps-the-card / screenshot-goes-to-the-sheet split)/`renderImportState`/`IMPORT_FAIL_STATE`/`SHOT_FAIL_NOTICE`, `pickScreenshot`/`handleScreenshot` (downscale and send to the vision path), `handOffSingle`/`handOffMany`/`shareSourceLinks`, and `looksLikeUrl`/`importFromComposer`. Loads after `activities.js` and `bulk.js` because it hands drafts to both. See **Sharing a link in** below. |
-| `map.js` | All MapLibre GL. **`ensureMapLibre()`** — the library is loaded on demand here, not from `<head>`; at ~900KB it was the biggest single cost of a cold launch, blocking the parser on the way to a Home screen with no map on it. Both entry points await it and fall back to the "map unavailable" state if it cannot be fetched. Then `mapStyle()` (raster CARTO basemap + globe projection + sky), `webglOK()`, `actsToGeoJSON()`, and `attachActivityLayer()` — which adds the clustered GeoJSON source and syncs DOM markers (`makePinEl`, `makeClusterEl`) to the viewport. Then the two instances: the Map tab (`renderGlobalMap`, `fitGlobal`, `zoomGlobe`, `globeFillZoom`, `setGlobalMapFilter`) and the per-collection map (`renderMap`, `updateMapMarkers`). Plus `mapLoaded(map)` and `hasGeo`. Teardown is explicit — `destroyGlobalMap()`/`destroyDetailMap()` — because each map holds a WebGL context, but **only the detail map is torn down on navigation**. See **The immersive map** above for the traps. |
+| `map.js` | All MapLibre GL. **`ensureMapLibre()`** — the library is loaded on demand here, not from `<head>`; at ~900KB it was the biggest single cost of a cold launch, blocking the parser on the way to a Home screen with no map on it. Both entry points await it and fall back to the "map unavailable" state if it cannot be fetched. Then `mapStyle()` (raster CARTO basemap + globe projection + sky), `webglOK()`, `actsToGeoJSON()`, and `attachActivityLayer()` — which adds the clustered GeoJSON source and the two symbol layers, and owns the click handlers. Then the marker icons (`ensureDotIcon`, `ensurePhotoIcon`, `ensureClusterIcon`, `stampPointIcons`). Then **one point, several activities**: `SAME_PLACE_DEG`/`CLUSTER_STACKED`/`samePlaceCluster` (is this bubble one place or a neighbourhood?), `indexActs`/`placeActs` (the id → activity index kept beside the layer data), `openClusterPlace`, `openPlaceSheet`/`placeTitle`/`sortPlaceActs`/`placeRowHTML`, and the two row actions `placeOpenActivity`/`placeToggleActivity` — see **Several activities at one point**. Then the two instances: the Map tab (`renderGlobalMap`, `fitGlobal`, `zoomGlobe`, `globeFillZoom`, `setGlobalMapFilter`) and the per-collection map (`renderMap`, `updateMapMarkers`). Plus `mapLoaded(map)` and `hasGeo`. Teardown is explicit — `destroyGlobalMap()`/`destroyDetailMap()` — because each map holds a WebGL context, but **only the detail map is torn down on navigation**. See **The immersive map** above for the traps. |
 | `pwa.js` | Service-worker registration and the install/offline UI: `isStandalone()`/`isIOS()` (which stamp `.standalone`/`.ios` on `<html>`), the `beforeinstallprompt` capture behind `pwaInstall()`, the iOS Add-to-Home-Screen sheet, `pwaShowInstallHelp()` (the Me tab row), and `pwaUpdateOnlineState()`. Dismissals persist in `localStorage` under `bl_*` keys. **It also calls `reg.update()` on foreground and on reconnect** — an installed PWA is rarely killed, and registration is the only moment the browser looks for a new `sw.js`, so without it a shipped fix can sit undelivered on the home-screen copy for days and look like it was never made. **`pwaHadController` gates the `controllerchange` reload** so it fires on an update and not on a first install — see **Shared lists**, where getting that wrong silently destroyed every invite link. |
 | `main.js` | Boot: `paintStaticIcons()` fills the empty icon placeholders left in `index.html` from the sprite map, then the three query-string readers run in a **fixed order** — `readEmailConfirmation()`, `readSharedInput()`, `readPendingJoin()` — all **before** the session restore, because a link can be shared in, an invite opened, or an address confirmed while signed out. Then `consumeEmailConfirmation()` is tried ahead of `restoreSession()`, and `showApp()`/`showAuth()` follows. **Loads last.** See **Staying signed in** (why `restoreSession()` is more than one `getSession()` call) and **Coming back through the confirmation email** (why the reader order is not arbitrary). |
 
@@ -3145,6 +3206,19 @@ Two things that will bite:
   outside. The app now says which failure it hit, which is the closest
   thing to a check there is.
 - **`Users.icon` and `category_tag` (both tables) remain unused.**
+- **There is no way back from the place sheet.** Tapping a row closes it and
+  opens the activity; closing that lands on the map, not on the list of
+  everything at that point. The pin is one tap away, and the alternative —
+  `onSheetClose('actDetailSheet', …)` — would fire on the half-dozen buttons
+  that close the activity sheet in order to open something *else*. Fixing it
+  properly means the activity sheet knowing what pushed it.
+- **The Map tab's count says "N places" and counts activities.** Now that
+  coincident activities are one bubble, the two numbers genuinely differ. It
+  has always said this; it is just newly wrong-looking.
+- **Coincident pins are bundled, not spread.** Tapping the stack lists them;
+  it does not fan them out into a ring around the point the way a spiderfier
+  would. A list is the better answer on a phone, but it does mean you cannot
+  see the individual pins at all.
 - **The map needs WebGL.** There is no 2D fallback — `webglOK()` shows a
   message instead. In practice every browser that can run the rest of the app
   has it, but it is a hard dependency where Leaflet was not.
