@@ -290,10 +290,36 @@
        way to correct a date that one-tap completing guessed. */
     .ad-datebtn {
       gap: 6px; padding: 3px 8px; margin: -3px 0;
-      border-radius: 9px; background: var(--green-soft);
+      border-radius: 9px;
+      /* The same moss the pending sheet's Target chip carries: the
+         accomplished date is that field's counterpart once it is done,
+         and the two sheets should not name the same idea in two hues. */
+      background: color-mix(in srgb, var(--c-target) 18%, transparent);
+      color: var(--c-target);
     }
     .ad-datebtn:active { opacity: .6; }
     .ad-datebtn .ic { width: 12px; height: 12px; }
+
+    /* The place sits beside the date as a second badge on the same row. */
+    .ad-locbadge {
+      gap: 6px; padding: 0 10px;
+      /* Plum, matching the pending sheet's Where card. */
+      background: color-mix(in srgb, var(--c-where) 14%, transparent);
+      color: var(--c-where);
+      overflow: hidden;
+    }
+    .ad-locbadge > span {
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .ad-locbadge .ic { width: 15px; height: 15px; flex: none; }
+
+    /* The media count reads under the photos, on the "How it went" line. */
+    .ad-note-head { display: flex; align-items: baseline; gap: 12px; padding-left: 6px; padding-right: 6px; }
+    .ad-count {
+      margin-left: auto; color: var(--label-3);
+      font-family: var(--mono); font-size: 10px; font-weight: 500;
+      letter-spacing: .13em; text-transform: uppercase;
+    }
 
     .ad-head { padding: 0 var(--gx-r) 0 var(--gx-l); }
     /* The name leads the sheet and the badges sit under it, so nothing
@@ -316,11 +342,15 @@
       display: flex; flex-wrap: nowrap; gap: 10px; align-items: center;
       margin-top: 14px;
     }
+    /* On a phone the pair is sized down a quarter: the date and the
+       place are the caption under the title, not controls, and at the
+       desktop size they crowded the 29px serif above them. The full
+       size comes back at >=700px in responsive.css. */
     .ad-badges > * {
       flex: 1; min-width: 0;
-      height: 38px; border-radius: 12px;
+      height: 28px; border-radius: 9px;
       justify-content: center;
-      font-size: 12px; letter-spacing: .1em;
+      font-size: 9px; letter-spacing: .1em;
     }
     /* The deadline badge is bare coloured text everywhere else in the
        app. At this size it needs the fill its neighbour has, mixed from
@@ -330,8 +360,10 @@
       padding: 0 10px;
       background: color-mix(in srgb, currentColor 13%, transparent);
     }
-    .ad-badges .ad-datebtn { padding: 0 10px; margin: 0; }
-    .ad-badges .ad-datebtn .ic { width: 15px; height: 15px; }
+    .ad-badges .ad-datebtn { padding: 0 8px; margin: 0; }
+    .ad-badges .ad-locbadge { margin: 0; padding: 0 8px; }
+    .ad-badges .ad-datebtn .ic,
+    .ad-badges .ad-locbadge .ic { width: 11px; height: 11px; }
     /* A single piece of media leads the sheet. The wrapper carries the
        size and the corner so the .media-tile inside can stay generic. */
     .ad-hero-wrap {
@@ -339,6 +371,32 @@
       overflow: hidden; box-shadow: var(--shadow-md); cursor: pointer;
     }
     .ad-hero { border-radius: inherit; }
+    /* The completed sheet's stage: one large square that fades between
+       the media, and opens the lightbox when tapped. */
+    .ad-stage {
+      position: relative; margin: 18px 0 0;
+      aspect-ratio: 1; border-radius: var(--r-card); overflow: hidden;
+      background: var(--fill-3); cursor: pointer;
+      box-shadow: var(--shadow-md);
+    }
+    .ad-slide {
+      position: absolute; inset: 0; opacity: 0;
+      transition: opacity .5s ease;
+    }
+    .ad-slide.on { opacity: 1; }
+    .ad-slide .media-tile, .ad-slide img, .ad-slide video {
+      width: 100%; height: 100%; object-fit: cover; border-radius: 0;
+    }
+    .ad-dots {
+      position: absolute; left: 0; right: 0; bottom: 12px; z-index: 2;
+      display: flex; gap: 6px; justify-content: center;
+    }
+    .ad-dots i {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: rgba(255,255,255,.5);
+    }
+    .ad-dots i.on { background: #fff; }
+
     .ad-photos {
       display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
       margin: 16px 0 0;
@@ -362,10 +420,13 @@
     .ad-photo-more:active { opacity: .6; }
     .ad-photo-more .ic { width: 18px; height: 18px; stroke-width: 2.4; }
     .ad-section { margin: 22px var(--gx-r) 0 var(--gx-l); }
+    /* "How it went" reads with the photos it sits under, so it closes
+       the gap the other sections keep. */
+    .ad-note-sec { margin-top: 12px; }
     .ad-section-label {
       font-family: var(--mono); font-size: 10px; font-weight: 500;
       color: var(--tint); letter-spacing: .14em;
-      text-transform: uppercase; margin: 0 0 8px 17px;
+      text-transform: uppercase; margin: 0 0 8px;
     }
     .ad-note {
       background: var(--bg-elevated); border-radius: var(--r-row);
@@ -417,28 +478,250 @@
     .ad-link span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .ad-link:not(:last-child) { border-bottom: .5px solid var(--separator); }
 
-/*  ---- The activity sheet's two halves -----------------------
-    A pending activity carries Details and Notes as tabs rather
-    than one long column: the log needs room to be worked in and
-    was competing with the photos and the action buttons. A
-    completed activity has no Notes tab and no tab bar. */
-    .ad-tabs {
-      display: flex; gap: 4px; padding: 3px;
-      margin: 0 var(--gx-r) 18px var(--gx-l); border-radius: 10px;
-      background: var(--fill-4);
+/* ==============================================================
+   PENDING ACTIVITY SHEET — the B-13 layout, Orchard palette
+
+   A pending activity's Details pane is not a stack of labelled
+   sections. It is a plate (list, name, countdown), one row of
+   full-width chips for the plan, and a card per reference field.
+
+   The four data colours are Orchard and they are the whole point of
+   the palette: each container is identifiable by hue before it is
+   read. Priority keeps its own scale (see "Showing priority" in
+   CLAUDE.md) — it is not one of these four.
+   ============================================================== */
+    #actDetailBody {
+      --c-target: #5f7d3a;   /* moss   */
+      --c-remind: #a07a1f;   /* gold   */
+      --c-where:  #8c3f68;   /* plum   */
+      --c-link:   #3a6ea8;   /* blue   */
     }
-    .ad-tab {
-      flex: 1; height: 30px; border-radius: 8px;
-      font-family: var(--mono); font-size: 10px; font-weight: 500;
-      letter-spacing: .09em; text-transform: uppercase;
-      color: var(--label-2); transition: background .15s, color .15s;
+
+    /* ── the plate: list, name, countdown ── */
+    .ad-plate {
+      display: flex; align-items: center; gap: 14px;
+      margin: 0 var(--gx-r) 0 var(--gx-l);
+      padding: 16px; border-radius: 18px; background: var(--bg-elevated);
     }
-    .ad-tab.active {
-      background: var(--bg-elevated); color: var(--label);
-      box-shadow: var(--shadow-sm);
+    .ad-plate-main { flex: 1; min-width: 0; }
+    .ad-plate .ad-title { margin-top: 6px; }
+
+    /* The countdown. Both halves are the same face and the same size
+       whatever the target is — an open band ("5+ years") sat in a
+       smaller mono face than a real countdown ("18 days") and the two
+       read as different kinds of thing. */
+    .ad-cdown {
+      flex: none; text-align: center;
+      padding-left: 14px; border-left: 1px solid var(--separator);
     }
-    /* The Notes pane opens on its own log — no title above it — so it
-       carries the gap the header would otherwise have given it. */
-    .ad-pane > .ad-notes-pane:first-child { margin-top: 0; }
+    .ad-cdown b {
+      display: block; font-family: var(--serif);
+      font-size: 34px; font-weight: 600; line-height: 1; color: var(--orange);
+    }
+    .ad-cdown.open b { color: var(--label-2); }
+    .ad-cdown span {
+      display: block; margin-top: 5px;
+      font-family: var(--mono); font-size: 9px; letter-spacing: .16em;
+      text-transform: uppercase; color: var(--label-3);
+    }
+
+    /* ── the plan, as one row of full-width chips ── */
+    .ad-chips {
+      display: flex; flex-wrap: wrap; gap: 6px;
+      margin: 18px var(--gx-r) 0 var(--gx-l);
+    }
+    .ad-chip {
+      flex: 1; min-width: 0; height: 34px; border-radius: 11px;
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 2px; padding: 0 8px; line-height: 1.1;
+      font-family: var(--mono); font-size: 10px; letter-spacing: .11em;
+      text-transform: uppercase; text-align: center;
+      white-space: nowrap; overflow: hidden;
+    }
+    .ad-chip small { font-size: 8.5px; letter-spacing: .13em; opacity: .7; }
+    .ad-chip b { font-weight: 500; }
+    .ad-chip.c-target {
+      background: color-mix(in srgb, var(--c-target) 18%, transparent);
+      color: var(--c-target);
+    }
+    .ad-chip.c-remind {
+      background: color-mix(in srgb, var(--c-remind) 18%, transparent);
+      color: var(--c-remind);
+    }
+    .ad-chip.c-high   { background: var(--pri-soft);  color: var(--pri-high); }
+    .ad-chip.c-medium { background: var(--violet-soft); color: var(--violet); }
+    .ad-chip.c-low    { background: var(--slate-soft);  color: var(--slate); }
+
+    /* ── a reference field is a card, tinted by what it holds ── */
+    .ad-place {
+      display: flex; align-items: center; gap: 12px;
+      margin: 8px var(--gx-r) 0 var(--gx-l);
+      padding: 13px 14px; border-radius: 14px;
+      text-decoration: none; color: inherit;
+    }
+    .ad-chips + .ad-place { margin-top: 18px; }
+    .ad-place-disc {
+      width: 34px; height: 34px; flex: none; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center; color: #fff;
+    }
+    .ad-place-disc .ic { width: 17px; height: 17px; }
+    .ad-place-body { min-width: 0; }
+    .ad-place-k {
+      display: block; font-family: var(--mono); font-size: 9px;
+      letter-spacing: .14em; text-transform: uppercase; opacity: .85;
+    }
+    .ad-place-v {
+      font-size: 15.5px; margin-top: 2px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .ad-place-chev { margin-left: auto; opacity: .6; }
+    .ad-place-chev .ic { width: 16px; height: 16px; }
+
+    .ad-place.c-where {
+      background: color-mix(in srgb, var(--c-where) 14%, transparent);
+    }
+    .ad-place.c-where .ad-place-disc { background: var(--c-where); }
+    .ad-place.c-where .ad-place-k    { color: var(--c-where); }
+    .ad-place.c-where .ad-place-v    { color: var(--label); }
+    .ad-place.c-where .ad-place-chev { color: var(--c-where); }
+
+    .ad-place.c-link {
+      background: color-mix(in srgb, var(--c-link) 14%, transparent);
+    }
+    .ad-place.c-link .ad-place-disc { background: var(--c-link); }
+    .ad-place.c-link .ad-place-k,
+    .ad-place.c-link .ad-place-v,
+    .ad-place.c-link .ad-place-chev { color: var(--c-link); }
+
+/* ==============================================================
+   PENDING ACTIVITY SHEET — the notes section and the dock
+
+   B-13 has no tab bar. The log sits inline as a preview, directly
+   under the reference cards, and the whole section is a button onto
+   the notes page. The actions live in a dock that is a SIBLING of the
+   scroller, not part of it — so it is locked to the foot of the sheet
+   whatever the content does, and it is inset by the same gutters as
+   everything above it.
+   ============================================================== */
     .ad-pane { display: none; }
     .ad-pane.active { display: block; }
+
+    /* ── the notes preview ── */
+    .ad-nsec {
+      margin: 20px var(--gx-r) 0 var(--gx-l);
+      cursor: pointer; -webkit-tap-highlight-color: transparent;
+    }
+    .ad-nsec-h {
+      display: flex; align-items: center; justify-content: space-between;
+      margin: 0 0 8px;
+    }
+    .ad-nsec-h .h {
+      margin: 0; font-family: var(--mono); font-size: 9.5px;
+      letter-spacing: .16em; text-transform: uppercase; color: var(--label-3);
+    }
+    .ad-nsec-more {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-family: var(--mono); font-size: 9.5px; letter-spacing: .12em;
+      text-transform: uppercase; color: var(--tint);
+    }
+    .ad-nsec-more .ic { width: 13px; height: 13px; }
+
+    .note-card {
+      background: var(--bg-elevated); border-radius: 14px; padding: 12px 14px;
+    }
+    .note-card + .note-card { margin-top: 8px; }
+    /* The author's disc sits on the meta line, the same 20px circle a
+       message header uses, so a note and a message read as the same
+       kind of thing. nowrap with the text as the only shrinkable
+       child, so the card's height cannot depend on a name's length. */
+    .note-card .m {
+      margin: 0 0 5px; font-family: var(--mono); font-size: 9.5px;
+      letter-spacing: .12em; text-transform: uppercase; color: var(--label-3);
+      display: flex; align-items: center; gap: 7px; flex-wrap: nowrap;
+    }
+    .note-card .m > span {
+      min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .note-card .t { margin: 0; font-size: 14.5px; line-height: 1.5; }
+
+    .note-empty {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 84px; border-radius: 14px; background: var(--bg-elevated);
+    }
+    .note-empty p {
+      margin: 0; font-family: var(--mono); font-size: 10px;
+      letter-spacing: .14em; text-transform: uppercase; color: var(--label-3);
+    }
+
+    /* ── the notes page ── */
+    .ad-navbar {
+      position: relative; display: flex; align-items: center;
+      padding: 0 var(--gx-r) 14px var(--gx-l);
+      border-bottom: 1px solid var(--separator);
+      margin-bottom: 4px;
+    }
+    .ad-back {
+      border: 0; background: none; padding: 0; cursor: pointer;
+      display: flex; align-items: center; gap: 3px;
+      color: var(--tint); font-size: 15px; font-family: var(--sans);
+    }
+    .ad-navtitle {
+      position: absolute; left: 0; right: 0; text-align: center;
+      pointer-events: none; font-family: var(--mono); font-size: 11px;
+      letter-spacing: .14em; text-transform: uppercase; color: var(--label);
+    }
+
+    /* ── the dock ── */
+    .ad-dock {
+      flex: none;
+      padding: 12px var(--gx-r) calc(12px + var(--safe-bottom)) var(--gx-l);
+      border-top: 1px solid var(--separator);
+      background: var(--sheet-bg);
+    }
+    .ad-dock[hidden] { display: none; }
+    .ad-dock-view { display: flex; gap: 8px; align-items: center; }
+    .ad-dock-view[hidden] { display: none; }
+    .ad-dock .btn { margin: 0; }
+    .ad-dock .note-add { margin: 0; flex: 1; }
+    .ad-dock-disc {
+      width: 48px; height: 48px; flex: none; border: 0; border-radius: 14px;
+      background: var(--fill-3); color: var(--label); cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .ad-dock-disc .ic { width: 18px; height: 18px; }
+    .ad-dock-disc.red { color: var(--red); }
+
+/* ==============================================================
+   THE LINKS PAGE  (the third page inside the pending sheet)
+
+   One row per link, each removable. The composer rides the dock and
+   is an <input> where the notes one is a <textarea> — a URL is not a
+   sentence — so it borrows .note-add and overrides the field.
+   ============================================================== */
+    .ad-links-pane { margin: 14px var(--gx-r) 0 var(--gx-l); }
+    .link-row {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--bg-elevated); border-radius: 14px;
+      padding: 4px 6px 4px 14px;
+    }
+    .link-row + .link-row { margin-top: 8px; }
+    .link-row > a {
+      flex: 1; min-width: 0; display: flex; align-items: center; gap: 9px;
+      padding: 9px 0; text-decoration: none; color: var(--c-link);
+      font-size: 15px;
+    }
+    .link-row > a span {
+      min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .link-del {
+      width: 30px; height: 30px; flex: none; border: 0; background: none;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--label-3); cursor: pointer;
+    }
+    .ad-dock .note-add input {
+      flex: 1; min-width: 0; border: none; background: none;
+      /* Never below 16px computed — Safari zooms the page otherwise. */
+      font-family: var(--sans); font-size: max(16px, 16px);
+      color: var(--label); padding: 5px 0; height: 30px; outline: none;
+    }
+    .ad-dock .note-add input::placeholder { color: var(--label-4); }

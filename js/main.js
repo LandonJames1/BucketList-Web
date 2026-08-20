@@ -21,10 +21,6 @@ function paintStaticIcons(){
   tab('tabMe','summit','summit-fill','You');
 
   set('coverZoneIcon',icon('photo','ic-lg'));
-  set('photoZoneIcon',icon('camera','ic-sm'));
-  set('compDateIcon',icon('calendar'));
-  set('compLocIcon',icon('pin'));
-  set('compListIcon',icon('stack'));
   set('compListChevron',icon('chevron-right'));
   set('bulkAddIcon',icon('plus','ic-sm'));
 
@@ -107,6 +103,11 @@ function hasStoredSession(){ return !!readStoredSession(); }
 
 (async()=>{
   paintStaticIcons();
+  /* The Chat tab is hidden in the markup and revealed by a probe that
+     costs a round trip. Applying the remembered answer here means it
+     paints with the other four instead of arriving seconds later; the
+     probe still corrects it. See applyMessagesAvailability(). */
+  applyMessagesAvailability();
   /* Before the session is restored, not after: a link can be shared in
      — or an invite to a shared list opened — while signed out, and the
      query string has to be captured and stripped before anything else

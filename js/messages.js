@@ -67,6 +67,26 @@ const MENTION_MAX=6;
    ============================================================== */
 let _msgReady=null,_msgProbe=null;
 
+/* Whether this project has the messages tables is a fact about the
+   schema — identical for every account, and it does not change between
+   launches. It was nonetheless being re-learned by a round trip on
+   every single one, and the tab is hidden in the markup until it
+   answers: the other four tabs paint instantly and Chat arrived
+   seconds later, which reads as the bar being broken.
+
+   So the last answer is remembered and applied at paint time. It is a
+   hint, not a source of truth — messagesReady() still means "the probe
+   said yes", and the probe overwrites this the moment it answers, in
+   either direction. The worst case is a tab that shows for a second on
+   a project that has since lost the migration. */
+const MSG_TAB_KEY='bl_msgtab';
+function msgTabRemembered(){
+  try{ return localStorage.getItem(MSG_TAB_KEY)==='1'; }catch(e){ return false; }
+}
+function rememberMsgTab(ok){
+  try{ localStorage.setItem(MSG_TAB_KEY,ok?'1':'0'); }catch(e){}
+}
+
 /* Reset on every auth transition, for the same reason probeSharing()
    is: the conversation cache beside it is per-account. Whether the
    table exists is a fact about the schema, but keeping the two in one
@@ -84,6 +104,7 @@ function probeMessages(){
       if(error) console.info('[messages] no messages table — the Messages tab is hidden. '+
         'Run supabase/messages.sql to enable it.');
     }catch(e){ _msgReady=false; }
+    rememberMsgTab(_msgReady);
     _msgProbe=null;
     /* The tab is painted before this answers, so it has to be told. */
     applyMessagesAvailability();
@@ -100,7 +121,11 @@ function messagesReady(){ return _msgReady===true; }
    less odd than one that shifts the other four sideways. */
 function applyMessagesAvailability(){
   const tab=$('tabMessages');
-  if(tab) tab.style.display=messagesReady()?'':'none';
+  if(!tab) return;
+  /* Before the probe has answered, the remembered answer decides — that
+     is the whole point of it. Afterwards only the probe does. */
+  const show=_msgReady===null?msgTabRemembered():messagesReady();
+  tab.style.display=show?'':'none';
 }
 
 /* ==============================================================
@@ -159,6 +184,7 @@ function updateMessagesBadge(){
   if(!tab) return;
   let dot=tab.querySelector('.tab-badge');
   const n=unreadTotal();
+  setAppIconBadge(n);
   if(!n){ if(dot) dot.remove(); return; }
   if(!dot){
     dot=document.createElement('span');
@@ -166,6 +192,19 @@ function updateMessagesBadge(){
     tab.appendChild(dot);
   }
   dot.textContent=n>99?'99+':String(n);
+}
+
+/* The same number on the home-screen app icon. iOS honours it only in
+   an installed PWA with notification permission granted, and every
+   platform ignores it silently otherwise — so it is fire-and-forget.
+   The service worker increments its own copy on a push while nothing
+   is running; this is the authoritative value and overwrites it. */
+function setAppIconBadge(n){
+  try{
+    if(n>0) navigator.setAppBadge?.(n);
+    else navigator.clearAppBadge?.();
+  }catch{}
+  try{ navigator.serviceWorker?.controller?.postMessage({type:'badge-count',count:n}); }catch{}
 }
 
 /* ==============================================================
@@ -265,6 +304,75 @@ function msgInitial(name){
 }
 
 /* ==============================================================
+   THE FACE BESIDE THE NAME
+
+   A message header already said who wrote it; a photo is what makes
+   that readable at a glance rather than word by word, which is the
+   whole difference between a list of rows and a conversation.
+
+   Where the photos come from is the awkward part. profiles.sql
+   deliberately does not let a signed-in user read anybody else's
+   Users row - that would make a private table into a directory of
+   every account on the project - so this cannot be a join. It is the
+   collection_avatars() RPC from supabase/avatars.sql instead, which
+   discloses exactly one field for exactly the people already in this
+   conversation. See that file's header.
+
+   Three properties worth keeping:
+
+   - **One RPC per conversation, not one per message.** The map is
+     fetched once when the conversation opens and cached for the
+     session, keyed by collection. A conversation of forty messages
+     costs one request, and paging backwards through the history
+     costs none.
+   - **It never blocks the messages.** The thread paints from the
+     names it already has - sender_name is a snapshot on every row -
+     and repaints when the photos land. A face arriving a moment
+     after the words is invisible; a conversation that waits on it is
+     not.
+   - **A miss is silence.** No avatars.sql, no RPC, an error, a person
+     who has not set one: the initial disc that was here before is
+     drawn instead. Nothing about the thread depends on this
+     succeeding.
+   ============================================================== */
+let _avatars={};        /* collection id -> { userId: url } */
+
+function invalidateAvatars(){ _avatars={}; }
+
+function avatarsFor(cid){ return _avatars[cid]||null; }
+
+async function loadConversationAvatars(cid){
+  if(_avatars[cid]) return _avatars[cid];
+  if(!navigator.onLine) return null;
+  try{
+    const{data,error}=await sb.rpc('collection_avatars',{cid});
+    if(error) throw error;
+    const map={};
+    (data||[]).forEach(r=>{ if(r.uid&&r.avatar_url) map[r.uid]=r.avatar_url; });
+    _avatars[cid]=map;
+    return map;
+  }catch(e){
+    /* Almost always "function does not exist" - avatars.sql has not
+       been run. Said once, at info level, and never again for this
+       conversation: the empty map is cached so a project without the
+       migration does not pay a failing round trip on every open. */
+    console.info('[messages] no profile photos:',e.message||e);
+    _avatars[cid]={};
+    return _avatars[cid];
+  }
+}
+
+/* The disc itself. `gone` keeps its grey treatment even when a photo
+   is known: a deleted account must not look like every other row, and
+   that rule outranks showing the picture. */
+function msgAvatarHTML(m,name,gone){
+  const map=avatarsFor(curConvId);
+  const url=(!gone&&m.sender_id&&map)?map[m.sender_id]:'';
+  if(url) return `<span class="msg-avatar has-photo"><img src="${esc(url)}" alt="" loading="lazy"/></span>`;
+  return `<span class="msg-avatar${gone?' gone':''}">${esc(msgInitial(name))}</span>`;
+}
+
+/* ==============================================================
    TIME
 
    Two formats: a short stamp for a hub row ("14:02", "Tue", "3 Mar")
@@ -302,6 +410,12 @@ let _convChannel=null;     /* the live subscription */
 let _convHasMore=false;
 let _convLoading=false;
 let _pendingMentions=[];   /* activity ids attached to the message being typed */
+/* Of those, the ones whose logs this message should also be filed
+   into. Deliberately a separate list and deliberately empty by
+   default: mentioning an activity says "this is what we are talking
+   about", which is not the same as "write this down on it". The user
+   opts in per chip, before sending. */
+let _pendingNotes=[];
 
 function openConversation(cid){ nav('conversation',cid); }
 
@@ -311,7 +425,7 @@ function leaveConversation(){
   unsubscribeConversation();
   _convMsgs=[];_convList=null;_convActs=[];
   _convHasMore=false;_convLoading=false;_convMuted=false;
-  _pendingMentions=[];
+  _pendingMentions=[];_pendingNotes=[];
   closeMentionSuggest();
 }
 
@@ -323,7 +437,7 @@ async function renderConversation(){
   scroll.innerHTML='<div class="conv-loading"><div class="spinner"></div></div>';
   $('convComposerText').value='';
   autogrowComposer($('convComposerText'));
-  _pendingMentions=[];
+  _pendingMentions=[];_pendingNotes=[];
   renderPendingMentions();
 
   _convList=await fetchCollection(cid);
@@ -343,12 +457,27 @@ async function renderConversation(){
     return;
   }
 
+  /* Started here, not awaited: the words are what the reader came for
+     and the faces are decoration on top of them. The repaint below is
+     what puts the photos in once they arrive. */
+  const avatarsP=loadConversationAvatars(cid);
+
   const rows=await loadMessages(cid,null);
   if(curPage!=='conversation'||curConvId!==cid) return;
 
   _convMsgs=rows;
   paintConversation();
   scrollConversationToEnd(true);
+
+  avatarsP.then(map=>{
+    if(curPage!=='conversation'||curConvId!==cid) return;
+    if(!map||!Object.keys(map).length) return;
+    /* Already at the bottom by construction, and paintConversation()
+       writes the same markup with the images filled in - so this does
+       not move the reader. */
+    paintConversation();
+    scrollConversationToEnd(true);
+  });
 
   subscribeConversation(cid);
   markConversationRead(cid);
@@ -440,7 +569,7 @@ function msgRowHTML(m,prev){
 
   return `<div class="msg${mine?' mine':''}${run?' run':''}" data-id="${esc(m.id)}">
     ${run?'':`<div class="msg-head">
-      <span class="msg-avatar${gone?' gone':''}">${esc(msgInitial(name))}</span>
+      ${msgAvatarHTML(m,name,gone)}
       <span class="msg-who">${esc(mine?'You':name)}</span>
       ${gone?'<span class="msg-gone">Deleted account</span>':''}
       <span class="msg-time">${esc(msgClock(m.created_at))}</span>
@@ -493,6 +622,7 @@ async function sendMessage(){
   const input=$('convComposerText');
   const body=input.value.trim();
   const ids=_pendingMentions.slice();
+  const noteIds=_pendingNotes.filter(id=>ids.includes(id));
   if(!body&&!ids.length){ shakeEl(input); return; }
   if(!curConvId) return;
 
@@ -507,7 +637,7 @@ async function sendMessage(){
   };
 
   input.value='';
-  _pendingMentions=[];
+  _pendingMentions=[];_pendingNotes=[];
   renderPendingMentions();
   onConvComposerInput();
 
@@ -517,7 +647,7 @@ async function sendMessage(){
     showToast(error.message||'Couldn’t send that.');
     /* Give the text back rather than losing it. */
     input.value=body;
-    _pendingMentions=ids;
+    _pendingMentions=ids;_pendingNotes=noteIds;
     renderPendingMentions();
     onConvComposerInput();
     return;
@@ -527,6 +657,10 @@ async function sendMessage(){
      same id back for anyone else in the list; the guard in
      onRealtimeMessage() stops it being drawn twice here. */
   const sent=rows&&rows[0];
+  /* Filed after the message is safely in, and never as part of that
+     write: a note that fails must not make a sent message look
+     unsent. Same rule the new-activity sheet's note field follows. */
+  if(sent&&noteIds.length) fileMessageNotes(sent,noteIds);
   if(sent){
     _convMsgs.push(sent);
     paintConversation();
@@ -715,18 +849,53 @@ function renderPendingMentions(){
   const box=$('convPending');
   if(!box) return;
   if(!_pendingMentions.length){ box.innerHTML='';box.classList.remove('open');return; }
+  const canNote=notesReady();
   box.innerHTML=_pendingMentions.map(id=>{
     const a=_convActs.find(x=>x.id===id);
-    return `<span class="conv-pending-chip">
-      ${icon('circle','ic-xs')}<span>${esc(a?a.name:'Activity')}</span>
+    const on=_pendingNotes.includes(id);
+    /* The note toggle is on the chip, not on the message, so several
+       mentioned activities can each be filed or not independently. */
+    const note=canNote?`<button class="conv-pending-note${on?' on':''}"
+      onclick="togglePendingNote('${esc(id)}')"
+      aria-pressed="${on?'true':'false'}"
+      aria-label="Also add to this activity's notes">${icon(on?'pencil':'circle','ic-xs')}<span>${on?'Note on':'Note off'}</span></button>`:'';
+    return `<span class="conv-pending-chip${on?' noting':''}">
       <button onclick="removePendingMention('${esc(id)}')" aria-label="Remove">${icon('x','ic-xs')}</button>
+      <span>${esc(a?a.name:'Activity')}</span>
+      ${note}
     </span>`;
   }).join('');
   box.classList.add('open');
 }
 
+function togglePendingNote(id){
+  if(!notesReady()) return;
+  _pendingNotes=_pendingNotes.includes(id)
+    ? _pendingNotes.filter(x=>x!==id)
+    : _pendingNotes.concat(id);
+  renderPendingMentions();
+}
+
+/* One log entry per opted-in chip, attributed to the sender and
+   worded exactly as the ⋯ menu's "Add to activity notes" does, so a
+   note filed on send and one promoted afterwards read identically. */
+async function fileMessageNotes(m,ids){
+  const who=msgSenderLabel(m.sender_id,m.sender_name);
+  const text=(m.body||'').trim();
+  if(!text) return;
+  let ok=0;
+  for(const id of ids){
+    const{error}=await addNote(id,`${who}: ${text}`);
+    if(error) console.error('fileMessageNotes:',error); else ok++;
+  }
+  if(!ok) showToast('Couldn’t add that to notes.');
+  else if(ok===1) showToast('Added to notes',"Open",()=>openActDetail(ids[0]));
+  else showToast(`Added to ${ok} activities’ notes`);
+}
+
 function removePendingMention(id){
   _pendingMentions=_pendingMentions.filter(x=>x!==id);
+  _pendingNotes=_pendingNotes.filter(x=>x!==id);
   renderPendingMentions();
   onConvComposerInput();
 }
@@ -918,6 +1087,7 @@ document.addEventListener('scroll',e=>{
    token. See ONE ACCOUNT AT A TIME in CLAUDE.md.
    ============================================================== */
 function resetMessagesState(){
+  invalidateAvatars();
   leaveConversation();
   invalidateConversations();
   resetMessagesProbe();

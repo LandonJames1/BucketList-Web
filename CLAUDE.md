@@ -125,7 +125,7 @@ CLAUDE.md             This guide
 README.md             Human-facing setup + structure overview
 manifest.webmanifest  PWA metadata (name, icons, standalone display, theme color)
 sw.js                 Service worker — offline app shell + runtime caching. Must stay at the root.
-supabase/             Backend — schema.sql (reminders + reminder_deliveries), profiles.sql (the Users row, its RLS and the sign-up trigger), sharing.sql (shared lists), messages.sql (a conversation per shared list, plus the append-only activity_notes log), multilist.sql (one activity in several lists), home.sql (the saved Home address), storage.sql (the media bucket), cron.sql, and five Edge Functions: send-reminders, send-message-push (an immediate Web Push when a message is sent — see **Notifying a conversation**), unfurl (shared links, screenshots *and* location prediction), geo (place search, holding the HERE key so the browser never does) and delete-account (erasing an account needs the service_role key, so it cannot live in the client). All optional except profiles.sql; each other piece probes for itself and the UI that needs it hides when it is absent.
+supabase/             Backend — schema.sql (reminders + reminder_deliveries), profiles.sql (the Users row, its RLS and the sign-up trigger), sharing.sql (shared lists), messages.sql (a conversation per shared list, plus the append-only activity_notes log), multilist.sql (one activity in several lists), home.sql (the saved Home address), avatars.sql (the profile photo, plus the one RPC that lets other people see it), storage.sql (the media bucket), cron.sql, and five Edge Functions: send-reminders, send-message-push (an immediate Web Push when a message is sent — see **Notifying a conversation**), unfurl (shared links, screenshots *and* location prediction), geo (place search, holding the HERE key so the browser never does) and delete-account (erasing an account needs the service_role key, so it cannot live in the client). All optional except profiles.sql; each other piece probes for itself and the UI that needs it hides when it is absent.
 css/                  One stylesheet per concern (see CSS file map)
 js/                   One script per concern (see JS file map)
 icons/                App icon PNGs + generate.py, the script that draws them
@@ -380,6 +380,78 @@ cached collections were fetched under RLS (`true`), under the client-side
 `user_id` filter (`false`), or came off the snapshot and are correct by
 construction (`null`). Only `false` needs the refetch. Unconditional, it
 was a second full fetch of both tables on every single launch.
+
+#### Rendering without reloading
+
+Moving between screens used to look like the app reloading things it
+already had. Four separate causes, all of which presented identically,
+and none of which was actually a fetch:
+
+**1. The fallback cover was picked at random, at render time.**
+`renderCollections()` and `renderDetail()` both did
+`list.cover || randCover()` — and `randCover()` picks at random. So a
+collection with no cover of its own drew a *different photograph* every
+time the Lists tab rendered, and a collection's banner changed on every
+mutation. **`coverFor(list)` (`utils.js`) derives it from the row's own
+id instead**, so it is stable for the life of the row, identical on
+every screen that draws it, and identical across devices. `randCover()
+is still what picks a cover when a collection is *created* — a genuine
+one-off choice, and the one place randomness belongs.
+
+**2. Every render replaced markup that had not changed.**
+Assigning `innerHTML` destroys every `<img>` in the block and builds new
+ones, so each visit to a tab re-attached and re-decoded every cover
+photo and every completion thumbnail on it. **`setHTML(el, html)`
+(`utils.js`) is a drop-in for `el.innerHTML = html` that compares
+against the last string it wrote and does nothing when they match** —
+which is the common case, because a re-render after navigation usually
+produces exactly the same markup. Use it for any block containing
+images or re-rendered on navigation; Home's four sections, the Lists
+grid, the collection banner and the Me identity row all go through it.
+
+⚠️ **A node managed by `setHTML` must never also be written directly.**
+The cache lives on the node, so a direct `innerHTML` write (a spinner,
+an empty state) leaves it stale and the next `setHTML` with the
+*previous* markup will decline to repaint — leaving the spinner up
+forever. Route every writer of that node through `setHTML`.
+
+**3. The collection screen rebuilt its search field on every render.**
+`renderDetail()` is where `refreshAfterChange()` lands, so completing,
+editing or deleting an activity while a search was active destroyed the
+field — dropping the query, the caret and the filtered list the user
+was reading. The comment there claimed the split with
+`renderActivitiesList()` protected this; it protected *typing* and
+nothing else. **The control row is now built once per collection**
+(`detControls.dataset.list`), and `syncDetailControls()` updates the
+only two things that change without it — which segment is lit and what
+the sort button says. `setFilter()` and `setSort()` both call it rather
+than patching their own control, so there is one path and it cannot
+drift.
+
+**4. Two scroll handlers did real work on every scroll event.**
+`applyNavCondense()` ran a `getComputedStyle()` on the root element —
+a forced style resolve — plus a `getBoundingClientRect()`, on every
+scroll tick. The metric only changes when the viewport does, so it is
+measured once and invalidated on resize, and the handler is coalesced
+to one call per frame with `requestAnimationFrame`. Separately, the
+document-level **capture-phase** scroll listener in `location.js` fired
+for every scroll of every scroller in the app and ran a
+`querySelectorAll()` over the whole document to reposition a dropdown
+that is almost never open; `_locOpenCount` turns the common case into
+an integer compare. **Everything that opens or closes a location
+dropdown must go through `locOpen`/`locClose`** or that count drifts.
+
+**And each screen now remembers where it was.** The app scrolls the
+window rather than a per-page container, so `nav()` stored nothing and
+every navigation landed at the top — opening a collection from halfway
+down the Lists tab and pressing Back put you back at the very top.
+`_scrollMem` keys an offset per screen (per *collection* for detail and
+conversation, so two lists do not share one), and `nav()` restores it
+**after the render promise settles**, because the content that gives
+the page its height has to exist first. A push always starts at the top,
+which is what a push means. Nothing is persisted — it is a per-session
+convenience, not state. `RENDERERS` exists so `nav()` can hold on to
+that promise rather than firing nine `if`s and forgetting all of them.
 
 #### Refreshing after a change
 
@@ -1387,6 +1459,73 @@ tries not to ship — see the same argument under **Moving house**.
 
 Deleting a message is a **soft** delete (`deleted_at`), so the thread
 does not reflow under somebody mid-read; the select filters it out.
+
+##### A face on the account
+
+A message header said who wrote it; a photo is what makes that
+readable at a glance rather than word by word, which is most of the
+difference between a list of rows and a conversation. One image per
+account, set by tapping the avatar disc on the **You** tab
+(`openAvatarMenu()` in `me.js`).
+
+**The photo is the control.** There is no "Change profile photo" row
+under it: the disc is the only picture on that screen and there is
+nothing else it could plausibly do when tapped. The camera badge is
+what makes that legible — a row spelling it out would be the caption
+this app does not write.
+
+**It lives in the `media` bucket, under the uploader's own folder**,
+exactly like a completion photo — same bucket, same policies, same
+public URLs. There is deliberately no separate avatars bucket: a second
+one is a second set of storage policies to keep in step, for a single
+file per account.
+
+**Unlike a completion photo it is refused rather than inlined.**
+Everything else falls back to base64 when the bucket is missing or the
+device is offline (see **Media**), and that is wrong here: this image
+is read back on *every message in every conversation*, so a
+quarter-megabyte data URL sitting on the `Users` row would be pulled
+down and re-parsed constantly. `avatarsReady()` is `_avatarReady &&
+storageReady()`, and the control simply does not appear otherwise.
+
+**Reading somebody else's is an RPC, not a join, and that is the whole
+design.** `profiles.sql` deliberately does not let a signed-in user
+`select` anybody else's `Users` row — that would turn a private table
+into a directory of every account on the project, searchable by name
+and handle. That decision stands. So `collection_avatars(cid)` in
+`supabase/avatars.sql` narrows the disclosure to exactly what the
+Messages tab needs: given a collection you are actually in, the avatars
+of the people also in it, and **only** the id and the photo — no email,
+no handle, no display name (the message already carries a snapshot of
+that). Scoped by `can_use_collection()`, the same helper every messages
+policy uses.
+
+Three properties worth keeping:
+
+- **One RPC per conversation, not one per message.** The map is fetched
+  when the conversation opens and cached for the session, keyed by
+  collection — so forty messages cost one request and paging backwards
+  costs none.
+- **It never blocks the messages.** The thread paints from
+  `sender_name`, which is a snapshot on every row, and repaints when
+  the photos land. A face arriving a moment after the words is
+  invisible; a conversation that waits on it is not.
+- **A miss is silence.** No migration, no RPC, an error, or a person
+  who never set one: the tinted initial disc that was there before is
+  drawn instead, at the same size, so a run of messages from someone
+  with a photo and someone without still lines up.
+
+**A deleted account keeps its grey mark even when a photo is known.**
+That rule outranks showing the picture, for the reason in the section
+above: a name with no account behind it must not look like every other
+name.
+
+`invalidateAvatars()` is called when the user changes their own photo —
+they are in every conversation the map covers — and from
+`resetMessagesState()`, so the map cannot outlive the account it was
+fetched for. Removing a photo does **not** delete the object from
+storage, matching what removing a completion photo does; the sweeper
+query at the bottom of `storage.sql` covers both.
 
 ##### Things to keep
 
@@ -2709,7 +2848,7 @@ Loaded in this order; **order matters**.
 | --- | --- |
 | `config.js` | `SUPABASE_URL`/`SUPABASE_KEY`, **`HERE_API_KEY`** (place search; public by design, restrict it by origin in the HERE portal — empty falls back to Nominatim), the `sb` client (auth options spelled out rather than defaulted — note `detectSessionInUrl:false`, the one that is *not* a default: `auth.js` handles the email-confirmation landing itself), the `COVERS` array of default Unsplash covers, and `randCover(existingCovers)` (picks a cover the user isn't already using). |
 | `state.js` | Every shared mutable global: `currentUser`, the navigation triple (`curTab`, `curPage`, `backTab`), `curListId`, **`curConvId`** (which conversation the conversation screen is showing — it *is* a collection id), `editingListId`, `editingActId`, `completingId`, `curFilter`, **`curSort`** (see **Sorting a collection**), `curView`, `upMedia`, `coverPhoto`, `userProfile`, `pendingShare` (a link shared in, held from boot until there is a signed-in user to file it for), and the map handles. Other files declare their own feature-local globals next to their code (`aLinks`, `bulkEntries`, `actMap`, `lbPhotos`, `locTimer`). |
-| `utils.js` | `$` (getElementById), `esc` (HTML-escape — **use it on every interpolated value**, all rendering is template strings), **`uuidv4`/`isUuid`** (client-minted row ids — read the warning under **Working offline** before touching them), `cap`, `todayISO`, `fmtDate(s, withYear)` (omits the year when it's the current one, unless `withYear` — a completed date is a record you look back on, so it always carries its year), `dateInfo(a)` (turns a target date like "This Year" into a `{label, cls}` urgency badge), `shakeEl`, `compress`, `confetti`, the priority pair `priClass`/`priTagHTML` (see **Showing priority**), **`ACT_SORTS`/`DEFAULT_ACT_SORT`/`sortActivities`** (see **Sorting a collection**), **`activityListLabel(a, lists)`** — what the `.list-chip` on a row says, now that an activity can be in several lists — and **`bootKeep`/`bootRead`/`bootDrop`**, the sessionStorage shelf that keeps `?join=`/`?share=` alive across a reload (see **Shared lists**; reading deliberately does not remove), plus **`bootKeepLong`/`bootReadLong`/`bootDropLong`** — the same shelf on localStorage with a 7-day TTL, so an invite survives the tab being closed while the recipient goes to find their password. |
+| `utils.js` | `$` (getElementById), `esc` (HTML-escape — **use it on every interpolated value**, all rendering is template strings), **`uuidv4`/`isUuid`** (client-minted row ids — read the warning under **Working offline** before touching them), `cap`, `todayISO`, `fmtDate(s, withYear)` (omits the year when it's the current one, unless `withYear` — a completed date is a record you look back on, so it always carries its year), `dateInfo(a)` (turns a target date like "This Year" into a `{label, cls}` urgency badge), `shakeEl`, `compress`, `confetti`, the priority pair `priClass`/`priTagHTML` (see **Showing priority**), **`ACT_SORTS`/`DEFAULT_ACT_SORT`/`sortActivities`** (see **Sorting a collection**), **`activityListLabel(a, lists)`** — what the `.list-chip` on a row says, now that an activity can be in several lists — and **`bootKeep`/`bootRead`/`bootDrop`**, the sessionStorage shelf that keeps `?join=`/`?share=` alive across a reload (see **Shared lists**; reading deliberately does not remove), plus **`bootKeepLong`/`bootReadLong`/`bootDropLong`** — the same shelf on localStorage with a 7-day TTL, so an invite survives the tab being closed while the recipient goes to find their password — plus **`setHTML(el, html)`** and **`coverFor(list)`**, the two things that stopped navigation looking like a reload (see **Rendering without reloading**). |
 | `exif.js` | `exifReadLocation(file)` — the GPS fix out of a photo's EXIF, or null. Handles **JPEG and HEIC/HEIF/AVIF**, dispatching on magic bytes rather than `file.type`. Underneath: the JPEG walk (`exifFindTiff`), the HEIC box walk (`isoBoxes`, `isoType`, `heicReadLocation`, `heicExifExtent`, `heicExifItemId`, `heicItemExtent`, `heicTiffStart`, `isTiffAt`), and the shared TIFF reader both land on (`exifGpsFrom`, `exifTagValue`, `exifDMS`). Pure, no dependencies, every failure path returns null rather than throwing. **Must be called against the original `File`**: a canvas re-encode strips every tag. See **Where the photo was taken**. |
 | `fuzzy.js` | Approximate string matching, shared by duplicate detection and search. `similarity(a,b)` (symmetric — are these the same thing?) and `matchScore(q,text)` (asymmetric — does this row answer what is being typed?), plus `scoreFields()` and the primitives underneath: `fuzzyNorm`, `fuzzyTokens`, `fuzzyStem`, `fuzzyTokenSim`, `fuzzySoftDice`, `fuzzyTrigrams`, `fuzzyDice`, `fuzzyEditRatio`. Pure and synchronous. **See How the fuzzy matching works** — the constants are tuned, not derived. |
 | `icons.js` | `ICON_PATHS`, the app's own inline-SVG glyph set (`sort` is the newest), plus `ICON_FILLED` (glyphs already solid, which must not be stroked) and `icon(name, cls)`. Icons inherit `currentColor`. **Add new glyphs here**, not inline in a template string. |
@@ -2721,7 +2860,7 @@ Loaded in this order; **order matters**.
 | File | Domain |
 | --- | --- |
 | `auth.js` | **`resetAccountState()`** — everything belonging to one account, cleared on every auth transition (see **One account at a time**) — **`ensureSessionLive`/`verifyLiveUser`/`authAnswerIsDefinitive`/`signOutStaleSession`/`resetSessionLiveCheck`/`recheckSessionSoon`/`startSessionWatch`/`stopSessionWatch`**, which is how a session belonging to a deleted account stops being trusted, on every device (see **Being signed into an account that no longer exists**) — **`inviteSweepDue()`/`authJustAuthenticated`**, which decide when to ask the server whether an invite is waiting for this address (see **An invite that survives creating an account**) — plus `showAuth`/`showApp` (swap `#authPage` against `#appWrap`; `showApp` boots into Home, loads the profile, triggers the iOS install hint, picks up any link shared in via `handleSharedInput()`, and starts the token auto-refresh). Also the `visibilitychange` handler that stops/starts auto-refresh — browsers suspend timers in a backgrounded PWA, and without restarting on resume the access token goes stale and the next request 401s, which reads to the user as being logged out — and the `onAuthStateChange` listener that keeps `currentUser` in step and only shows the login screen on a real `SIGNED_OUT`, `toggleAuthMode`/`applyAuthMode` (tracked by the `authIsSignUp` flag, not by reading the heading text), `setAuthError`, `handleAuth`, `handleSignOut`. Sign-up also inserts the `Users` profile row. Plus **the confirmation-email landing** — `readEmailConfirmation` (boot; reads `token_hash`/`code`/implicit tokens/`error`, and strips only its own keys), `consumeEmailConfirmation`, `confirmFailureHTML`, `confirmRedirectUrl`, `setAuthNotice`, `setAuthView`/`showCheckEmail`/`authBackToForm`, and the resend pair `sendConfirmationEmail`/`resendConfirmation`/`resendFromNotice`. See **Coming back through the confirmation email**. |
-| `nav.js` | `nav(page, listId)` — the single entry point for changing screens (see **Screens and navigation**). Plus `PAGE_TAB`, `TAB_ROOT`, `TAB_ORDER` and **`visibleTabs()`** (the tabs a swipe can actually reach — the Messages tab is hidden until its migration is run), `selectTab`, `goBack`, `dismissOverlays`, **`refreshAfterChange(src)`** (the single answer to "something was written, what redraws?" — see **Refreshing after a change**), `updateNavbar` (**where each screen's bar buttons are defined**, and where the collection FAB is bound to `startNewActivity`; there is no search bar button — see **Finding things again**), `applyNavCondense`, a debounced `resize` handler, **`setBodyScrollLock(lock)`** — the single place that touches body overflow — and **`syncTabbarToKeyboard()`**, which keeps the tab bar behind the software keyboard instead of riding up on top of it (see **Mobile layout rules**). |
+| `nav.js` | `nav(page, listId)` — the single entry point for changing screens (see **Screens and navigation**). Plus `PAGE_TAB`, `TAB_ROOT`, `TAB_ORDER` and **`visibleTabs()`** (the tabs a swipe can actually reach — the Messages tab is hidden until its migration is run), `selectTab`, `goBack`, `dismissOverlays`, **`refreshAfterChange(src)`** (the single answer to "something was written, what redraws?" — see **Refreshing after a change**), `updateNavbar` (**where each screen's bar buttons are defined**, and where the collection FAB is bound to `startNewActivity`; there is no search bar button — see **Finding things again**), `applyNavCondense`, a debounced `resize` handler, **`setBodyScrollLock(lock)`** — the single place that touches body overflow — `RENDERERS`/`scrollKey`/`_scrollMem` (each screen's renderer in one table, and the offset it was left at — see **Rendering without reloading**), `queueNavCondense` — and **`syncTabbarToKeyboard()`**, which keeps the tab bar behind the software keyboard instead of riding up on top of it (see **Mobile layout rules**). |
 | `gestures.js` | The two touch gestures, both delegated from `document`: **swipe a sheet down to dismiss it** (`.modal` and the action sheet) and **swipe sideways to change screen**. `overlayOpen`, `ownsHorizontal`/`ownsVertical` (surfaces with their own gesture), `SHEET_DISMISS_PX`/`SHEET_FLICK_PX`, `SWIPE_MIN`/`SWIPE_EDGE`, `TAB_ORDER` (in `nav.js`). See **Gestures** below. |
 | `modals.js` | `openModal` (**resets `.sheet-body` scrollTop** — see the note under *Sheets* below) / `closeModal` (they call `setBodyScrollLock`, so use them rather than toggling `.open` yourself), the scrim-click and Escape handlers, **`showActionSheet(opts)`** and `showConfirm` (iOS confirms destructive actions with an action sheet, not a dialog — `confirmDeleteCollection`/`confirmDeleteActivity` wrap it), the photo lightbox (swipe sideways to page, down to close), the list picker (`openListPicker`/`renderListPickerRows`/`listPickerPick`/`listPickerDone` — single- *and* multi-select, see **The list picker**), `ensurePickerRoom`/`releasePickerRoom` (see **Gestures**), and `showToast`. |
 
@@ -2745,10 +2884,10 @@ Loaded in this order; **order matters**.
 | `collections.js` | `renderCollections()` (the Lists tab) plus the collection CRUD: `openNewList`, `openEditList`, `renderCoverPreview`, `clearCover`, `handleCoverUpload`, `saveList`, `delList`. `delList` deletes the collection's activities first — there is no DB cascade — and, once an activity can be in several lists, deletes only the ones with nowhere else to go and unlinks the rest. |
 | `detail.js` | One collection. Rendering is **deliberately split in two**: `renderDetail()` builds the banner and the controls, `renderActivitiesList()` rebuilds only the list. Search and filter call the second, so the search field never loses focus mid-typing. Also `activityRowHTML`/`activityCardHTML`, `sortButtonHTML()` (the sort control beside the filter), and the quick-add composer helpers (`composerHTML`, `onComposerKey`, `focusComposer`). |
 | `activities.js` | The whole activity flow. **Creating always goes through a sheet** — `quickAddActivity()` only takes the composer's text and hands it to **`startNewActivity()`**, the plan-or-record chooser, which opens either `openNewActivity(name)` or **`openCompDraft(name)`** (see **Adding something you already did**, plus `setCompNameShape`/`renderCompListRow`/`commitCompDraft`). Nothing here inserts an activity directly except `commitSaveActivity()` and `commitCompDraft()`, which are those two sheets' own Saves. `toggleComplete(id, isDone)` is the one-tap completion (see the note below). Then `openNewActivity`, `openEditAct`, `saveActivity`, `delActivity`, plus `renderActListPicker()`/`renderActListValue()`/`setTargetLists()` and the `targetListIds` global (with `targetListId` as a read-only alias for the home list) — the Lists row that lets an activity be filed from outside any collection, and which is hidden when there is no choice to make. Also `listFieldsFor()` and `removeActivityFromList()` — see **One activity, several lists**. Also **`setActivityNotice`** — the one line the activity sheet can carry saying why it opened empty, written only by a screenshot import that could not be read (see **Sharing a link in**) — and `setPriorityChoice` (**the only way to set priority** — it keeps the swatched buttons and the hidden `#aPri` value in step), `openComp`/`openCompletedDate`/`confirmComplete` — the one completion sheet, every field on it — and `updateMediaRequirement()`, which is why that sheet will not save a *new* completion with no photo or video (see **The two-speed activity flow**) — and `openActDetail`/`setActDetailTab` which build the activity sheet and swap its Details/Notes tabs. Plus `openCollectionMenu` (the ⋯ action sheet, which holds the view switcher and everything the old five-button hero row spelled out), `setFilter`, `setView`, and `openSortMenu`/`setSort`. |
-| `me.js` | `renderMe()` (stats), `renderMeIdentity()`, **Home** — `homePlace`/`loadHomePlace`/`saveHomePlace`/`resetHomePlace`/`renderMeHome`/`openHomeSheet`/`saveHomeSheet`/`clearHomePlace` and the `bl_home:<uid>` localStorage mirror (see **Home**), plus **`updateHomeActivities`/`clearHomeActivityFlags`** — the cascade that moves everything set to Home when the home address changes (see **Moving house**) — `openDeleteAccount`/`onDeleteAccountInput`/`deleteAccount` (see **Deleting an account**), `loadUserProfile()` (reads the `Users` row once per session into `userProfile` — **and creates it when missing**, via `createUserProfile`/`profileSeed`/`USERNAME_RE`; see **Signing up**), `confirmSignOut()`. The tab's one App row, Add to Home Screen, is wired to `pwaShowInstallHelp()` in `pwa.js`. *Share links into the app* and *Join a shared list* both used to sit beside it; the first went with the Shortcut tier (see **Sharing a link in**) and the second lives on the Lists tab, which is the screen the missing list was supposed to be on. |
+| `me.js` | `renderMe()` (stats), `renderMeIdentity()`, **Home** — `homePlace`/`loadHomePlace`/`saveHomePlace`/`resetHomePlace`/`renderMeHome`/`openHomeSheet`/`saveHomeSheet`/`clearHomePlace` and the `bl_home:<uid>` localStorage mirror (see **Home**), plus **`updateHomeActivities`/`clearHomeActivityFlags`** — the cascade that moves everything set to Home when the home address changes (see **Moving house**) — **the profile photo** — `avatarsReady`/`myAvatarUrl`/`openAvatarMenu`/`pickAvatar`/`handleAvatarFile`/`removeAvatar`/`saveAvatarUrl` (see **A face on the account**) — `openDeleteAccount`/`onDeleteAccountInput`/`deleteAccount` (see **Deleting an account**), `loadUserProfile()` (reads the `Users` row once per session into `userProfile` — **and creates it when missing**, via `createUserProfile`/`profileSeed`/`USERNAME_RE`; see **Signing up**), `confirmSignOut()`. The tab's one App row, Add to Home Screen, is wired to `pwaShowInstallHelp()` in `pwa.js`. *Share links into the app* and *Join a shared list* both used to sit beside it; the first went with the Shortcut tier (see **Sharing a link in**) and the second lives on the Lists tab, which is the screen the missing list was supposed to be on. |
 | `bulk.js` | The "add many at once" sheet, one card per row. Row values live in `bulkEntries[]` and the DOM is re-rendered from it wholesale, so **`saveBulkFieldValues()` must flush the inputs back into the array before any redraw** — every mutation helper does this. `_skipSaveBulk` suppresses that flush in `bulkApplyDown` (the "copy row 1" pills), which has already updated the array itself. `openBulkAdd(listId)` takes an explicit destination in `bulkListId`, defaulting to `curListId`: the sheet normally opens from a collection, but an import from Home has no collection context and passes the chosen list. |
 | `share.js` | **Turning a shared link or a screenshot into an activity.** `readSharedInput()` (boot; parses and strips the query param), `handleSharedInput()` (called from `showApp()`), `openImportSheet`/`runUnfurl`/**`importFailed`** (the link-keeps-the-card / screenshot-goes-to-the-sheet split)/`renderImportState`/`IMPORT_FAIL_STATE`/`SHOT_FAIL_NOTICE`, `pickScreenshot`/`handleScreenshot` (downscale and send to the vision path), `handOffSingle`/`handOffMany`/`shareSourceLinks`, and `looksLikeUrl`/`importFromComposer`. Loads after `activities.js` and `bulk.js` because it hands drafts to both. See **Sharing a link in** below. |
-| `messages.js` | **A conversation per shared list, and the hub over them.** `probeMessages`/`messagesReady`/`resetMessagesProbe`/`applyMessagesAvailability` (the tab is hidden until the migration is run), the hub cache (`fetchConversations`/`refreshConversations`/`invalidateConversations`/`cachedConversations`/`unreadTotal`/`updateMessagesBadge`) and its screen (`renderMessages`/`convRowHTML`), then one conversation — `openConversation`/`renderConversation`/`leaveConversation`, `loadMessages`/`loadOlderMessages`/`paintConversation`/`msgRowHTML`/`scrollConversationToEnd`, `sendMessage` (through `dbInsert`, so it queues offline), the `@` picker (`mentionQuery`/`updateMentionSuggest`/`pickMention`/`renderPendingMentions`/`removePendingMention`), `openMessageMenu`/`deleteMessage` (soft), read state (`markConversationRead`), realtime (`subscribeConversation`/`unsubscribeConversation`/`onRealtimeMessage`), `syncComposerToKeyboard`, the push pair `notifyMessageSent`/`loadConversationMute`/`toggleConversationMute`, the notification landing (`readPushLanding` at boot, `handlePushLanding` from `showApp`, and the `serviceWorker` message listener), and `resetMessagesState` — called by `resetAccountState()`. Plus the naming helpers `msgSenderLabel`/`msgSenderGone`/`msgIsMine` and the time ones `msgClock`/`msgWhenShort`/`msgDayLabel`, which `notes.js` also uses. See **Messages**. |
+| `messages.js` | **A conversation per shared list, and the hub over them.** `probeMessages`/`messagesReady`/`resetMessagesProbe`/`applyMessagesAvailability` (the tab is hidden until the migration is run), the hub cache (`fetchConversations`/`refreshConversations`/`invalidateConversations`/`cachedConversations`/`unreadTotal`/`updateMessagesBadge`/**`setAppIconBadge`** (the same count on the home-screen app icon, via `navigator.setAppBadge`; the worker keeps its own copy in a `bucketlist-badge` cache entry and increments it on a push, the page overwrites it with the truth)) and its screen (`renderMessages`/`convRowHTML`), then one conversation — `openConversation`/`renderConversation`/`leaveConversation`, `loadMessages`/`loadOlderMessages`/`paintConversation`/`msgRowHTML`/`scrollConversationToEnd`, `sendMessage` (through `dbInsert`, so it queues offline), the `@` picker (`mentionQuery`/`updateMentionSuggest`/`pickMention`/`renderPendingMentions`/`removePendingMention`), `openMessageMenu`/`deleteMessage` (soft), the sender's photo (`loadConversationAvatars`/`avatarsFor`/`msgAvatarHTML`/`invalidateAvatars` — see **A face on the account**), read state (`markConversationRead`), realtime (`subscribeConversation`/`unsubscribeConversation`/`onRealtimeMessage`), `syncComposerToKeyboard`, the push pair `notifyMessageSent`/`loadConversationMute`/`toggleConversationMute`, the notification landing (`readPushLanding` at boot, `handlePushLanding` from `showApp`, and the `serviceWorker` message listener), and `resetMessagesState` — called by `resetAccountState()`. Plus the naming helpers `msgSenderLabel`/`msgSenderGone`/`msgIsMine` and the time ones `msgClock`/`msgWhenShort`/`msgDayLabel`, which `notes.js` also uses. See **Messages**. |
 | `notes.js` | **The append-only log on an activity.** `notesReady()` (= `messagesReady()`), `fetchNotes`, `renderActivityNotes`/`noteRowHTML`/`onNoteInput`/`onNoteKey`, `addNote`/`submitActivityNote`/`openNoteMenu`/`copyNote`/`deleteNote`, **`addMessageToNotes`** — promoting a message into the activity's log, which is the reason the feature exists — and the new/edit sheet's pair `resetActivityNoteField`/`flushActivityNoteField`. There is deliberately no update path. See **Notes on an activity**. |
 | `map.js` | All MapLibre GL. **`ensureMapLibre()`** — the library is loaded on demand here, not from `<head>`; at ~900KB it was the biggest single cost of a cold launch, blocking the parser on the way to a Home screen with no map on it. Both entry points await it and fall back to the "map unavailable" state if it cannot be fetched. Then `mapStyle()` (raster CARTO basemap + globe projection + sky), `webglOK()`, `actsToGeoJSON()`, and `attachActivityLayer()` — which adds the clustered GeoJSON source and the two symbol layers, and owns the click handlers. Then the marker icons (`ensureDotIcon`, `ensurePhotoIcon`, `ensureClusterIcon`, `stampPointIcons`). Then **one point, several activities**: `SAME_PLACE_DEG`/`CLUSTER_STACKED`/`samePlaceCluster` (is this bubble one place or a neighbourhood?), `indexActs`/`placeActs` (the id → activity index kept beside the layer data), `openClusterPlace`, `openPlaceSheet`/`placeTitle`/`sortPlaceActs`/`placeRowHTML`, and the two row actions `placeOpenActivity`/`placeToggleActivity` — see **Several activities at one point**. Then the two instances: the Map tab (`renderGlobalMap`, `fitGlobal`, `zoomGlobe`, `globeFillZoom`, `setGlobalMapFilter`) and the per-collection map (`renderMap`, `updateMapMarkers`). Plus `mapLoaded(map)` and `hasGeo`. Teardown is explicit — `destroyGlobalMap()`/`destroyDetailMap()` — because each map holds a WebGL context, but **only the detail map is torn down on navigation**. See **The immersive map** above for the traps. |
 | `pwa.js` | Service-worker registration and the install/offline UI: `isStandalone()`/`isIOS()` (which stamp `.standalone`/`.ios` on `<html>`), the `beforeinstallprompt` capture behind `pwaInstall()`, the iOS Add-to-Home-Screen sheet, `pwaShowInstallHelp()` (the Me tab row), and `pwaUpdateOnlineState()`. Dismissals persist in `localStorage` under `bl_*` keys. **It also calls `reg.update()` on foreground and on reconnect** — an installed PWA is rarely killed, and registration is the only moment the browser looks for a new `sw.js`, so without it a shipped fix can sit undelivered on the home-screen copy for days and look like it was never made. **`pwaHadController` gates the `controllerchange` reload** so it fires on an update and not on a first install — see **Shared lists**, where getting that wrong silently destroyed every invite link. |
@@ -3035,7 +3174,7 @@ they can be queued when there is no network.
 | --- | --- |
 | `Collections` | `id`, `created_at`, `name`, `description`, `cover_image`, `user_id`, `number_activities`, `activites_completed`, `category_tag` |
 | `Activities` | `id`, `created_at`, `collection_id`, `extra_collection_ids` *(optional — added by `multilist.sql`; see **One activity, several lists**)*, `name`, `description` *(dead — see below)*, `target_date`, `priority`, `date_completed`, `experience_notes`, `photos`, `links`, `location`, `location_lat`, `location_lng`, `location_is_home` *(optional — added by `home.sql`; see **Moving house**)*, `category_tag`, `remind_at` (see below) |
-| `Users` | `id` (= `auth.users.id`), `created_at`, `display_name`, `username`, `icon`, `home_location`, `home_lat`, `home_lng` *(the last three optional — added by `home.sql`; see **Home**)* |
+| `Users` | `id` (= `auth.users.id`), `created_at`, `display_name`, `username`, `icon`, `home_location`, `home_lat`, `home_lng` *(the last three optional — added by `home.sql`; see **Home**)*, `avatar_url` *(optional — added by `avatars.sql`; see **A face on the account**)* |
 | `collection_members` *(optional)* | `collection_id`, `user_id`, `role`, `display_name`, `created_at` — added by `sharing.sql` |
 | `collection_invites` *(optional)* | `code` (PK), `collection_id`, `created_by`, `role`, `revoked`, `expires_at`, `created_at` |
 | `invite_claims` *(optional)* | `email`, `code` (composite PK), `created_at`, `claimed_at`, `claimed_by` — added by `sharing.sql` section 5. An invite waiting for an account that does not exist yet. **RLS on with no policies**, so only the two `SECURITY DEFINER` RPCs can see it. |
@@ -3618,7 +3757,28 @@ Two things that will bite:
   asserts them, and getting any of them wrong looks identical from the
   outside. The app now says which failure it hit, which is the closest
   thing to a check there is.
-- **`Users.icon` and `category_tag` (both tables) remain unused.**
+- **`Users.icon` and `category_tag` (both tables) remain unused.** The
+  profile photo went to a new `avatar_url` column rather than reusing
+  `icon`: nothing reads `icon`, but it is a name that promises a glyph
+  and this holds a URL.
+- **A profile photo needs `supabase/avatars.sql` run.** Without it the
+  You tab simply has no upload control and every message keeps its
+  initial disc — but the failure is invisible unless you read the
+  console, which says so once at sign-in. The same is true of the RPC
+  half: `Users.avatar_url` can exist while `collection_avatars()` does
+  not (sharing not installed), in which case you can set your own photo
+  and nobody else sees it.
+- **The old avatar file is not deleted when you replace it.** Same
+  orphan problem as every other piece of media — see the sweeper query
+  at the bottom of `storage.sql`.
+- **An avatar is not in the offline snapshot.** The map comes from an
+  RPC, and a conversation cannot be read offline anyway, so this costs
+  nothing today; it would matter the moment the backlog entry about
+  caching the last page per conversation is done.
+- **`setHTML()` compares whole strings.** It skips the repaint when a
+  block is identical, which is the common case after navigation, but a
+  one-character change still rebuilds the entire block. Real DOM
+  diffing is the next step and is not worth it yet.
 - **There is no way back from the place sheet.** Tapping a row closes it and
   opens the activity; closing that lands on the map, not on the list of
   everything at that point. The pin is one tap away, and the alternative —

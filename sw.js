@@ -9,7 +9,7 @@
    installs pick the new build up instead of serving a stale one.
    ============================================================== */
 
-const CACHE_VERSION = 'v72';
+const CACHE_VERSION = 'v109';
 const SHELL_CACHE = `bucketlist-shell-${CACHE_VERSION}`;
 const VENDOR_CACHE = `bucketlist-vendor-${CACHE_VERSION}`;
 const IMAGE_CACHE = `bucketlist-images-${CACHE_VERSION}`;
@@ -145,6 +145,41 @@ self.addEventListener('activate', event => {
   })());
 });
 
+
+/* ---------- App icon badge ----------
+   The red count on the home-screen icon (iOS 16.4+ installed PWA,
+   Android, desktop). navigator.setAppBadge needs an absolute number,
+   so the count is kept in a cache entry rather than in a variable —
+   the worker is killed between pushes. The page is authoritative and
+   overwrites it with the real unread total whenever it renders the
+   tab badge; the worker only increments while nothing is running. */
+const BADGE_CACHE = 'bucketlist-badge';
+
+async function badgeGet() {
+  try {
+    const c = await caches.open(BADGE_CACHE);
+    const r = await c.match('count');
+    return r ? (Number(await r.text()) || 0) : 0;
+  } catch { return 0; }
+}
+
+async function badgeSet(n) {
+  n = Math.max(0, Number(n) || 0);
+  try {
+    const c = await caches.open(BADGE_CACHE);
+    await c.put('count', new Response(String(n)));
+  } catch {}
+  try {
+    if (n > 0) await self.navigator?.setAppBadge?.(n);
+    else await self.navigator?.clearAppBadge?.();
+  } catch {}
+}
+
+self.addEventListener('message', event => {
+  const d = event.data || {};
+  if (d.type === 'badge-count') event.waitUntil(badgeSet(d.count));
+});
+
 /* ---------- Push ----------
    Two senders now, and they want different banners:
 
@@ -176,7 +211,9 @@ self.addEventListener('push', event => {
     ? 'bl-conv-' + (payload.collectionId || 'all')
     : (payload.activityId ? 'bl-reminder-' + payload.activityId : 'bl-reminders');
 
-  event.waitUntil(self.registration.showNotification(title, {
+  event.waitUntil((async () => {
+    await badgeSet(await badgeGet() + 1);
+    return self.registration.showNotification(title, {
     body,
     icon: 'icons/icon-192.png',
     badge: 'icons/favicon-32.png',
@@ -188,7 +225,8 @@ self.addEventListener('push', event => {
       collectionId: payload.collectionId || null,
       activityId: payload.activityId || null,
     },
-  }));
+    });
+  })());
 });
 
 /* Tapping should bring the app forward rather than opening a second

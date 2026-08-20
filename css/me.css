@@ -86,6 +86,42 @@
       font-family: var(--serif); font-size: 24px; font-weight: 600;
       box-shadow: var(--shadow-sm);
     }
+    /* THE PHOTO IS THE CONTROL.
+
+       There is no "Change profile photo" row underneath, because the
+       disc is the only image on this screen and there is nothing else
+       it could plausibly do when tapped — a row spelling that out
+       would be the caption this app does not write. The camera badge
+       is what makes it legible instead. */
+    .me-avatar-btn {
+      position: relative; flex-shrink: 0;
+      display: block; padding: 0; border: 0; background: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    button.me-avatar-btn:active { opacity: .72; }
+
+    /* A photo fills the disc and gives up the gradient — the gradient
+       is the placeholder, not a frame around the picture. */
+    .me-avatar.has-photo { background: var(--fill-2); overflow: hidden; }
+    .me-avatar.has-photo img {
+      width: 100%; height: 100%; object-fit: cover; display: block;
+    }
+
+    .me-avatar-edit {
+      position: absolute; right: -2px; bottom: -2px;
+      width: 22px; height: 22px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--tint); color: #fff;
+      /* Rings in the card's own colour so the badge reads as sitting
+         on top of the disc rather than punched out of it. */
+      box-shadow: 0 0 0 2.5px var(--bg-elevated);
+    }
+    .me-avatar-edit .ic { width: 12px; height: 12px; }
+
+    /* While an upload is in flight. Not a spinner: the thing being
+       waited on is the picture itself, so the picture is what dims. */
+    .me-identity.busy .me-avatar-btn { opacity: .5; pointer-events: none; }
+
     .me-identity-body { min-width: 0; }
     .me-identity-name {
       font-family: var(--serif); font-size: 24px; font-weight: 600;

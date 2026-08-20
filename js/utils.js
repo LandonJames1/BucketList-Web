@@ -489,3 +489,57 @@ function confetti(){
   }
   setTimeout(()=>{c.innerHTML='';},3000);
 }
+
+/* ==============================================================
+   WRITING HTML WITHOUT REPAINTING WHAT DID NOT CHANGE
+
+   Every screen in this app renders by assigning a template string to
+   innerHTML, and nav() re-renders the destination on every visit. That
+   is cheap for text and it is NOT cheap for anything the browser has
+   to re-acquire: assigning innerHTML destroys every <img> in the block
+   and creates new ones, so a cover photo is re-attached, re-decoded
+   and (on a cold HTTP cache) re-fetched every single time you touch
+   the tab. That is most of what "moving between pages reloads things"
+   actually was.
+
+   setHTML() compares against what is already there and does nothing
+   when the markup is identical — which is the common case, because a
+   re-render after navigation usually produces exactly the same string.
+   The comparison is a string compare against the value we last wrote,
+   held on the node, rather than reading innerHTML back (which
+   serialises the whole subtree and would cost more than it saves).
+
+   Use it for any block that contains images or is re-rendered on
+   navigation. It is a drop-in for `el.innerHTML = html`.
+   ============================================================== */
+function setHTML(el,html){
+  if(!el) return false;
+  if(el._htmlCache===html) return false;
+  el._htmlCache=html;
+  el.innerHTML=html;
+  return true;
+}
+
+/* ==============================================================
+   A STABLE FALLBACK COVER
+
+   Collections without a cover image used to call randCover() at RENDER
+   time, which picks at random — so the same list drew a different
+   photo every time the Lists tab was rendered, and a collection's
+   banner changed on every mutation. It read exactly like the app
+   reloading things for no reason, because it was.
+
+   The fallback is now derived from the collection's own id, so it is
+   stable for the life of the row, identical on every screen that
+   draws it, and identical across devices. randCover() is still what
+   picks a cover when a collection is CREATED — a genuine one-off
+   choice, and the one place randomness belongs.
+   ============================================================== */
+function coverFor(list){
+  if(!list) return COVERS[0];
+  if(list.cover) return list.cover;
+  const id=String(list.id||'');
+  let h=0;
+  for(let i=0;i<id.length;i++) h=(h*31+id.charCodeAt(i))>>>0;
+  return COVERS[h%COVERS.length];
+}

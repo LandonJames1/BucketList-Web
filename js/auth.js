@@ -316,7 +316,11 @@ async function showApp(){
   /* Whether the media bucket exists decides how the completion sheet
      stores photos and whether it accepts video at all. Probed once,
      early, so the first upload does not have to find out. */
-  probeStorage();
+  /* The You tab's avatar control needs the answer too — it is offered
+     only when the bucket exists — and it may already be on screen, so
+     redraw the identity row once the probe lands rather than leaving
+     the control hidden until the next visit. */
+  probeStorage().then(()=>{ if(curPage==='me') renderMeIdentity(); });
   /* Whether an activity can remember that its location IS home, which
      is what lets a change of home address move them. See "THIS
      ACTIVITY IS AT HOME" in api.js. */

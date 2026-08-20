@@ -9,11 +9,11 @@ async function renderCollections(){
      (api.js), so on every visit after the first this screen paints from
      memory — and blanking it to a spinner first would turn an instant
      redraw into a visible flash of nothing. */
-  if(!cacheWarm()) wrap.innerHTML='<div class="spinner"></div>';
+  if(!cacheWarm()) setHTML(wrap,'<div class="spinner"></div>');
   try{
     const lists=await fetchCollections();
     if(!lists.length){
-      wrap.innerHTML='';
+      setHTML(wrap,'');
       $('collEmpty').style.display='';
       /* The one place someone invited into their first list arrives:
          no lists, so the grid — and the Join tile in it — is not drawn
@@ -28,14 +28,14 @@ async function renderCollections(){
        sharing is not enabled, so the badge simply never appears. */
     const sharedOut=await sharedCollectionIds();
 
-    wrap.innerHTML=lists.map(l=>{
+    setHTML(wrap,lists.map(l=>{
       /* Membership, not home list: an activity added to this list from
          another one counts towards its total and its progress exactly
          as anything created here does. */
       const acts=allActs.filter(a=>a.listIds.includes(l.id));
       const total=acts.length,done=acts.filter(a=>a.completed).length;
       const pct=total?Math.round(done/total*100):0;
-      const cover=l.cover||randCover();
+      const cover=coverFor(l);
       const complete=total>0&&done===total;
       /* Outstanding high-priority work, so the tab says which list wants
          attention before you open any of them. Completed ones don't
@@ -76,13 +76,13 @@ async function renderCollections(){
     (sharingReady()
       ?`<button class="coll-card-new coll-card-join" onclick="openJoinByCode()">
           ${icon('share')}<span>Join a List</span></button>`
-      :'');
+      :''));
   }catch(e){
     console.error('renderCollections:',e);
-    wrap.innerHTML=`<div class="empty" style="grid-column:1/-1">${icon('folder')}
+    setHTML(wrap,`<div class="empty" style="grid-column:1/-1">${icon('folder')}
       <div class="empty-title">Couldn’t load</div>
       <div class="empty-sub">${esc(e.message||'Something went wrong.')}</div>
-      <button class="btn btn-tinted" onclick="renderCollections()">Try Again</button></div>`;
+      <button class="btn btn-tinted" onclick="renderCollections()">Try Again</button></div>`);
   }
 }
 

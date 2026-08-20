@@ -122,16 +122,9 @@
     .fg textarea.fg-note::placeholder { color: var(--label-4); }
     .fg textarea.fg-note:focus { box-shadow: inset 0 0 0 1.5px var(--tint); }
 
-/*  ---- The Notes tab of the activity sheet ------------------
-    The log gets the height it needs to be worked in: it scrolls
-    inside itself, with the composer pinned beneath it, so the
-    sheet's own scroll is never fighting the log's. */
-    .ad-notes-pane {
-      margin: 18px var(--gx-r) 0 var(--gx-l);
-      display: flex; flex-direction: column;
-    }
-    .ad-notes-pane .note-log {
-      max-height: 52vh; overflow-y: auto;
-      overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
-    }
-    .ad-notes-pane .note-add textarea { max-height: 200px; }
+/*  ---- The notes page of the activity sheet ------------------
+    A page, not a tab: it replaces the details pane and owns the
+    sheet's own scroller, with the composer riding the dock below.
+    So the log needs no scroller and no height cap of its own. */
+    .ad-notes-pane { margin: 14px var(--gx-r) 0 var(--gx-l); }
+    .ad-dock .note-add textarea { max-height: 120px; }

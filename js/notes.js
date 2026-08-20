@@ -71,40 +71,93 @@ async function fetchNotes(activityId){
    behind it — the notes are never what the sheet is about, and
    awaiting them would hold up the photos and the buttons.
    ============================================================== */
+/* Which collection an activity is homed in, so the log can ask for
+   the same avatar map the conversation uses. Read from the in-memory
+   cache — this is the id collection_avatars() is scoped by, and a
+   miss simply means initials. */
+function noteCollectionId(activityId){
+  const a=cachedActivities().find(x=>x.id===activityId);
+  return a?a.listId:null;
+}
+
 async function renderActivityNotes(activityId){
   const box=$('adNotes');
   if(!box||!notesReady()) return;
 
+  const cid=noteCollectionId(activityId);
+  /* Deliberately not awaited alongside the notes: the log paints from
+     author_name, which is a snapshot on every row, and repaints when
+     the photos land. Same contract as a conversation — a face arriving
+     a moment after the words is invisible, waiting for it is not. */
+  const avatarsP=cid?loadConversationAvatars(cid):Promise.resolve(null);
+
   const notes=await fetchNotes(activityId);
   /* The sheet may have been closed, or a different activity opened,
      while this was in flight. */
-  const still=$('adNotes');
-  if(!still||still.dataset.for!==activityId) return;
+  if(!paintActivityNotes(activityId,notes,cid)) return;
 
-  const list=notes.length
-    ? `<div class="note-log">${notes.map(n=>noteRowHTML(n,activityId)).join('')}</div>`
-    : '';
-
-  still.innerHTML=`
-    <div class="ad-section-label">Notes${notes.length?` <span class="note-count">${notes.length}</span>`:''}</div>
-    ${list}
-    <div class="note-add">
-      <textarea id="adNoteInput" rows="1" maxlength="1000"
-        placeholder="Add a note…" autocapitalize="sentences"
-        oninput="onNoteInput()" onkeydown="onNoteKey(event)"></textarea>
-      <button class="note-add-go" id="adNoteGo" onclick="submitActivityNote('${esc(activityId)}')"
-        aria-label="Add note">${icon('plus','ic-sm')}</button>
-    </div>`;
+  avatarsP.then(map=>{ if(map&&Object.keys(map).length) paintActivityNotes(activityId,notes,cid); });
 }
 
-function noteRowHTML(n,activityId){
+/* Returns false when the sheet has moved on, so the avatar repaint
+   above can stop rather than write into somebody else's log. */
+function paintActivityNotes(activityId,notes,cid){
+  const still=$('adNotes');
+  if(!still||still.dataset.for!==activityId) return false;
+
+  /* The preview shows the two most recent and nothing else. It is a
+     button onto the notes page — no composer, no menus — so the
+     section reads as one tap rather than as a control panel. */
+  const recent=notes.slice(-2).reverse();
+  still.innerHTML=`
+    <div class="ad-nsec-h">
+      <p class="h">Notes</p>
+      <span class="ad-nsec-more">${notes.length?`${notes.length} note${notes.length===1?'':'s'}`:'Add'} ${icon('chevron-right','ic-xs')}</span>
+    </div>
+    ${notes.length
+      ? recent.map(n=>`<div class="note-card">
+          <p class="m">${noteAvatarHTML(n,cid)}<span>${esc(noteWho(n))} &middot; ${esc(msgDayLabel(n.created_at))}</span></p>
+          <p class="t">${esc(n.body)}</p></div>`).join('')
+      : '<div class="note-empty"><p>No notes yet</p></div>'}`;
+
+  /* The page behind it: the whole log, with each entry's own menu. */
+  const full=$('adNotesFull');
+  if(full) full.innerHTML=notes.length
+    ? `<div class="note-log">${notes.map(n=>noteRowHTML(n,activityId,cid)).join('')}</div>`
+    : `<div class="note-empty"><p>No notes yet</p></div>`;
+  return true;
+}
+
+/* Who an entry is attributed to. A null author_id is an account that
+   has been deleted — the entry stays, because removing it would tear
+   a hole in a discussion other people had. */
+function noteWho(n){
+  if(!n.author_id) return n.author_name||'Deleted account';
+  if(currentUser&&n.author_id===currentUser.id) return 'You';
+  return n.author_name||'Someone';
+}
+
+/* The author's photo, from the same collection_avatars() map the
+   conversation uses — one RPC per collection, cached for the session.
+   A deleted account keeps its grey disc even when a photo is known,
+   for the reason msgAvatarHTML() gives: a name with no account behind
+   it must not look like every other name. */
+function noteAvatarHTML(n,cid){
   const gone=!n.author_id;
-  const mine=!!(currentUser&&n.author_id===currentUser.id);
-  const who=gone?(n.author_name||'Deleted account'):(mine?'You':(n.author_name||'Someone'));
+  const map=cid?avatarsFor(cid):null;
+  const url=(!gone&&n.author_id&&map)?map[n.author_id]:'';
+  if(url) return `<span class="msg-avatar has-photo"><img src="${esc(url)}" alt="" loading="lazy"/></span>`;
+  return `<span class="msg-avatar${gone?' gone':''}">${esc(msgInitial(n.author_name||(n.author_id&&currentUser&&n.author_id===currentUser.id?(userProfile&&(userProfile.display_name||userProfile.username)):'')||'?'))}</span>`;
+}
+
+function noteRowHTML(n,activityId,cid){
+  const gone=!n.author_id;
+  const who=noteWho(n);
   const when=`${msgDayLabel(n.created_at)} · ${msgClock(n.created_at)}`;
 
   return `<div class="note-row">
     <div class="note-meta">
+      ${noteAvatarHTML(n,cid)}
       <span class="note-who${gone?' gone':''}">${esc(who)}</span>
       ${gone?'<span class="msg-gone">Deleted account</span>':''}
       <span class="note-when">${esc(when)}</span>
@@ -189,7 +242,7 @@ function openNoteMenu(id,activityId){
 }
 
 async function copyNote(id){
-  const box=$('adNotes');
+  const box=$('adNotesFull');
   const row=box&&box.querySelector(`[onclick*="${id}"]`);
   const body=row&&row.closest('.note-row')?row.closest('.note-row').querySelector('.note-body'):null;
   try{

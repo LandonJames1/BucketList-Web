@@ -59,6 +59,18 @@
     @media (min-width: 700px) {
       :root { --gutter: 24px; --content-max: 640px; }
 
+      /* The activity sheet's badge pair is phone-sized by default; a
+         desktop dialog has the room for the full size. And its media
+         stage keeps the full column width — so its edges still line up
+         with everything else on the sheet — but gives up 7% of its
+         height, which was overbearing at this width. */
+      .ad-badges > * { height: 38px; border-radius: 12px; font-size: 12px; }
+      .ad-badges .ad-datebtn { padding: 0 10px; }
+      .ad-badges .ad-locbadge { padding: 0 10px; }
+      .ad-badges .ad-datebtn .ic,
+      .ad-badges .ad-locbadge .ic { width: 15px; height: 15px; }
+      .ad-stage { aspect-ratio: 1 / .93; }
+
       /* ---- ONE COLUMN, and the cap goes on the PAGE ----
          Every screen-level container insets itself by a gutter, but
          they are split between two mechanisms: some use

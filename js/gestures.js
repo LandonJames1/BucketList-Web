@@ -24,7 +24,10 @@ function ownsHorizontal(el){
   return !!(el.closest&&(
     el.closest('#globalMapContainer')||el.closest('#mapContainer')||
     el.closest('.maplibregl-map')||el.closest('.seg')||
-    el.closest('input')||el.closest('textarea')));
+    el.closest('input')||el.closest('textarea')||
+    /* Tiles are dragged sideways to reorder — the page swipe must not
+       take that gesture. */
+    el.closest('.photo-previews')));
 }
 function ownsVertical(el){
   return !!(el.closest&&(
@@ -174,8 +177,9 @@ document.addEventListener('touchstart',e=>{
   pgSwipe=null;
   if(e.touches.length!==1)return;
   const t=e.touches[0];
-  /* An overlay owns the gesture — but the activity sheet's two tabs are
-     a pager, so a sideways swipe on it changes tab rather than screen. */
+  /* An overlay owns the gesture — but the activity sheet's details and
+     notes panes are a pager, so a sideways swipe on it moves between
+     them rather than changing screen. */
   if(overlayOpen()){
     if($('actDetailSheet').classList.contains('open')&&$('adPaneNotes')&&
        !ownsHorizontal(e.target))
@@ -200,7 +204,7 @@ document.addEventListener('touchend',e=>{
 
   if(s.tabs){
     if(!$('adPaneNotes'))return;
-    setActDetailTab(dx<0?'notes':'details');
+    swapActNotes(dx<0);
     return;
   }
 

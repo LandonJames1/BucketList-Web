@@ -16,6 +16,10 @@ const PAGE_TAB={home:'home',lists:'lists',globalmap:'map',me:'me',detail:'lists'
 
 function nav(page,listId){
   const prev=curPage;
+  /* Captured before curListId/curConvId are reassigned below, so the
+     offset for the screen we are leaving is filed under the collection
+     it was actually showing. */
+  const prevList=prev==='conversation'?curConvId:curListId;
   if(page==='detail'&&listId) curListId=listId;
   /* A conversation is addressed by its collection id — see curConvId
      in state.js. */
@@ -67,19 +71,65 @@ function nav(page,listId){
      the messages are refetched on the way back in anyway. */
   if(page!=='conversation') leaveConversation();
 
+  /* Where the screen we are leaving had got to, so coming back to it
+     lands where it was left rather than at the top. */
+  if(prev&&prev!==page) _scrollMem[scrollKey(prev,prevList)]=window.scrollY;
+
   window.scrollTo(0,0);
   updateNavbar();
 
-  if(page==='home')      renderHome();
-  if(page==='upnext')    renderUpNext();
-  if(page==='done')      renderDone();
-  if(page==='lists')     renderCollections();
-  if(page==='detail')    renderDetail();
-  if(page==='globalmap') renderGlobalMap();
-  if(page==='me')        renderMe();
-  if(page==='messages')     renderMessages();
-  if(page==='conversation') renderConversation();
+  const render=RENDERERS[page];
+  const done=render?render():null;
+
+  /* Restoring the offset only makes sense once the content that gives
+     the page its height is actually in the DOM, so it waits on the
+     render. A push always starts at the top - that is what a push
+     means - and so does a screen we have no memory of. */
+  const want=pushing?0:(_scrollMem[scrollKey(page,listId)]||0);
+  if(want){
+    const settled=done&&typeof done.then==='function'?done:Promise.resolve();
+    settled.then(()=>{
+      if(curPage!==page) return;
+      window.scrollTo(0,Math.min(want,
+        Math.max(0,document.documentElement.scrollHeight-window.innerHeight)));
+      applyNavCondense();
+    });
+  }
 }
+
+/* ==============================================================
+   REMEMBERING WHERE EACH SCREEN WAS
+
+   The app scrolls the window, not a per-page container, so switching
+   pages loses the offset unless it is stored. Without this, opening a
+   collection from halfway down the Lists tab and pressing Back put you
+   back at the very top with no idea where you had been - which is the
+   one thing a tab bar is expected to get right.
+
+   Detail and conversation are keyed by the collection they are showing,
+   so two collections do not share one offset. Nothing is persisted:
+   this is a per-session convenience, not state.
+   ============================================================== */
+const _scrollMem={};
+function scrollKey(page,listId){
+  if(page==='detail')       return 'detail:'+(listId||curListId||'');
+  if(page==='conversation') return 'conversation:'+(listId||curConvId||'');
+  return page;
+}
+
+/* One place naming each screen's renderer, so nav() can hold on to the
+   promise rather than firing eight `if`s and forgetting all of them. */
+const RENDERERS={
+  home:()=>renderHome(),
+  upnext:()=>renderUpNext(),
+  done:()=>renderDone(),
+  lists:()=>renderCollections(),
+  detail:()=>renderDetail(),
+  globalmap:()=>renderGlobalMap(),
+  me:()=>renderMe(),
+  messages:()=>renderMessages(),
+  conversation:()=>renderConversation(),
+};
 
 /* Which screen is the root of each tab, and the order they sit in the
    tab bar — which is the order js/gestures.js swipes through. */
@@ -264,12 +314,34 @@ function applyNavCondense(){
   }
   bar.classList.toggle('condensed',condensed);
 }
+/* Reading two custom properties off the root element means a
+   getComputedStyle() call, which is a forced style resolve — and this
+   used to run on EVERY scroll event, on a handler that also measures a
+   getBoundingClientRect(). That is a layout read per scroll tick on the
+   main thread, which is exactly the shape of jank that reads as the app
+   stuttering while you scroll. The value only changes when the viewport
+   does, so it is measured once and re-measured on resize. */
+let _navChromeTop=null;
 function navChromeTop(){
+  if(_navChromeTop!=null) return _navChromeTop;
   const cs=getComputedStyle(document.documentElement);
-  return parseFloat(cs.getPropertyValue('--nav-h'))+
+  _navChromeTop=parseFloat(cs.getPropertyValue('--nav-h'))+
          (parseFloat(cs.getPropertyValue('--safe-top'))||0);
+  return _navChromeTop;
 }
-window.addEventListener('scroll',applyNavCondense,{passive:true});
+function invalidateNavChromeTop(){_navChromeTop=null;}
+
+/* Coalesced to one measurement per frame. A scroll fires far more often
+   than the screen repaints, and condensing the bar more than once
+   between two paints cannot change what the user sees — it only costs
+   layout reads. */
+let _condenseQueued=false;
+function queueNavCondense(){
+  if(_condenseQueued) return;
+  _condenseQueued=true;
+  requestAnimationFrame(()=>{_condenseQueued=false;applyNavCondense();});
+}
+window.addEventListener('scroll',queueNavCondense,{passive:true});
 
 /* ==============================================================
    BODY SCROLL LOCK
@@ -352,6 +424,7 @@ let navResizeTimer=null;
 window.addEventListener('resize',()=>{
   clearTimeout(navResizeTimer);
   navResizeTimer=setTimeout(()=>{
+    invalidateNavChromeTop();
     refreshMapZoomFloors();
     applyNavCondense();
     /* Rotating with the keyboard up changes its height. */

@@ -324,6 +324,12 @@
   </div>
 
   <div class="me-identity" id="meIdentity"></div>
+  <!-- The profile photo picker. Hidden, and opened by tapping the
+       avatar disc itself — see openAvatarMenu() in me.js. It sits
+       outside .fg on purpose; the `.fg [hidden]` rule that exists for
+       the other two file inputs does not reach here. -->
+  <input type="file" id="avatarFile" accept="image/*" hidden
+         onchange="handleAvatarFile(this)"/>
   <div class="stats-card" id="meStats"></div>
   <div class="me-progress" id="meProgress"></div>
 
@@ -459,7 +465,7 @@
            spans the line on its own — which is why this is a flex row
            and not a two-column grid. -->
       <div class="fg-pair">
-        <div class="fg">
+        <div class="fg fg-tint fg-c-target">
           <label>Target Date</label>
           <!-- Every activity gets a real horizon. "Someday" and "No date"
                are gone: they were the default, so most things landed in a
@@ -523,7 +529,7 @@
            the disclosure: it is the field that decides whether the thing
            ever shows up on the map, so hiding it meant most activities
            silently never did. -->
-      <div class="fg">
+      <div class="fg fg-tint fg-c-where">
         <label>Location</label>
         <div class="loc-wrap">
           <input id="aLoc" placeholder="Search for a place" maxlength="200" autocomplete="off"
@@ -547,10 +553,9 @@
            event. The row states whether one is set; the sheet is where
            it is set. Hidden entirely until the remind_at column exists —
            see probeRemindColumn() in api.js. -->
-      <div class="fg" id="aRemindRow" style="display:none">
+      <div class="fg fg-tint fg-c-remind" id="aRemindRow" style="display:none">
         <label>Reminder<span class="opt"> optional</span></label>
-        <button type="button" class="row tappable" id="aRemindBtn" onclick="openRemindSheet()"
-                style="border-radius:var(--r-row);box-shadow:var(--shadow-sm),0 0 0 .5px var(--separator)">
+        <button type="button" class="row tappable" id="aRemindBtn" onclick="openRemindSheet()">
           <span class="row-body"><span class="row-title">Remind me</span></span>
           <span class="row-trailing">
             <span id="aRemindValue">None</span>
@@ -561,31 +566,6 @@
         <input type="hidden" id="aRemind" /><input type="hidden" id="aRemindNote" />
       </div>
 
-      <!-- Notes. NOT the old "why is this on your list?" field, which
-           asked the wrong question at the moment of capture and was
-           rightly removed. This writes the first entry of the activity's
-           append-only notes log — the working state of a plan several
-           people are making ("we settled on the 14th", "Sarah is
-           booking the car"). Anything typed here is filed as a dated,
-           attributed entry when the activity saves, and the log itself
-           is read and added to on the activity detail sheet. Hidden
-           until supabase/messages.sql has been run. See notes.js. -->
-      <div class="fg" id="aNotesRow" style="display:none">
-        <label>Notes<span class="opt"> optional</span></label>
-        <textarea id="aNotes" class="fg-note" rows="1" maxlength="1000"
-          placeholder="Add a note — kept as a dated entry"
-          autocapitalize="sentences"></textarea>
-      </div>
-
-      <!-- Links are shown outright rather than behind a "More options"
-           disclosure. Once the date and list share a line the sheet is
-           short enough to hold everything, and a collapsed field is one
-           most people never open — the same reason Location was pulled
-           out of the disclosure before it. -->
-      <div class="fg">
-        <label>Links<span class="opt"> optional</span></label>
-        <div class="chip-field" id="aLinksWrap" onclick="$('aLinkInput').focus()"></div>
-      </div>
     </div>
   </div>
 </div>
@@ -690,6 +670,7 @@
       <button class="navbtn strong" id="compSaveBtn" onclick="confirmComplete()">Done</button>
     </div>
     <div class="sheet-body">
+     <div class="comp-pane active" id="compPaneMain">
       <!-- Once something is done this sheet is the only way to edit it,
            so the name lives here rather than in the activity sheet — see
            openActDetail(). Target date, priority and reminders are gone
@@ -709,55 +690,34 @@
         <input id="compName" placeholder="What did you do?" maxlength="100"
                autocapitalize="sentences" enterkeyhint="done" />
       </div>
-      <!-- THE RECORD — when and where, in one card.
-           These were two labelled .fg blocks, which cost a mono label,
-           a 46px box and a 22px gap each and made the two smallest
-           answers on the sheet its two largest controls. As inset rows
-           they read as one fact about the completion, and the sheet
-           gets ~80px back. The card deliberately does NOT clip its
-           overflow: .loc-results hangs out of the bottom of it. -->
-      <div class="comp-card">
-        <!-- The row opens the picker, not just the field. The native
-             calendar glyph is hidden (the row already leads with one),
-             and on desktop that glyph is the only thing that opens the
-             picker on a click — so openCompDatePicker() calls
-             showPicker() explicitly. On iOS the field opens its own
-             wheel either way. -->
-        <div class="comp-row comp-row-tap" onclick="openCompDatePicker()">
-          <span class="comp-row-ic" id="compDateIcon"></span>
-          <span class="comp-row-label">Date</span>
-          <input type="date" id="compDate" class="comp-row-input is-date" />
+
+      <!-- Same shape as the activity sheet's own fields: a mono label
+           over an elevated input. Date and list share one line, as the
+           activity sheet's target/list pair does; when the list half
+           hides itself the date spans the line. -->
+      <div class="fg-pair">
+        <div class="fg fg-tint fg-c-target">
+          <label>Date</label>
+          <input type="date" id="compDate" />
         </div>
-        <!-- .loc-wrap is the whole row, not just the input, so the
-             results drop the full width of the card rather than the
-             width of the value on the right of it. -->
-        <div class="comp-row loc-wrap">
-          <span class="comp-row-ic" id="compLocIcon"></span>
-          <span class="comp-row-label">Where</span>
-          <input id="compLoc" class="comp-row-input" placeholder="Add a place"
-                 maxlength="200" autocomplete="off"
+        <div class="fg" id="compListCard" style="display:none">
+          <label id="compListLabel">List</label>
+          <button type="button" class="picker-btn" id="compListBtn">
+            <span class="picker-btn-value" id="compListName">Choose</span>
+            <span class="picker-btn-chevron" id="compListChevron"></span>
+          </button>
+        </div>
+      </div>
+
+      <div class="fg fg-tint fg-c-where">
+        <label>Location</label>
+        <div class="loc-wrap">
+          <input id="compLoc" placeholder="Add a place" maxlength="200" autocomplete="off"
                  oninput="locSearch(this,'compLocResults')" onfocus="locSearch(this,'compLocResults')" />
           <input type="hidden" id="compLocLat" /><input type="hidden" id="compLocLng" />
           <div class="loc-results" id="compLocResults"></div>
         </div>
-        <!-- On every mode of this sheet. A draft has to be filed
-             somewhere — a row in no list is reachable from nowhere — and
-             on the other two it is a move, written by confirmComplete()
-             only when the set actually changed. Once something is done
-             the activity sheet's "Edit details" is hidden, so without it
-             here there is no way to refile a completed activity at all. -->
-        <button class="comp-row comp-row-btn" id="compListRow" style="display:none">
-          <span class="comp-row-ic" id="compListIcon"></span>
-          <span class="comp-row-label" id="compListLabel">List</span>
-          <span class="comp-row-value" id="compListName">Choose</span>
-          <span class="comp-row-chevron" id="compListChevron"></span>
-        </button>
       </div>
-      <!-- Filled in by suggestLocationFromPhoto() when an attached
-           photo carries a GPS fix and this field is still empty. A
-           suggestion to accept, never a value written on the user's
-           behalf — extraction can be wrong, and the same rule the
-           import sheet follows applies here. See media.js. -->
       <div class="loc-suggest comp-suggest" id="compLocSuggest" hidden></div>
 
       <!-- Photos and notes are on the sheet outright. They sat behind an
@@ -772,25 +732,33 @@
            of CLAUDE.md, the control for adding media must not be louder
            than the media — while giving up the line of its own that it
            had no content to justify. -->
-      <div class="comp-sec" id="compMediaSec">
-        <div class="comp-sec-head">
-          <!-- Required on the way in, optional on the way back — see
-               updateMediaRequirement() in activities.js, which owns both
-               this qualifier and the hint below. -->
-          <span class="comp-sec-label">Photos &amp; video<span class="opt" id="compMediaQual"> optional</span></span>
-          <button class="photo-zone" onclick="$('photoInput').click()">
-            <span id="photoZoneIcon"></span>
-            <span>Add</span>
-          </button>
+      <!-- MEDIA IS A CARD, NOT A GRID ON THIS SHEET.
+
+           The same shape the Links card on the activity sheet has: one
+           item shown, the rest counted, and a tap onto a page of its
+           own. A grid of tiles here pushed "How it went" and the
+           requirement hint off the bottom of the sheet as soon as there
+           were more than a few.
+
+           With nothing attached yet there is no page worth showing, so
+           the card opens the picker directly — see openCompMedia(). -->
+      <div class="fg">
+        <label>Media</label>
+        <div class="comp-media-card" id="compMediaSec" role="button" tabindex="0"
+             onclick="openCompMedia()">
+          <div class="comp-media-body">
+            <div class="comp-media-v" id="compMediaSummary">None</div>
+          </div>
+          <span class="comp-media-thumb" id="compMediaThumb"></span>
+          <span class="comp-media-chev" id="compMediaChev"></span>
         </div>
-        <input type="file" id="photoInput" multiple accept="image/*,video/*" hidden onchange="handleMedia(event)" />
-        <div class="photo-previews" id="photoPrev"></div>
-        <!-- Said here rather than only in the toast on Done: a
-             requirement discovered by pressing the button you thought
-             would finish is a dead end, not a rule. -->
-        <div class="comp-req-hint" id="compMediaHint" hidden>
-          Add at least one to mark this accomplished.
-        </div>
+      </div>
+      <input type="file" id="photoInput" multiple accept="image/*,video/*" hidden onchange="handleMedia(event)" />
+      <!-- Said here rather than only in the toast on Done: a
+           requirement discovered by pressing the button you thought
+           would finish is a dead end, not a rule. -->
+      <div class="comp-req-hint" id="compMediaHint" hidden>
+        Add at least one photo or video to mark this accomplished.
       </div>
 
       <!-- Set in the serif, because that is what it will be read back in
@@ -803,6 +771,21 @@
         <textarea id="compNotes" class="comp-note" placeholder="Tell the story&hellip;"
                   autocapitalize="sentences"></textarea>
       </div>
+     </div>
+
+     <!-- THE MEDIA PAGE. Same trick the activity sheet's notes and links
+          pages use: a second pane inside the one sheet, swapped in by
+          compShowPane(), so there is no second overlay to dismiss. -->
+     <div class="comp-pane" id="compPaneMedia">
+       <div class="ad-navbar">
+         <button class="ad-back" onclick="compShowPane('main')" id="compMediaBack"></button>
+         <span class="ad-navtitle">Media</span>
+       </div>
+       <div class="comp-media-pane">
+         <div class="photo-previews" id="photoPrev"></div>
+         <button class="btn btn-tint btn-block" onclick="$('photoInput').click()">Add photo or video</button>
+       </div>
+     </div>
     </div>
   </div>
 </div>
@@ -1033,6 +1016,7 @@
   <div class="modal barless">
     <div class="sheet-grabber"></div>
     <div class="sheet-body" id="actDetailBody"></div>
+    <div class="ad-dock" id="actDetailDock" hidden></div>
   </div>
 </div>
 

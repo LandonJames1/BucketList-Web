@@ -50,9 +50,10 @@ function afterSheetClosed(id){
   const fn=_sheetReturns[id];
   if(!fn)return;
   delete _sheetReturns[id];
-  /* Let the dismissal animate out before the next sheet slides in, or
-     the two cross over each other. */
-  setTimeout(fn,240);
+  /* Immediately: the returning sheet has to be on screen while the one
+     being dismissed slides away. A delay left the bare page showing for
+     a quarter second, which read as everything disappearing. */
+  fn();
 }
 
 /* Leaving the screen entirely cancels any pending return — a tab tap
@@ -318,7 +319,7 @@ function renderListPickerRows(){
     const home=_lpMulti&&at===0&&_lpPicked.length>1
       ?'<span class="lp-home">Home</span>':'';
     return `<button class="lp-row${on?' current':''}" onclick="listPickerPick('${l.id}')">
-       <img class="lp-cover" src="${esc(l.cover||randCover())}" alt="" loading="lazy"/>
+       <img class="lp-cover" src="${esc(coverFor(l))}" alt="" loading="lazy"/>
        <span class="lp-name">${esc(l.name)}</span>
        ${home}
        <span class="lp-check">${icon('check')}</span>

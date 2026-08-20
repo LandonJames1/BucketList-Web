@@ -16,9 +16,9 @@ async function renderDetail(){
   const acts=await fetchActivitiesFor(curListId);
   const total=acts.length,done=acts.filter(a=>a.completed).length;
   const pct=total?Math.round(done/total*100):0;
-  const cover=list.cover||randCover();
+  const cover=coverFor(list);
 
-  $('detBanner').innerHTML=`
+  setHTML($('detBanner'),`
     <img class="det-banner-img" src="${esc(cover)}" alt=""/>
     <div class="det-banner-scrim"></div>
     <div class="det-banner-body">
@@ -29,14 +29,28 @@ async function renderDetail(){
         <div class="progress"><div class="progress-fill" style="width:${pct}%"></div></div>
         <span class="det-progress-label">${done} of ${total}</span>
       </div>
-    </div>`;
+    </div>`);
 
   /* The compact nav-bar title on this screen is the collection name. */
   $('navTitle').textContent=list.name;
 
-  /* Controls are rebuilt here (not on every keystroke) so the search
-     field keeps focus while typing. */
-  $('detControls').innerHTML=`
+  /* THE CONTROLS ARE BUILT ONCE PER COLLECTION, NOT ONCE PER RENDER.
+
+     They were rebuilt on every call, and renderDetail() is what
+     refreshAfterChange() lands on — so completing an activity, editing
+     one, or deleting one while a search was active silently destroyed
+     the search field, dropping the query, the caret and the filtered
+     list the user was looking at. The comment here used to say the
+     split with renderActivitiesList() protected typing; it protected
+     typing and nothing else.
+
+     So: build the block when the collection changes, and afterwards
+     only update the two things that can actually differ — which segment
+     is lit and what the sort button says. */
+  const ctl=$('detControls');
+  if(ctl.dataset.list!==curListId){
+    ctl.dataset.list=curListId;
+    setHTML(ctl,`
     <div class="searchbar">
       <div class="searchfield" id="detSearchField">
         ${icon('search')}
@@ -47,14 +61,26 @@ async function renderDetail(){
     </div>
     <div class="det-ctl-row">
       <div class="seg" id="detFilter">
-        <button class="${curFilter==='all'?'active':''}" onclick="setFilter('all')">All</button>
-        <button class="${curFilter==='pending'?'active':''}" onclick="setFilter('pending')">To Do</button>
-        <button class="${curFilter==='completed'?'active':''}" onclick="setFilter('completed')">Done</button>
+        <button data-filter="all" onclick="setFilter('all')">All</button>
+        <button data-filter="pending" onclick="setFilter('pending')">To Do</button>
+        <button data-filter="completed" onclick="setFilter('completed')">Done</button>
       </div>
-      ${sortButtonHTML()}
-    </div>`;
+      <span id="detSortSlot"></span>
+    </div>`);
+  }
+  syncDetailControls();
 
   renderActivitiesList();
+}
+
+/* The only two things about the control row that change without the
+   collection changing. Called on every render, and by setFilter() and
+   setSort() so neither has to rebuild the row it lives in. */
+function syncDetailControls(){
+  const seg=$('detFilter');
+  if(seg) seg.querySelectorAll('button').forEach(b=>
+    b.classList.toggle('active',b.dataset.filter===curFilter));
+  setHTML($('detSortSlot'),sortButtonHTML());
 }
 
 /* The sort control sits beside the filter rather than becoming a fourth

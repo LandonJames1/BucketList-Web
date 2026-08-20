@@ -179,6 +179,17 @@
        "you can touch this" everywhere else in the app. */
     .msg-avatar.gone { background: var(--fill-3); color: var(--label-4); }
 
+    /* A profile photo, when the sender has one (supabase/avatars.sql).
+       The tinted initial disc is the fallback and stays exactly as it
+       was — this only swaps what is inside the same 20px circle, so a
+       run of messages from someone with a photo and someone without
+       lines up regardless. overflow:hidden rather than a border-radius
+       on the img, so the crop cannot disagree with the disc. */
+    .msg-avatar.has-photo { background: var(--fill-2); overflow: hidden; }
+    .msg-avatar.has-photo img {
+      width: 100%; height: 100%; object-fit: cover; display: block;
+    }
+
     .msg-who {
       font-family: var(--mono); font-size: 9.5px; font-weight: 500;
       letter-spacing: .09em; text-transform: uppercase;
@@ -303,21 +314,40 @@
     .conv-pending.open { display: flex; }
     .conv-pending-chip {
       display: flex; align-items: center; gap: 5px;
-      max-width: 100%;
-      padding: 4px 4px 4px 8px; border-radius: 999px;
+      max-width: min(100%, 230px);
+      padding: 4px 6px 4px 4px; border-radius: 999px;
       background: var(--tint-soft); color: var(--tint-strong);
       font-size: 12px; font-weight: 500;
     }
     .conv-pending-chip > span {
-      min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      min-width: 0; flex: 0 1 auto; line-height: 20px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     .conv-pending-chip .ic { flex-shrink: 0; }
-    .conv-pending-chip button {
+    .conv-pending-chip > button:not(.conv-pending-note) {
       width: 20px; height: 20px; flex-shrink: 0;
       display: flex; align-items: center; justify-content: center;
       border-radius: 10px; color: var(--tint-strong);
     }
-    .conv-pending-chip button:active { background: var(--tint-soft); }
+    .conv-pending-chip > button:not(.conv-pending-note):active { background: var(--tint-soft); }
+
+/*  A mention says what we are talking about; this says to write it
+    down on that activity. Off by default, so it has to read as a
+    control that is *not* yet doing anything — an outlined pill that
+    fills in when it is armed. */
+    .conv-pending-chip.noting { background: var(--green-soft); color: var(--green); }
+    .conv-pending-chip .conv-pending-note {
+      display: flex; align-items: center; gap: 3px;
+      width: auto; height: 20px; flex-shrink: 0;
+      padding: 0 7px; border-radius: 10px;
+      font-family: var(--mono); font-size: 9px; letter-spacing: .06em;
+      text-transform: uppercase;
+      border: 1px solid transparent;
+      background: var(--red-soft); color: var(--red);
+    }
+    .conv-pending-chip .conv-pending-note.on {
+      background: var(--green); color: var(--bg);
+    }
+    .conv-pending-chip .conv-pending-note:active { opacity: 1; }
 
 /*  ---- The @ picker ------------------------------------------
     Opens upward: the composer is at the bottom of the screen, so a

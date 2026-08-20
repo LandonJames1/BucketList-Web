@@ -277,7 +277,22 @@ function locShortcutsHTML(resultsId){
   return out.join('');
 }
 
+/* How many location dropdowns are open right now.
+
+   The document-level scroll listener at the bottom of this file runs in
+   the CAPTURE phase, so it fires for every scroll of every scroller in
+   the app - the page, a sheet body, the conversation. It was running a
+   querySelectorAll() over the whole document on each one, to reposition
+   a dropdown that is almost never open. This counter turns the common
+   case into a single integer compare.
+
+   Everything that opens or closes one goes through locOpen/locClose so
+   the count cannot drift - including the outside-tap handler at the
+   bottom of this file, which used to strip the class by hand. */
+let _locOpenCount=0;
+
 function locOpen(box,input,html){
+  if(!box.classList.contains('open')) _locOpenCount++;
   box.innerHTML=html;
   box.classList.add('open');
   positionLocBox(box,input);
@@ -285,6 +300,7 @@ function locOpen(box,input,html){
 
 function locClose(box){
   if(!box)return;
+  if(box.classList.contains('open')) _locOpenCount=Math.max(0,_locOpenCount-1);
   box.classList.remove('open');
   box.innerHTML='';
 }
@@ -792,8 +808,9 @@ function positionLocBox(box,input){
 
 /* Dismiss any open dropdown on an outside tap. */
 document.addEventListener('click',e=>{
+  if(!_locOpenCount) return;
   document.querySelectorAll('.loc-results.open').forEach(b=>{
-    if(!b.parentElement.contains(e.target)) b.classList.remove('open');
+    if(!b.parentElement.contains(e.target)) locClose(b);
   });
 });
 
@@ -802,6 +819,7 @@ document.addEventListener('click',e=>{
    field it belongs to. Re-place it while it is open, or it detaches
    and hangs over an unrelated row. */
 document.addEventListener('scroll',()=>{
+  if(!_locOpenCount) return;
   document.querySelectorAll('.loc-results.open').forEach(b=>{
     const input=b.parentElement&&b.parentElement.querySelector('input:not([type="hidden"])');
     if(input) positionLocBox(b,input);

@@ -128,7 +128,10 @@
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='8' viewBox='0 0 13 8'%3E%3Cpath d='M1 1.5 6.5 6.5 12 1.5' fill='none' stroke='%238e8e93' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
       background-repeat: no-repeat; background-position: right 16px center;
     }
-    .fg input[type="date"] { min-height: 46px; }
+    /* A date input sitting in a .fg-pair only gets half the line, and
+       MM/DD/YYYY plus the native glyph does not fit at 17px — the year
+       was being clipped. Smaller type and tighter gutters, here only. */
+    .fg input[type="date"] { min-height: 46px; font-size: 15px; padding-left: 12px; padding-right: 8px; }
 
     /* The field a sheet is *about*.
        Only the activity name uses this — on the activity sheet, and on
@@ -211,6 +214,48 @@
       font-size: 13px; line-height: 1.38; color: var(--label-2);
     }
 
+/*  ============================================================
+    THE ACTIVITY SHEET'S TINTED FIELDS
+
+    The read-only pending sheet identifies each field by hue before it
+    is read (the Orchard four — see "PENDING ACTIVITY SHEET" in
+    detail.css). The sheet that *writes* those same fields was six
+    identical grey boxes, so the two halves of one activity looked like
+    two different screens. The colours are the same four tokens, at a
+    lighter mix because a field is a surface you type on rather than a
+    chip you read. Priority keeps its own scale; the name keeps --tint.
+    ============================================================ */
+    #actSheet .sheet-body, #compSheet .sheet-body {
+      --c-target: #5f7d3a;   /* moss */
+      --c-remind: #a07a1f;   /* gold */
+      --c-where:  #8c3f68;   /* plum */
+    }
+    .fg-c-target { --fc: var(--c-target); }
+    .fg-c-remind { --fc: var(--c-remind); }
+    .fg-c-where  { --fc: var(--c-where);  }
+
+    .fg-tint > label { color: var(--fc); }
+    .fg-tint > label .opt { color: var(--fc); opacity: .62; }
+    /* background-COLOR, never the `background` shorthand: the shorthand
+       resets background-repeat/position too, which tiled the select's
+       caret SVG across the whole box as a green zig-zag. */
+    .fg-tint input, .fg-tint select, .fg-tint .row {
+      background-color: color-mix(in srgb, var(--fc) 10%, var(--bg-elevated));
+      box-shadow: 0 0 0 .5px color-mix(in srgb, var(--fc) 34%, transparent);
+    }
+    .fg-tint .row { border-radius: var(--r-row); }
+    .fg-tint .row-trailing, .fg-tint .row-chevron { color: var(--fc); }
+    /* The location dropdown hangs off .loc-wrap, so the tint has to go
+       on the field itself rather than the wrapper. */
+    .fg-tint input:focus, .fg-tint select:focus {
+      box-shadow: 0 0 0 1.5px var(--fc);
+    }
+    /* The select's caret is a baked-in SVG in one grey; recoloured here
+       so it does not sit grey inside a tinted box. */
+    .fg-c-target select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='8' viewBox='0 0 13 8'%3E%3Cpath d='M1 1.5 6.5 6.5 12 1.5' fill='none' stroke='%235f7d3a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    }
+
     /* Two fields sharing one rounded card, split by a hairline. */
     .fg-stack {
       background: var(--bg-elevated); border-radius: var(--r-row); overflow: hidden;
@@ -219,6 +264,20 @@
     .fg-stack > * { border-radius: 0; }
     .fg-stack textarea { min-height: 62px; padding: 12px 16px; }
     .fg-stack > *:not(:last-child) { border-bottom: .5px solid var(--separator); }
+
+/*  Fields on this sheet sit closer together than elsewhere: it is a
+    column of six short blocks, and the 22px .fg gap made it long
+    enough to scroll for no content. */
+    #compSheet .fg { margin-bottom: 11px; }
+    #compSheet .fg-pair { margin-bottom: 11px; }
+    #compSheet .fg-hero { margin-bottom: 14px; }
+    #compSheet .fg > label { margin-bottom: 4px; }
+    /* "How it went" is one of the column's blocks and has to sit in it
+       like the rest: the same 4px under its label and the same 11px to
+       the block above. The head's 38px min-height dated from when the
+       Add pill rode on it. */
+    #compSheet .comp-sec { margin-bottom: 11px; }
+    #compSheet .comp-sec-head { min-height: 0; margin-bottom: 4px; }
 
 /*  ============================================================
     COMPLETION SHEET
@@ -291,7 +350,7 @@
     }
     .comp-row-chevron { flex-shrink: 0; display: flex; color: var(--label-3); }
     .comp-row-chevron .ic { width: 16px; height: 16px; stroke-width: 2.4; }
-    .comp-suggest { margin: -6px var(--gx-r) 14px var(--gx-l); }
+
 
     /* A section is a mono head with its action on the same line, then
        its content — no field chrome, because neither the media grid nor
@@ -299,7 +358,7 @@
     .comp-sec { margin: 0 var(--gx-r) 20px var(--gx-l); }
     .comp-sec-head {
       display: flex; align-items: center; justify-content: space-between;
-      gap: 12px; min-height: 38px; margin-bottom: 8px;
+      gap: 12px; min-height: 38px; margin: 0 0 8px 17px;
     }
     .comp-sec-label {
       font-family: var(--mono); font-size: 10px; font-weight: 500;
@@ -689,6 +748,16 @@
     the two read as one confusing stack.
     ============================================================ */
     #remindSheet { z-index: 210; }
+
+    /* The edit sheet opens ON TOP of the activity detail sheet, which
+       stays open behind it so dismissing the edit does not flash the
+       page underneath. Same equal-z-index problem as the reminder
+       sheet above, and the same fix. */
+    #actSheet { z-index: 205; }
+    /* Same for the completion sheet, which now opens over the detail
+       sheet as well: it is EARLIER in document order, so without this
+       the sheet it opened from would paint on top of it. */
+    #compSheet { z-index: 205; }
     /* The duplicate sheet is the other one that stacks: it opens over
        the activity sheet on save, and over the bulk sheet on "Add All".
        It keeps its natural height rather than taking the full one the
@@ -711,3 +780,47 @@
       content: ''; display: block; height: var(--picker-room, 0px);
       flex-shrink: 0;
     }
+
+    /* ---- The completion sheet's two panes: the form, and the media
+       page behind the Media card. Same mechanism the activity sheet's
+       notes and links pages use — one sheet, swapped contents. ---- */
+    .comp-pane { display: none; }
+    .comp-pane.active { display: block; }
+    .comp-media-pane { margin: 14px var(--gx-r) 0 var(--gx-l); }
+    .comp-media-pane .photo-previews { margin: 0 0 16px; }
+
+    /* The Links card's container, not a card of its own: same elevated
+       ground and radius .chip-field uses, so the two read alike. */
+    /* In the Links card's blue (.ad-place.c-link on the pending sheet),
+       at the same 14% mix, so the two read as the same control. */
+    .comp-media-card {
+      --c-link: #3a6ea8;
+      display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+      margin: 0; padding: 10px 12px; min-height: 62px;
+      border: none; border-radius: var(--r-row);
+      background: color-mix(in srgb, var(--c-link) 14%, transparent);
+      cursor: pointer;
+    }
+    .comp-media-card:active { background: color-mix(in srgb, var(--c-link) 24%, transparent); }
+    .comp-media-thumb {
+      width: 42px; height: 42px; flex: none; border-radius: 10px; overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
+      background: color-mix(in srgb, var(--c-link) 18%, transparent);
+      color: var(--c-link);
+    }
+    .comp-media-thumb .media-tile,
+    .comp-media-thumb img, .comp-media-thumb video {
+      width: 100%; height: 100%; object-fit: cover; display: block;
+    }
+    .comp-media-thumb .ic { width: 18px; height: 18px; }
+    .comp-media-body { min-width: 0; margin-right: auto; }
+    .comp-media-k {
+      font: 600 10px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase;
+      color: var(--c-link); display: block; margin-bottom: 4px;
+    }
+    .comp-media-v {
+      font: 400 15px/1.25 var(--sans); color: var(--label);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .comp-media-chev { color: var(--c-link); opacity: .7; }
+    .comp-media-chev .ic { width: 16px; height: 16px; }

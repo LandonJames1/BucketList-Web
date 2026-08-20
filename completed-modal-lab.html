@@ -1,0 +1,151 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Accomplished Modal — Default</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Newsreader:opsz,wght@6..72,400;6..72,600&display=swap" rel="stylesheet">
+<style>
+:root{
+ --serif:'Newsreader',ui-serif,Georgia,serif;
+ --sans:-apple-system,BlinkMacSystemFont,'SF Pro Text',system-ui,sans-serif;
+ --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+ --bg:#eeeae2;--sheet-bg:#f7f4ee;--bg-elevated:#fbf9f5;--fill-3:rgba(122,112,92,.12);
+ --label:#1c1a16;--label-2:rgba(58,55,48,.74);--label-3:rgba(78,74,64,.52);
+ --separator:rgba(120,110,92,.20);--tint:#9c5a2e;--tint-soft:rgba(156,90,46,.13);
+ --green:#6c8853;--red:#a8443c;
+ --shadow-md:0 4px 14px rgba(60,50,35,.12);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);font-family:var(--sans);color:var(--label);padding:28px 16px 60px}
+h1{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--tint);text-align:center}
+.lab{display:flex;flex-wrap:wrap;gap:26px;justify-content:center;align-items:flex-start}
+.col{width:390px}
+.opt-label{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--label-3);margin:0 0 8px 4px}
+.opt-note{font-size:12px;color:var(--label-3);margin:8px 4px 0;line-height:1.4}
+.sheet{background:var(--sheet-bg);border-radius:20px 20px 0 0;box-shadow:var(--shadow-md);overflow:hidden;height:660px;display:flex;flex-direction:column}
+.grab{width:36px;height:5px;border-radius:3px;background:var(--separator);margin:8px auto 0;flex:none}
+.sbar{display:flex;justify-content:space-between;align-items:center;padding:10px 16px 8px;flex:none}
+.sbar button{background:none;border:0;font-family:var(--sans);font-size:17px;color:var(--tint);padding:0}
+.sbody{flex:1;overflow-y:auto;padding:0 0 20px}
+img{display:block;width:100%;height:100%;object-fit:cover}
+
+/* ---- OPTION 9 base ---- */
+.pcard{margin:16px 16px 0}
+.pcard h2{font-family:var(--serif);font-size:30px;font-weight:600;margin:0;line-height:1.05;letter-spacing:-.01em}
+.pcard .psub{font-family:var(--sans);font-size:16px;color:var(--label-3);margin:4px 0 0}
+.pstage{position:relative;margin:18px 0 0;border-radius:16px;overflow:hidden;background:var(--fill-3);aspect-ratio:1}
+.pstage .slide{position:absolute;inset:0;opacity:0;transition:opacity .5s ease}
+.pstage .slide.on{opacity:1}
+.pdots{position:absolute;left:0;right:0;bottom:12px;display:flex;gap:6px;justify-content:center;z-index:2}
+.pdots i{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.5)}
+.pdots i.on{background:#fff}
+.pfoot{display:flex;align-items:center;gap:10px;margin:16px 0 0}
+.pfoot .pmeta{flex:1;min-width:0;font-family:var(--sans);font-size:14.5px;line-height:1.32;color:var(--label-2)}
+.pfoot .pbtns{flex:none;display:flex;gap:8px}
+.pfoot .pbtns button{width:40px;height:40px;padding:0;border:0;border-radius:50%;display:flex;align-items:center;
+ justify-content:center;cursor:pointer}
+.pfoot .pbtns svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.pfoot .p-e{background:var(--tint);color:#fff}
+.pfoot .p-u{background:var(--fill-3);color:var(--label)}
+.pfoot .p-d{background:var(--fill-3);color:var(--red)}
+
+/* ---- 9b: actions ride beside the date, the note owns the floor ---- */
+.hd-b{display:flex;align-items:center;gap:8px;margin:12px 0 0}
+.hd-b .dbadge{flex:1;min-width:0;margin-right:14px;height:34px;display:flex;align-items:center;justify-content:center;gap:8px;
+ border-radius:12px;background:rgba(108,136,83,.25);color:var(--green);
+ font-family:var(--mono);font-size:12.5px;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;overflow:hidden}
+.hd-b .dbadge svg{width:15px;height:15px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.hd-b .hbtns{flex:none;display:flex;gap:6px}
+.hd-b .hbtns button{width:34px;height:34px;padding:0;border:0;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.hd-b .hbtns svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.hd-b .p-e{background:var(--tint);color:#fff}
+.hd-b .p-u{background:var(--fill-3);color:var(--label)}
+.hd-b .p-d{background:var(--fill-3);color:var(--red)}
+.hd-loc{display:flex;align-items:baseline;gap:12px;margin:12px 0 0}
+.hd-loc .where{flex:1;min-width:0;font-family:var(--sans);font-size:14.5px;color:var(--label-2);
+ white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hd-loc + .pstage{margin-top:12px}
+.hd-loc .count{flex:none;font-family:var(--mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--label-3)}
+.n-b{margin:18px 0 0}
+.n-b .eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--tint);margin:0 0 6px}
+.n-b p.t{font-family:var(--serif);font-size:19px;line-height:1.55;margin:0;color:var(--label)}
+.n-b .meta{font-family:var(--mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--label-3);margin:14px 0 0}
+
+
+/* ---- DEFAULT-2 ---- */
+.sbar .hbtns{display:flex;gap:6px}
+.sbar .closebtn{height:34px;padding:0 16px;border:0;border-radius:17px;background:var(--fill-3);color:var(--tint);
+ font-family:var(--sans);font-size:15px;cursor:pointer;display:flex;align-items:center}
+.sbar .hbtns button{width:34px;height:34px;padding:0;border:0;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.sbar .hbtns svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.sbar .p-e{background:var(--tint);color:#fff}
+.sbar .p-u{background:var(--fill-3);color:var(--label)}
+.sbar .p-d{background:var(--fill-3);color:var(--red)}
+.hd-2{display:flex;align-items:center;gap:8px;margin:12px 0 0}
+.hd-2 .dbadge,.hd-2 .lbadge{flex:1;min-width:0;height:34px;display:flex;align-items:center;justify-content:center;gap:8px;
+ border-radius:12px;font-family:var(--mono);font-size:12.5px;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;overflow:hidden;padding:0 10px}
+.hd-2 .dbadge{background:rgba(108,136,83,.25);color:var(--green)}
+.hd-2 .lbadge{background:var(--fill-3);color:var(--label-2)}
+.hd-2 svg{width:15px;height:15px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.hd-2 .lbadge span{overflow:hidden;text-overflow:ellipsis}
+.n-b .nhead{display:flex;align-items:baseline;gap:12px;margin:0 0 6px}
+.n-b .nhead .eyebrow{margin:0}
+.n-b .nhead .count{margin-left:auto;font-family:var(--mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--label-3)}
+</style></head><body>
+<h1>Accomplished Activity — Default</h1>
+<div class="lab" id="lab"></div>
+<script>
+const PAL=[['#c98a4b','#7a4a24'],['#6c8853','#324226'],['#4a7f96','#22414f'],['#a8443c','#5c211d'],
+ ['#8a72b5','#3f3159'],['#b5a688','#5f5540'],['#3f7d6a','#1c3a31'],['#b8752f','#5e3a13'],['#6b5b8a','#332a45']];
+const SC=['Trailhead','Ridgeline','The valley','Camp one','Sunrise','River crossing','Summit','Descent','Last light'];
+const P=PAL.map((c,i)=>'data:image/svg+xml;utf8,'+encodeURIComponent(
+ `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${c[0]}"/><stop offset="1" stop-color="${c[1]}"/></linearGradient></defs><rect width="800" height="800" fill="url(#g)"/><circle cx="620" cy="180" r="90" fill="rgba(255,255,255,.18)"/><path d="M0 640 L200 430 L360 600 L520 380 L800 660 L800 800 L0 800Z" fill="rgba(0,0,0,.22)"/><path d="M0 700 L260 520 L470 690 L640 560 L800 690 L800 800 L0 800Z" fill="rgba(0,0,0,.28)"/><text x="40" y="90" font-family="monospace" font-size="34" fill="rgba(255,255,255,.85)">${i+1}</text><text x="40" y="760" font-family="monospace" font-size="30" fill="rgba(255,255,255,.75)">${SC[i]}</text></svg>`));
+const NOTE='Eleven miles in and the valley just opened up. We ran out of water at Hanakoa and rationed the last of the trail mix, but the beach at the end was empty except for two goats. Worth every blister.';
+const BTNS=`<div class="pbtns">
+ <button class="p-e" title="Edit"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4Z"/></svg></button>
+ <button class="p-u" title="Mark not done"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v4h4"/></svg></button>
+ <button class="p-d" title="Delete"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></svg></button>
+</div>`;
+const FOOT=`<div class="pfoot"><div class="pmeta">Kauai, HI · 11 miles<br>9 photos, 1 video</div>${BTNS}</div>`;
+
+const HBTNS=BTNS.replace('class="pbtns"','class="hbtns"');
+
+const LOCICON='<svg viewBox="0 0 24 24"><path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11Z"/><circle cx="12" cy="10" r="2.6"/></svg>';
+const DATEICON='<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>';
+const NOTEB=`<div class="n-b"><p class="eyebrow">How it went</p><p class="t">${NOTE}</p></div>`;
+const NOTEB2=`<div class="n-b"><div class="nhead"><p class="eyebrow">How it went</p><span class="count">9 photos, 1 video</span></div><p class="t">${NOTE}</p></div>`;
+
+const V=[
+ ['DEFAULT','Actions beside the date','The three actions shrink into the header, tucked to the right of "Accomplished Mar 12" — so the whole width under the photos belongs to the story. Nothing sits between the media and the words.',
+  {noFoot:true,hdBtns:true,below:NOTEB}],
+ ['DEFAULT-2','Actions in the bar, place beside the date','Same sheet: the three actions move up into the Close row, the place sits beside the date as a second badge, and the media count moves under the photos onto the "How it went" line.',
+  {noFoot:true,v2:true,below:NOTEB2}]
+];
+
+lab.innerHTML=V.map(([id,name,note,o])=>`
+<div class="col">
+<p class="opt-label">${id} — ${name}</p>
+<div class="sheet"><div class="grab"></div>
+ <div class="sbar">${o.v2?'<button class="closebtn">Close</button>':'<button>Close</button>'}${o.v2?HBTNS:'<button></button>'}</div>
+ <div class="sbody">
+  <div class="pcard">
+   <h2>Hike the Kalalau Trail</h2>${o.v2?`<div class="hd-2"><span class="dbadge">${DATEICON}Mar 12, 2026</span><span class="lbadge">${LOCICON}<span>Kauai, HI</span></span></div>`:`<div class="hd-b"><span class="dbadge">${DATEICON}Mar 12, 2026</span>${HBTNS}</div><div class="hd-loc"><span class="where">Kauai, HI</span><span class="count">9 photos, 1 video</span></div>`}
+   ${o.noStage?'':`<div class="pstage" data-stage="${id}" data-last="${o.lastSlide?1:0}"><div class="pdots"></div></div>`}
+   ${o.below||''}
+   ${o.noFoot?'':FOOT}
+  </div>
+ </div></div>
+<p class="opt-note">${note}</p>
+</div>`).join('');
+
+const img=u=>`<img src="${u}" loading="lazy">`;
+document.querySelectorAll('.pstage').forEach(st=>{
+ const dots=st.querySelector('.pdots');
+ let slides=P.map((u,i)=>`<div class="slide${i?'':' on'}">${img(u)}</div>`);
+ if(st.dataset.last==='1') slides.push(`<div class="slide">${img(P[0])}<div class="n-e"><div class="card"><p class="eyebrow">How it went</p><p class="t">${NOTE}</p></div></div></div>`);
+ st.insertAdjacentHTML('afterbegin',slides.join(''));
+ const N=slides.length;
+ dots.innerHTML=slides.map((_,i)=>`<i class="${i?'':'on'}"></i>`).join('');
+ let n=0;setInterval(()=>{const s=st.querySelectorAll('.slide'),d=dots.children;
+  s[n].classList.remove('on');d[n].classList.remove('on');n=(n+1)%N;
+  s[n].classList.add('on');d[n].classList.add('on');},3500);
+});
+</script></body></html>

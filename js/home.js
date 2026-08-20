@@ -50,7 +50,7 @@ function renderHomeProgress(lists,acts){
   const R=52, C=2*Math.PI*R;
   const offset=C*(1-pct/100);
 
-  $('homeProgress').innerHTML=`
+  setHTML($('homeProgress'),`
     <div class="hp-ring">
       <svg viewBox="0 0 128 128" aria-hidden="true">
         <circle class="hp-track" cx="64" cy="64" r="${R}"/>
@@ -66,7 +66,7 @@ function renderHomeProgress(lists,acts){
       <div class="hp-stat"><div class="hp-num">${done}</div><div class="hp-lab">Accomplished</div></div>
       <div class="hp-stat"><div class="hp-num">${total-done}</div><div class="hp-lab">To go</div></div>
       <div class="hp-stat"><div class="hp-num">${lists.length}</div><div class="hp-lab">${lists.length===1?'List':'Lists'}</div></div>
-    </div>`;
+    </div>`);
 }
 
 /* ---- Up Next ----
@@ -86,11 +86,11 @@ function renderHomeUpNext(acts,lists){
   if(all) all.style.display=pending.length?'':'none';
 
   if(!next.length){
-    $('homeUpNext').innerHTML=`<div class="home-empty">${icon('sparkle')}
-      <div class="home-empty-text">Nothing pending. Add something you want to do.</div></div>`;
+    setHTML($('homeUpNext'),`<div class="home-empty">${icon('sparkle')}
+      <div class="home-empty-text">Nothing pending. Add something you want to do.</div></div>`);
     return;
   }
-  $('homeUpNext').innerHTML=next.map(a=>upNextRowHTML(a,lists,'home')).join('');
+  setHTML($('homeUpNext'),next.map(a=>upNextRowHTML(a,lists,'home')).join(''));
 }
 
 /* Shared by Home and the Up Next screen so the two cannot drift.
@@ -147,7 +147,7 @@ function renderHomeRecent(acts,lists){
      beats a clever one. */
   const all=$('homeRecentAll');
   if(all) all.style.display='';
-  $('homeRecent').innerHTML=done.map(a=>{
+  setHTML($('homeRecent'),done.map(a=>{
     const photo=a.photos&&a.photos.length?a.photos[0]:null;
     return `<button class="rec-card" onclick="openActDetail('${a.id}')">
       <span class="rec-photo">${photo
@@ -156,7 +156,7 @@ function renderHomeRecent(acts,lists){
       <span class="rec-name">${esc(a.name)}</span>
       <span class="rec-date">${esc(fmtDate(a.completedDate))}</span>
     </button>`;
-  }).join('');
+  }).join(''));
 }
 
 /* ==============================================================

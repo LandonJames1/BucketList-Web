@@ -38,12 +38,125 @@ function renderMeIdentity(){
   const email=(currentUser&&currentUser.email)||'';
   const handle=(userProfile&&userProfile.username)?'@'+userProfile.username:email;
   const initials=(name||email||'?').trim().charAt(0).toUpperCase();
-  $('meIdentity').innerHTML=`
-    <div class="me-avatar">${esc(initials)}</div>
+  const photo=myAvatarUrl();
+  /* The photo IS the control. A separate "Change profile photo" row
+     underneath would be a second thing saying what the disc already
+     says, and the disc is the only picture on the screen - there is
+     nothing else it could plausibly do when tapped. The camera badge
+     is what makes that legible without a caption. */
+  const editable=avatarsReady();
+  setHTML($('meIdentity'),`
+    ${editable?'<button class="me-avatar-btn" onclick="openAvatarMenu()" aria-label="Change your profile photo">':'<div class="me-avatar-btn">'}
+      <span class="me-avatar${photo?' has-photo':''}">${photo
+        ? `<img src="${esc(photo)}" alt=""/>`
+        : esc(initials)}</span>
+      ${editable?`<span class="me-avatar-edit">${icon('camera','ic-xs')}</span>`:''}
+    ${editable?'</button>':'</div>'}
     <div class="me-identity-body">
       <div class="me-identity-name">${esc(name||email||'Signed in')}</div>
       ${handle?`<div class="me-identity-sub">${esc(handle)}</div>`:''}
-    </div>`;
+    </div>`);
+}
+
+/* ==============================================================
+   THE PROFILE PHOTO
+
+   One image on the Users row, stored in the same `media` bucket as
+   every completion photo and under the same per-user folder - see
+   mediaKey() in media.js. There is no separate bucket and there
+   should not be one: a second bucket is a second set of storage
+   policies to keep in step, for a single file per account.
+
+   It degrades the way everything optional here does. Two things have
+   to be true for it to be offered at all:
+
+     - supabase/avatars.sql has been run (_avatarReady, answered as a
+       side effect of the profile read above);
+     - the media bucket exists (storageReady(), from media.js).
+
+   Without the bucket the photo would have to be inlined as base64 the
+   way an offline completion photo is - and unlike a completion photo
+   this one is read back on EVERY message in a conversation, so a
+   quarter-megabyte data URL on the Users row would be pulled down and
+   re-parsed constantly. It is refused instead, which is the honest
+   answer: this is the one place in the app where inline bytes are
+   worse than no feature.
+   ============================================================== */
+let _avatarReady=null;
+function avatarsReady(){ return _avatarReady===true&&storageReady(); }
+function myAvatarUrl(){ return (userProfile&&userProfile.avatar_url)||''; }
+
+/* Avatars are square and small on screen - 20px in a message, 58px on
+   this tab. 512 is generous for both at 2x and keeps the file well
+   under what a message list wants to fetch. */
+const AVATAR_DIM=512;
+const AVATAR_QUALITY=.85;
+
+function openAvatarMenu(){
+  if(!avatarsReady()) return;
+  const items=[{label:myAvatarUrl()?'Choose a New Photo':'Choose a Photo',
+                icon:'camera',onSelect:pickAvatar}];
+  if(myAvatarUrl()) items.push({label:'Remove Photo',icon:'trash',
+    role:'destructive',onSelect:removeAvatar});
+  showActionSheet({title:'Profile Photo',items});
+}
+
+function pickAvatar(){ const i=$('avatarFile'); if(i){ i.value=''; i.click(); } }
+
+async function handleAvatarFile(input){
+  const file=input.files&&input.files[0];
+  input.value='';
+  if(!file) return;
+  if(!avatarsReady()) return;
+  if(!navigator.onLine){
+    showToast('A profile photo needs a connection.');
+    return;
+  }
+
+  const wrap=$('meIdentity');
+  if(wrap) wrap.classList.add('busy');
+  try{
+    const dataUrl=await compressFile(file,AVATAR_DIM,AVATAR_QUALITY);
+    const url=await uploadBlob(dataURLToBlob(dataUrl),'jpg','image/jpeg');
+    await saveAvatarUrl(url);
+  }catch(e){
+    console.warn('handleAvatarFile:',e);
+    showToast('Couldn’t save that photo.');
+  }finally{
+    if(wrap) wrap.classList.remove('busy');
+  }
+}
+
+function removeAvatar(){
+  showConfirm({
+    title:'Remove Photo',
+    message:'Your messages will show your initial again.',
+    confirmLabel:'Remove',
+    onConfirm:()=>saveAvatarUrl(null),
+  });
+}
+
+/* The old file is deliberately NOT deleted from storage, matching what
+   removing a completion photo does: there is no reference counting
+   here to make deletion safe, and a URL still sitting in somebody
+   else's rendered conversation is worth more than the kilobytes. The
+   sweeper query at the bottom of storage.sql covers both. */
+async function saveAvatarUrl(url){
+  const{error}=await sb.from('Users').update({avatar_url:url}).eq('id',currentUser.id);
+  if(error){
+    console.warn('saveAvatarUrl:',error);
+    showToast('Couldn’t save that photo.');
+    return;
+  }
+  if(userProfile) userProfile.avatar_url=url;
+  else userProfile={avatar_url:url};
+  renderMeIdentity();
+  /* Every conversation is holding a map of who looks like what, and
+     this user is in all of them. Dropping it is one line and costs one
+     RPC the next time a conversation is opened; leaving it would show
+     the old photo until the app was restarted. */
+  invalidateAvatars();
+  showToast(url?'Profile photo updated':'Profile photo removed');
 }
 
 /* ==============================================================
@@ -71,7 +184,25 @@ const USERNAME_RE=/^[a-z0-9_.]{3,30}$/;
 
 async function loadUserProfile(){
   if(!currentUser)return;
-  const{data,error}=await sb.from('Users').select('display_name,username').eq('id',currentUser.id).maybeSingle();
+  /* avatar_url is optional (supabase/avatars.sql), and asking for a
+     column that does not exist fails the WHOLE query - which would
+     take the display name and handle down with it and leave the You
+     tab blank on any project that has not run that file. So the wide
+     read is tried first and a failure falls back to the narrow one,
+     which is also the probe: _avatarReady records the answer, and the
+     upload row hides itself when it is false. Exactly the shape
+     probeRemindColumn() uses, for the same reason. */
+  let{data,error}=await sb.from('Users')
+    .select('display_name,username,avatar_url').eq('id',currentUser.id).maybeSingle();
+  if(error){
+    _avatarReady=false;
+    console.info('[me] no Users.avatar_url - profile photos are off. '+
+      'Run supabase/avatars.sql to enable them.');
+    ({data,error}=await sb.from('Users')
+      .select('display_name,username').eq('id',currentUser.id).maybeSingle());
+  } else {
+    _avatarReady=true;
+  }
   if(error){console.error('loadUserProfile:',error);return;}
   if(data){
     userProfile=data;

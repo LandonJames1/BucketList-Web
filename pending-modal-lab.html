@@ -1,0 +1,475 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pending Activity Modal — Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Newsreader:opsz,wght@6..72,400;6..72,600&display=swap" rel="stylesheet">
+<style>
+:root{
+ --serif:'Newsreader',ui-serif,Georgia,serif;
+ --sans:-apple-system,BlinkMacSystemFont,'SF Pro Text',system-ui,sans-serif;
+ --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+ --bg:#eeeae2;--sheet-bg:#f7f4ee;--elev:#fbf9f5;--fill-3:rgba(122,112,92,.12);
+ --label:#1c1a16;--label-2:rgba(58,55,48,.74);--label-3:rgba(78,74,64,.52);
+ --sep:rgba(120,110,92,.20);--tint:#9c5a2e;--tint-soft:rgba(156,90,46,.13);
+ --green:#6c8853;--green-soft:rgba(108,136,83,.20);--red:#a8443c;
+ --pri-high:#9c5a2e;--violet:#8a72b5;--slate:#4d5a6b;--orange:#b8752f;
+ --shadow-md:0 4px 14px rgba(60,50,35,.12);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);font-family:var(--sans);color:var(--label);padding:28px 16px 60px}
+h1{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--tint);text-align:center}
+.lab{display:flex;flex-wrap:wrap;gap:26px;justify-content:center;align-items:flex-start}
+.col{width:390px}
+.opt-label{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--label-3);margin:0 0 8px 4px}
+.opt-note{font-size:12px;color:var(--label-3);margin:8px 4px 0;line-height:1.45}
+.sheet{background:var(--sheet-bg);border-radius:20px 20px 0 0;box-shadow:var(--shadow-md);overflow:hidden;height:640px;display:flex;flex-direction:column}
+.grab{width:36px;height:5px;border-radius:3px;background:var(--sep);margin:8px auto 0;flex:none}
+.sbody{flex:1;overflow-y:auto}
+button{font-family:inherit}
+svg{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* ── tab bar: the one fixed element ── */
+.tabs{display:flex;gap:22px;padding:14px 16px 0;flex:none;border-bottom:1px solid var(--sep)}
+.tabs button{border:0;background:none;padding:0 0 10px;cursor:pointer;position:relative;
+ font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--label-3)}
+.tabs button.on{color:var(--label)}
+.tabs button.on::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--tint);border-radius:2px}
+.tabs .n{margin-left:6px;color:var(--label-3);font-size:10px}
+
+/* ── title (unchanged) ── */
+.title{font-family:var(--serif);font-size:29px;font-weight:600;line-height:1.06;letter-spacing:-.01em}
+
+.pad{padding:0 16px}
+.eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--tint);margin:0}
+.muted{color:var(--label-3)}
+
+/* ── A: countdown hero ── */
+.hero-a{margin:0 16px;padding:18px 0 20px;text-align:center;border-bottom:1px solid var(--sep)}
+.hero-a .big{font-family:var(--serif);font-size:52px;font-weight:600;line-height:1;color:var(--orange)}
+.hero-a .unit{font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--label-3);margin-top:6px}
+.hero-a .when{font-size:14px;color:var(--label-2);margin-top:10px}
+.kv{margin:0 16px}
+.kv .r{display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid var(--sep)}
+.kv .r:last-child{border-bottom:0}
+.kv .r svg{width:17px;height:17px;flex:none;stroke:var(--label-3)}
+.kv .k{font-family:var(--mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--label-3);flex:none}
+.kv .v{margin-left:auto;font-size:15px;color:var(--label);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%}
+.kv .v.link{color:var(--tint)}
+
+/* ── pills / dots ── */
+.dot{width:8px;height:8px;border-radius:50%;flex:none}
+.pill{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:13px;
+ font-family:var(--mono);font-size:10px;letter-spacing:.11em;text-transform:uppercase}
+.p-high{background:rgba(156,90,46,.22);color:var(--pri-high)}
+.p-due{background:rgba(184,117,47,.22);color:var(--orange)}
+.p-list{background:var(--fill-3);color:var(--label-2)}
+
+/* ── buttons ── */
+.btn{height:48px;border:0;border-radius:14px;display:flex;align-items:center;justify-content:center;gap:8px;
+ font-size:16px;cursor:pointer;width:100%}
+.btn svg{width:18px;height:18px}
+.b-green{background:var(--green);color:#fff}
+.b-gray{background:var(--fill-3);color:var(--label)}
+.b-ghost{background:none;color:var(--label-2);border:1px solid var(--sep)}
+.b-red{background:none;color:var(--red)}
+.stack{display:flex;flex-direction:column;gap:8px;margin:22px 16px 26px}
+.row2{display:flex;gap:8px}
+.dock{flex:none;padding:12px 16px;border-top:1px solid var(--sep);background:var(--sheet-bg);display:flex;gap:8px;align-items:center}
+.disc{width:48px;height:48px;flex:none;border:0;border-radius:14px;background:var(--fill-3);color:var(--label);
+ display:flex;align-items:center;justify-content:center;cursor:pointer}
+.disc svg{width:18px;height:18px}
+.disc.red{color:var(--red)}
+
+/* ── B: editorial ── */
+.head-b{padding:20px 16px 0;position:relative}
+.head-b .rail{position:absolute;left:0;top:22px;bottom:6px;width:3px;border-radius:2px;background:var(--pri-high)}
+.head-b .line{display:flex;align-items:center;gap:8px;margin:12px 0 0;font-size:14px;color:var(--label-2)}
+.head-b .line svg{width:15px;height:15px;stroke:var(--label-3)}
+.sec{margin:24px 16px 0}
+.sec-h{display:flex;align-items:baseline;justify-content:space-between;margin:0 0 8px}
+.sec-b{font-size:15px;line-height:1.5;color:var(--label-2)}
+.linkrow{display:flex;align-items:center;gap:9px;padding:12px 14px;background:var(--elev);border-radius:12px;
+ font-size:14.5px;color:var(--tint);margin-top:8px}
+.linkrow svg{width:16px;height:16px;flex:none}
+
+/* ── C: tiles ── */
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 16px 0}
+.tile{background:var(--elev);border-radius:14px;padding:13px 14px;min-height:78px;display:flex;flex-direction:column;justify-content:space-between}
+.tile.wide{grid-column:1/-1;min-height:0;flex-direction:row;align-items:center;gap:10px}
+.tile .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--label-3)}
+.tile .v{font-size:16px;color:var(--label);margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile.wide .v{margin:0;margin-left:auto;color:var(--tint);font-size:14.5px}
+.tile .v.warm{color:var(--orange)}
+.tile .v.pri{color:var(--pri-high)}
+
+/* ── D: big check ── */
+.doit{display:flex;align-items:center;gap:14px;margin:16px 16px 0;padding:16px;border-radius:16px;
+ background:var(--green-soft);border:0;width:calc(100% - 32px);cursor:pointer;text-align:left}
+.doit .ring{width:42px;height:42px;flex:none;border-radius:50%;border:2px solid var(--green);color:var(--green);
+ display:flex;align-items:center;justify-content:center}
+.doit .ring svg{width:20px;height:20px}
+.doit .t{font-size:16.5px;color:var(--green);font-weight:500}
+.doit .s{font-family:var(--mono);font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--label-3);margin-top:3px}
+.inline{display:flex;flex-wrap:wrap;gap:8px;margin:16px 16px 0}
+
+/* ── F: single card ── */
+.card{margin:16px;background:var(--elev);border-radius:18px;overflow:hidden}
+.card .top{padding:18px 16px 16px}
+.card .kv{margin:0 16px}
+.card .foot{display:flex;border-top:1px solid var(--sep);margin-top:6px}
+.card .foot button{flex:1;height:52px;border:0;background:none;cursor:pointer;display:flex;align-items:center;
+ justify-content:center;gap:7px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--label-2)}
+.card .foot button+button{border-left:1px solid var(--sep)}
+.card .foot svg{width:16px;height:16px}
+.card .foot .go{color:var(--green)}
+.card .foot .del{color:var(--red)}
+
+/* ── A-2: list chip ── */
+.listchip{display:inline-flex;align-items:center;gap:7px;margin-top:12px;height:30px;padding:0 8px 0 11px;border:0;
+ border-radius:15px;background:var(--tint-soft);color:var(--tint);cursor:pointer;
+ font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;max-width:100%}
+.listchip svg{width:14px;height:14px;flex:none}
+.listchip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.listchip svg:last-child{opacity:.6;width:13px;height:13px}
+
+/* ── B: plate + groups ── */
+.plate{display:flex;align-items:center;gap:14px;margin:16px;padding:16px;border-radius:18px;background:var(--elev)}
+.cdown{flex:none;text-align:center;padding-left:14px;border-left:1px solid var(--sep)}
+.cdown b{display:block;font-family:var(--serif);font-size:34px;font-weight:600;line-height:1;color:var(--orange)}
+.cdown em{display:block;margin-top:5px;font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--label-2);font-style:normal}
+.plate.bleed{margin:0;border-radius:0;background:var(--elev);border-bottom:1px solid var(--sep);padding:18px 16px}
+.cdown span{font-family:var(--mono);font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--label-3)}
+.cdown.open b{color:var(--label-2)}
+.p-open{background:var(--fill-3);color:var(--label-2)}
+.p-low{background:rgba(77,90,107,.20);color:var(--slate)}
+.grp{margin-top:20px}
+.grp-h{font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--label-3);margin:0 16px 2px}
+
+/* ── C: timeline ── */
+.tl{margin:20px 16px 0;position:relative;padding-left:6px}
+.tl-i{display:flex;gap:14px;padding-bottom:22px;position:relative}
+.tl-i:last-child{padding-bottom:0}
+.tl-i::before{content:'';position:absolute;left:12px;top:26px;bottom:0;width:2px;background:var(--sep)}
+.tl-i:last-child::before{display:none}
+.tl-i .n{width:26px;height:26px;flex:none;border-radius:50%;display:flex;align-items:center;justify-content:center;
+ background:var(--fill-3);color:var(--label-3);z-index:1}
+.tl-i .n svg{width:14px;height:14px}
+.tl-i.next .n{background:var(--tint-soft);color:var(--tint)}
+.tl-i.end .n{background:rgba(184,117,47,.22);color:var(--orange)}
+.tl-i .d{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--label-3);margin:5px 0 3px}
+.tl-i .l{font-size:15px;color:var(--label);margin:0}
+.tl-i.end .l b{color:var(--orange)}
+.strip{margin:22px 16px 0;background:var(--elev);border-radius:14px;padding:4px 14px}
+.s-i{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--sep);font-size:14.5px;color:var(--label-2)}
+.s-i:last-child{border-bottom:0}
+.s-i svg{width:16px;height:16px;flex:none;stroke:var(--label-3)}
+
+/* ── D: cover band ── */
+.band{background:linear-gradient(140deg,#9c5a2e,#6d3a1c);padding:20px 16px 18px;color:#fff}
+.band .be{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:10px;letter-spacing:.14em;
+ text-transform:uppercase;color:rgba(255,255,255,.75);margin:0}
+.band .be svg{width:14px;height:14px}
+.bmeta{display:flex;align-items:center;gap:9px;margin-top:12px;font-family:var(--mono);font-size:10px;
+ letter-spacing:.11em;text-transform:uppercase;color:rgba(255,255,255,.82)}
+.bmeta i{width:3px;height:3px;border-radius:50%;background:rgba(255,255,255,.5)}
+
+
+/* ── B-6: quiet — chips for the plan, bare lines for reference ── */
+.chips{display:flex;flex-wrap:wrap;gap:7px;margin:18px 16px 0}
+.chips .pill{height:28px;padding:0 11px;font-size:10px}
+.p-plain{background:var(--fill-3);color:var(--label-2)}
+.p-plain b{font-weight:500;color:var(--label)}
+.refs{margin:20px 16px 0}
+.refs .r2{display:flex;align-items:center;gap:11px;padding:11px 0;font-size:15px;color:var(--label-2)}
+.refs .r2+.r2{border-top:1px solid var(--sep)}
+.refs .r2 svg{width:16px;height:16px;flex:none;stroke:var(--label-3)}
+.refs .r2 .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.refs .r2.link .t{color:var(--tint)}
+.quiet-note{margin:20px 16px 0;padding-top:16px;border-top:1px solid var(--sep)}
+.quiet-note .m{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--label-3);margin:0 0 5px}
+.quiet-note .t{font-size:14.5px;line-height:1.5;color:var(--label-2);margin:0}
+
+
+.refs .r2 .k2{font-family:var(--mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--label-3);flex:none}
+.refs .r2 .t.right{margin-left:auto;text-align:right}
+
+
+/* ── B-8: full-width plan chips ── */
+.chips.fill{gap:6px}
+.chips.fill .pill{flex:1;min-width:0;justify-content:center;height:34px;border-radius:11px;padding:0 8px;
+ flex-direction:column;gap:2px;line-height:1.1}
+.chips.fill .pill small{font-size:8.5px;letter-spacing:.13em;opacity:.7}
+
+
+/* ── B-9: place card + empty notes + notes tab ── */
+.place{display:flex;align-items:center;gap:12px;margin:18px 16px 0;padding:13px 14px;border-radius:14px;
+ background:var(--tint-soft)}
+.place .disc2{width:34px;height:34px;flex:none;border-radius:50%;background:var(--tint);color:#fff;
+ display:flex;align-items:center;justify-content:center}
+.place .disc2 svg{width:17px;height:17px}
+.place .k2{display:block;font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--tint);opacity:.75}
+.place .pv{font-size:15.5px;color:var(--label);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.place .chev{margin-left:auto;color:var(--tint);opacity:.6}
+.place .chev svg{width:16px;height:16px}
+.note.empty{display:flex;align-items:center;justify-content:center;min-height:84px}
+.note.empty p{margin:0;font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--label-3)}
+.nfield{margin:14px 16px 0;display:flex;gap:8px;align-items:center}
+.nfield .box{flex:1;height:44px;border-radius:12px;background:var(--elev);border:1px solid var(--sep);
+ display:flex;align-items:center;padding:0 13px;font-size:15px;color:var(--label-3)}
+.nfield .send{width:44px;height:44px;border:0;border-radius:12px;background:var(--tint);color:#fff;
+ display:flex;align-items:center;justify-content:center}
+.nfield .send svg{width:18px;height:18px}
+
+
+/* ── link card + docked note composer ── */
+.place.linkcard{background:var(--fill-3)}
+.place.linkcard .disc2{background:var(--label-2)}
+.place.linkcard .k2{color:var(--label-3);opacity:1}
+.place.linkcard .pv{color:var(--tint)}
+.place.linkcard .chev{color:var(--label-3)}
+.dock.notes{padding:10px 16px}
+.dock.notes .box{flex:1;height:44px;border-radius:12px;background:var(--elev);border:1px solid var(--sep);
+ display:flex;align-items:center;padding:0 13px;font-size:15px;color:var(--label-3)}
+.dock.notes .send{width:44px;height:44px;flex:none;border:0;border-radius:12px;background:var(--tint);color:#fff;
+ display:flex;align-items:center;justify-content:center}
+.dock.notes .send svg{width:18px;height:18px}
+
+
+/* ── notes as a section that pushes a page ── */
+.nsec{margin:20px 16px 0}
+.nsec-h{display:flex;align-items:center;justify-content:space-between;margin:0 0 8px}
+.nsec-h .h{font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--label-3);margin:0}
+.nsec-h .more{display:flex;align-items:center;gap:4px;font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;
+ text-transform:uppercase;color:var(--tint);border:0;background:none;cursor:pointer}
+.nsec-h .more svg{width:13px;height:13px}
+.nsec .note{margin:0;cursor:pointer}
+.nsec .note+.note{margin-top:8px}
+.navwrap{position:relative;flex:none}
+.navbar{display:flex;align-items:center;padding:14px 16px;border-bottom:1px solid var(--sep)}
+.navbar .back{border:0;background:none;padding:0;color:var(--tint);display:flex;align-items:center;gap:3px;cursor:pointer;font-size:15px}
+.navbar .back svg{width:18px;height:18px;transform:rotate(180deg)}
+.navbar .nt{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--label);
+ position:absolute;left:0;right:0;text-align:center;pointer-events:none}
+.nrow{display:flex;gap:10px;margin:14px 16px 0}
+.av{width:32px;height:32px;flex:none;border-radius:50%;display:flex;align-items:center;justify-content:center;
+ font-family:var(--mono);font-size:11px;color:#fff;background:var(--slate)}
+.av.you{background:var(--tint)}
+.nrow .note{margin:0;flex:1;min-width:0}
+
+/* ── notes tab preview ── */
+.note{margin:14px 16px 0;background:var(--elev);border-radius:14px;padding:12px 14px}
+.note .m{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--label-3);margin:0 0 5px}
+.note .t{font-size:14.5px;line-height:1.5;margin:0}
+
+/* ── B-12: separated data colours ── */
+:root{--teal:#2b7d72;--blue:#3a6ea8;--plum:#8c3f68;--gold:#a07a1f;--moss:#5f7d3a;--clay:#a05a4a;}
+.p-target{background:rgba(160,122,31,.20);color:var(--gold)}
+.p-remind{background:rgba(140,63,104,.18);color:var(--plum)}
+.place.where2{background:rgba(43,125,114,.14)}
+.place.where2 .disc2{background:var(--teal)}
+.place.where2 .k2{color:var(--teal)}
+.place.where2 .pv{color:var(--label)}
+.place.where2 .chev{color:var(--teal)}
+.place.link2{background:rgba(58,110,168,.14)}
+.place.link2 .disc2{background:var(--blue)}
+.place.link2 .k2{color:var(--blue);opacity:.85}
+.place.link2 .pv{color:var(--blue)}
+.place.link2 .chev{color:var(--blue)}
+/* alt palette */
+.p-target-b{background:rgba(58,110,168,.18);color:var(--blue)}
+.p-remind-b{background:rgba(95,125,58,.20);color:var(--moss)}
+.place.where3{background:rgba(140,63,104,.13)}
+.place.where3 .disc2{background:var(--plum)}
+.place.where3 .k2{color:var(--plum)}
+.place.where3 .pv{color:var(--label)}
+.place.where3 .chev{color:var(--plum)}
+.place.link3{background:rgba(43,125,114,.14)}
+.place.link3 .disc2{background:var(--teal)}
+.place.link3 .k2{color:var(--teal);opacity:.85}
+.place.link3 .pv{color:var(--teal)}
+.place.link3 .chev{color:var(--teal)}
+.av.sm{width:24px;height:24px;font-size:9.5px}
+
+/* ── B-13: one generic palette system, driven by four vars ── */
+.pal .p-t{background:color-mix(in srgb,var(--c-target) 18%,transparent);color:var(--c-target)}
+.pal .p-r{background:color-mix(in srgb,var(--c-remind) 18%,transparent);color:var(--c-remind)}
+.pal .place.w{background:color-mix(in srgb,var(--c-where) 14%,transparent)}
+.pal .place.w .disc2{background:var(--c-where)}
+.pal .place.w .k2{color:var(--c-where);opacity:.85}
+.pal .place.w .pv{color:var(--label)}
+.pal .place.w .chev{color:var(--c-where)}
+.pal .place.l{background:color-mix(in srgb,var(--c-link) 14%,transparent)}
+.pal .place.l .disc2{background:var(--c-link)}
+.pal .place.l .k2{color:var(--c-link);opacity:.85}
+.pal .place.l .pv{color:var(--c-link)}
+.pal .place.l .chev{color:var(--c-link)}
+.swatches{display:flex;gap:5px;margin:8px 4px 0}
+.swatches i{width:14px;height:14px;border-radius:4px;display:block}
+</style></head><body>
+<h1>Pending Activity — Layout Lab</h1>
+<div class="lab" id="lab"></div>
+<script>
+const NAME='Hike the Kalalau Trail', NAME2='Go skydiving in Interlaken', LOC='Kauai, HI', LINK='alltrails.com/kalalau-trail', LIST='Hawaii 2026';
+const I={
+ pin:'<svg viewBox="0 0 24 24"><path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11Z"/><circle cx="12" cy="10" r="2.6"/></svg>',
+ cal:'<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
+ flag:'<svg viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg>',
+ bell:'<svg viewBox="0 0 24 24"><path d="M18 16V11a6 6 0 1 0-12 0v5l-2 3h16l-2-3Z"/><path d="M10 21h4"/></svg>',
+ stack:'<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M6 19h12"/></svg>',
+ link:'<svg viewBox="0 0 24 24"><path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>',
+ check:'<svg viewBox="0 0 24 24"><path d="M4 12l5 5L20 6"/></svg>',
+ pencil:'<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4Z"/></svg>',
+ trash:'<svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></svg>',
+ chev:'<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>'
+};
+const TABS2=`<div class="tabs"><button>Details</button><button class="on">Notes<span class="n">2</span></button></div>`;
+const TABS=`<div class="tabs"><button class="on">Details</button><button>Notes<span class="n">2</span></button></div>`;
+const R=(ic,k,v,c='')=>`<div class="r">${ic}<span class="k">${k}</span><span class="v ${c}">${v}</span></div>`;
+
+const HEAD=`<div class="plate">
+   <div style="flex:1;min-width:0"><p class="eyebrow">${LIST}</p>
+    <div class="title" style="margin-top:6px">${NAME}</div></div>
+   <div class="cdown"><b>18</b><span>days</span></div></div>`;
+const GRPS=`<div class="grp"><p class="grp-h">Plan</p><div class="kv">
+   ${R(I.cal,'Target','Sep 7, 2026')}
+   ${R(I.flag,'Priority','<span class="pill p-high">High</span>')}
+   ${R(I.bell,'Remind','Aug 7')}
+  </div></div>
+  <div class="grp"><p class="grp-h">Reference</p><div class="kv">
+   ${R(I.pin,'Where',LOC)}
+   ${R(I.link,'Link','alltrails.com','link')}
+  </div></div>`;
+
+const DOCK=`<div class="dock"><button class="disc red">${I.trash}</button>
+   <button class="disc">${I.pencil}</button>
+   <button class="btn b-green">${I.check}Mark accomplished</button></div>`;
+const NOTE=`<div class="grp"><p class="grp-h">Latest note</p>
+   <div class="note" style="margin:0 16px"><p class="m">You &middot; Aug 14</p><p class="t">We settled on the 14th. Car is booked.</p></div></div>`;
+
+const V=[
+
+['B-12','Palette A — gold / plum / teal / blue',
+ 'No tabs. Each data container gets its own hue: target gold, remind plum, place teal, link blue. Priority is unchanged.',
+ `<div class="plate">
+   <div style="flex:1;min-width:0"><p class="eyebrow">${LIST}</p>
+    <div class="title" style="margin-top:6px">${NAME}</div></div>
+   <div class="cdown"><b>18</b><span>days</span></div></div>
+  <div class="chips fill">
+   <span class="pill p-high"><small>Priority</small>High</span>
+   <span class="pill p-target"><small>Target</small><b>Sep 7, 2026</b></span>
+   <span class="pill p-remind"><small>Remind</small>Aug 7</span>
+  </div>
+  <div class="place where2"><span class="disc2">${I.pin}</span>
+   <div style="min-width:0"><span class="k2">Where</span><div class="pv">${LOC}</div></div>
+   <span class="chev">${I.chev}</span></div>
+  <div class="place link2" style="margin-top:8px"><span class="disc2">${I.link}</span>
+   <div style="min-width:0"><span class="k2">Link</span><div class="pv">alltrails.com</div></div>
+   <span class="chev">${I.chev}</span></div>
+  <div class="nsec"><div class="nsec-h"><p class="h">Notes</p>
+    <button class="more">2 notes ${I.chev}</button></div>
+   <div class="note"><p class="m">You &middot; Aug 14</p><p class="t">We settled on the 14th. Car is booked.</p></div>
+   <div class="note"><p class="m">Sarah &middot; Aug 9</p><p class="t">Permit window opens March 1 — I set a calendar alert.</p></div>
+  </div>`, DOCK, ''],
+
+['B-12 · Palette B','Blue / moss / plum / teal',
+ 'Same layout, a cooler second set: target blue, remind moss, place plum, link teal.',
+ `<div class="plate">
+   <div style="flex:1;min-width:0"><p class="eyebrow">${LIST}</p>
+    <div class="title" style="margin-top:6px">${NAME}</div></div>
+   <div class="cdown"><b>18</b><span>days</span></div></div>
+  <div class="chips fill">
+   <span class="pill p-high"><small>Priority</small>High</span>
+   <span class="pill p-target-b"><small>Target</small><b>Sep 7, 2026</b></span>
+   <span class="pill p-remind-b"><small>Remind</small>Aug 7</span>
+  </div>
+  <div class="place where3"><span class="disc2">${I.pin}</span>
+   <div style="min-width:0"><span class="k2">Where</span><div class="pv">${LOC}</div></div>
+   <span class="chev">${I.chev}</span></div>
+  <div class="place link3" style="margin-top:8px"><span class="disc2">${I.link}</span>
+   <div style="min-width:0"><span class="k2">Link</span><div class="pv">alltrails.com</div></div>
+   <span class="chev">${I.chev}</span></div>
+  <div class="nsec"><div class="nsec-h"><p class="h">Notes</p>
+    <button class="more">2 notes ${I.chev}</button></div>
+   <div class="note"><p class="m">You &middot; Aug 14</p><p class="t">We settled on the 14th. Car is booked.</p></div>
+   <div class="note"><p class="m">Sarah &middot; Aug 9</p><p class="t">Permit window opens March 1 — I set a calendar alert.</p></div>
+  </div>`, DOCK, ''],
+
+['B-12 · bare','No reminder, no link, no notes',
+ 'Palette A with the pieces that are absent simply gone.',
+ `<div class="plate">
+   <div style="flex:1;min-width:0"><p class="eyebrow">${LIST}</p>
+    <div class="title" style="margin-top:6px">${NAME2}</div></div>
+   <div class="cdown open"><b>5+</b><span>years</span></div></div>
+  <div class="chips fill">
+   <span class="pill p-low"><small>Priority</small>Low</span>
+   <span class="pill p-target"><small>Target</small><b>In 5+ Years</b></span>
+  </div>
+  <div class="place where2"><span class="disc2">${I.pin}</span>
+   <div style="min-width:0"><span class="k2">Where</span><div class="pv">Interlaken, Switzerland</div></div>
+   <span class="chev">${I.chev}</span></div>
+  <div class="nsec"><div class="nsec-h"><p class="h">Notes</p>
+    <button class="more">Add ${I.chev}</button></div>
+   <div class="note empty"><p>No notes yet</p></div>
+  </div>`, DOCK, ''],
+
+['B-12 · Notes page','Smaller author photos',
+ 'The avatars drop to 24px so the entries carry the row rather than the faces.',
+ `<div class="nrow"><span class="av sm you">L</span>
+   <div class="note"><p class="m">You &middot; Aug 14</p><p class="t">We settled on the 14th. Car is booked.</p></div></div>
+  <div class="nrow"><span class="av sm" style="background:#8a72b5">S</span>
+   <div class="note"><p class="m">Sarah &middot; Aug 9</p><p class="t">Permit window opens March 1 — I set a calendar alert.</p></div></div>
+  <div class="nrow"><span class="av sm" style="background:#6c8853">M</span>
+   <div class="note"><p class="m">Marcus &middot; Aug 2</p><p class="t">Camping permits are $35 a night, cash only at the ranger station.</p></div></div>`,
+ `<div class="dock notes"><div class="box">Add a note…</div><button class="send">${I.chev}</button></div>`,
+ `<div class="navwrap"><div class="navbar"><button class="back">${I.chev}Back</button><span class="nt">Notes</span></div></div>`]
+];
+
+/* ── B-13: many palettes, same layout ── */
+const PALS=[
+ ['Ember',      '#a8641f','#8c3f68','#2b7d72','#3a6ea8'],
+ ['Harbour',    '#3a6ea8','#5f7d3a','#a05a4a','#2b7d72'],
+ ['Orchard',    '#5f7d3a','#a07a1f','#8c3f68','#3a6ea8'],
+ ['Vineyard',   '#8c3f68','#2b7d72','#a07a1f','#5f7d3a'],
+ ['Lagoon',     '#2b7d72','#3a6ea8','#a05a4a','#8c3f68'],
+ ['Canyon',     '#a05a4a','#8a6f2e','#4d5a6b','#2b7d72'],
+ ['Dusk',       '#6a5aa8','#a8446f','#2f7f86','#a8761f'],
+ ['Field',      '#7a8a2e','#3f7f5c','#a8642e','#5a6f9c'],
+ ['Ink',        '#3d4a63','#6b5b95','#4d7f6a','#9c5a2e'],
+ ['Spice',      '#b06a1a','#9c3a3a','#4d7f6a','#5a6f9c'],
+ ['Reef',       '#1f7d8c','#7a5aa8','#a8761f','#4f8a5a'],
+ ['Terracotta', '#9c5a2e','#7d6a3a','#4d5a6b','#6a7f4a']
+];
+const B13=(pn,cs,bare)=>`<div class="pal" style="--c-target:${cs[0]};--c-remind:${cs[1]};--c-where:${cs[2]};--c-link:${cs[3]}">
+  <div class="plate">
+   <div style="flex:1;min-width:0"><p class="eyebrow">${LIST}</p>
+    <div class="title" style="margin-top:6px">${bare?NAME2:NAME}</div></div>
+   <div class="cdown${bare?' open':''}"><b>${bare?'5+':'18'}</b><span>${bare?'years':'days'}</span></div></div>
+  <div class="chips fill">
+   <span class="pill ${bare?'p-low':'p-high'}"><small>Priority</small>${bare?'Low':'High'}</span>
+   <span class="pill p-t"><small>Target</small><b>${bare?'In 5+ Years':'Sep 7, 2026'}</b></span>
+   ${bare?'':'<span class="pill p-r"><small>Remind</small>Aug 7</span>'}
+  </div>
+  <div class="place w"><span class="disc2">${I.pin}</span>
+   <div style="min-width:0"><span class="k2">Where</span><div class="pv">${bare?'Interlaken, Switzerland':LOC}</div></div>
+   <span class="chev">${I.chev}</span></div>
+  ${bare?'':`<div class="place l" style="margin-top:8px"><span class="disc2">${I.link}</span>
+   <div style="min-width:0"><span class="k2">Link</span><div class="pv">alltrails.com</div></div>
+   <span class="chev">${I.chev}</span></div>`}
+  <div class="nsec"><div class="nsec-h"><p class="h">Notes</p>
+    <button class="more">${bare?'Add':'2 notes'} ${I.chev}</button></div>
+   ${bare?'<div class="note empty"><p>No notes yet</p></div>':`<div class="note"><p class="m">You &middot; Aug 14</p><p class="t">We settled on the 14th. Car is booked.</p></div>
+   <div class="note"><p class="m">Sarah &middot; Aug 9</p><p class="t">Permit window opens March 1 &mdash; I set a calendar alert.</p></div>`}
+  </div></div>`;
+PALS.forEach(([pn,...cs],i)=>{
+ const sw=`<div class="swatches">${cs.map(c=>`<i style="background:${c}"></i>`).join('')}</div>`;
+ V.push([`B-13 &middot; ${pn}`,'Target / Remind / Where / Link',sw,B13(pn,cs,false),DOCK,'']);
+ if(i<2) V.push([`B-13 &middot; ${pn} &middot; bare`,'No reminder, no link, no notes',sw,B13(pn,cs,true),DOCK,'']);
+});
+
+lab.innerHTML=V.map(([id,name,note,body,dock,tabs])=>`
+<div class="col">
+<p class="opt-label">${id} — ${name}</p>
+<div class="sheet"><div class="grab"></div>${tabs||TABS}
+ <div class="sbody">${body}</div>${dock||''}</div>
+<p class="opt-note">${note}</p>
+</div>`).join('');
+</script></body></html>

@@ -134,20 +134,6 @@ let compId=null,compSrc=null,compList=null,compNew=false,compDraft=false;
    every list but its home. Same guard commitSaveActivity() uses. */
 let compListsBefore=[];
 
-/* The whole Date row opens the picker. Its native calendar glyph is
-   hidden — the row leads with one of its own — and on desktop that glyph
-   is the only part of a date input a click opens the picker from, so it
-   has to be asked for explicitly. showPicker() needs a user gesture,
-   which a click handler is; it throws where it is unsupported or already
-   open, and focus alone is the right fallback there (iOS opens its wheel
-   on focus regardless). */
-function openCompDatePicker(){
-  const el=$('compDate');
-  if(!el)return;
-  el.focus();
-  try{ el.showPicker(); }catch(e){}
-}
-
 async function openComp(id,source){
   const a=await fetchActivity(id);
   if(!a)return;
@@ -183,6 +169,7 @@ async function openComp(id,source){
   renderThumbs();
   renderCompListRow();
 
+  compShowPane('main');
   $('compSheetTitle').textContent=compNew?'Accomplished':'Edit';
   $('compSaveBtn').textContent=compNew?'Done':'Save';
   openModal('compSheet');
@@ -219,6 +206,7 @@ async function openCompDraft(prefillName){
   renderThumbs();
   await renderCompListRow();
 
+  compShowPane('main');
   $('compSheetTitle').textContent='Accomplished';
   $('compSaveBtn').textContent='Add';
   openModal('compSheet');
@@ -231,7 +219,7 @@ async function openCompDraft(prefillName){
 /* Shares targetListIds with the activity sheet: the two are never open
    at once, and sharing it means listFieldsFor() works unchanged. */
 async function renderCompListRow(){
-  const row=$('compListRow');
+  const row=$('compListCard');
   if(!row)return;
 
   const lists=await fetchCollections();
@@ -242,13 +230,21 @@ async function renderCompListRow(){
 
   const known=new Set(lists.map(l=>l.id));
   setTargetLists(targetListIds.filter(id=>known.has(id)));
-  if(!targetListIds.length) setTargetLists([lists[0].id]);
+  /* An activity that already exists must always be in at least one
+     list, so an edit falls back to the first. A NEW one created from
+     outside a collection deliberately does not: filing it into
+     whichever list happens to sort first is a silent, wrong answer the
+     user never gave, and the one they wanted is one tap away. The row
+     reads "Choose" and saveActivity() refuses until it is answered. */
+  if(!targetListIds.length&&editingActId) setTargetLists([lists[0].id]);
 
   const multi=multiListReady();
   $('compListLabel').textContent=multi?'Lists':'List';
   renderActListValue(lists,'compListName');
 
-  row.onclick=()=>openListPicker({
+  /* On the button, not the group: the group also holds the label, and
+     tapping a label should do nothing. Same as renderActListPicker(). */
+  $('compListBtn').onclick=()=>openListPicker({
     multi,
     title:multi?'Lists':'Add to List',
     subtitle:multi?'Pick as many lists as you like.':'',
@@ -282,14 +278,56 @@ async function renderCompListRow(){
    step with the tiles.
    ============================================================== */
 function updateMediaRequirement(){
-  const qual=$('compMediaQual'),hint=$('compMediaHint');
-  if(qual){
-    qual.textContent=compNew?' required':' optional';
-    qual.className=compNew?'req':'opt';
-  }
+  const hint=$('compMediaHint');
+  renderCompMediaCard();
   /* Only while it is unmet — a rule restated over a grid that already
      satisfies it is nagging. */
   if(hint) hint.hidden=!(compNew&&!upMedia.length);
+}
+
+/* ==============================================================
+   THE MEDIA CARD AND ITS PAGE
+
+   The card names the cover and counts the rest, exactly as the Links
+   card on the activity sheet does. Empty, it has no page worth
+   opening, so it opens the picker instead — one tap either way.
+   ============================================================== */
+function renderCompMediaCard(){
+  const thumb=$('compMediaThumb'),sum=$('compMediaSummary'),chev=$('compMediaChev');
+  if(!sum)return;
+  const n=upMedia.length,cover=coverIndex();
+  if(thumb) thumb.innerHTML=n&&upMedia[cover]?mediaTileHTML(upMedia[cover]):icon('camera');
+  if(thumb) thumb.classList.toggle('has-media',!!n);
+  sum.textContent=!n?'Add a photo or video'
+    :n===1?'1 item':`Cover +${n-1} more`;
+  if(chev) chev.innerHTML=icon(n?'chevron-right':'plus');
+  const back=$('compMediaBack');
+  if(back&&!back.innerHTML) back.innerHTML=icon('chevron-left','ic-sm')+'Back';
+}
+
+/* Nothing attached yet means the page would be an empty grid and an Add
+   button, which is the picker with a step in front of it. */
+function openCompMedia(){
+  if(!upMedia.length&&!_mediaPending){ $('photoInput').click(); return; }
+  compShowPane('media');
+}
+
+function compShowPane(which){
+  const panes={main:'compPaneMain',media:'compPaneMedia'};
+  Object.keys(panes).forEach(k=>{
+    const el=$(panes[k]); if(el) el.classList.toggle('active',k===which);
+  });
+  const body=document.querySelector('#compSheet .sheet-body');
+  if(body) body.scrollTop=0;
+}
+
+/* The whole row opens the picker: on desktop the native calendar glyph
+   is the only part of a date input a click opens it from, and that
+   glyph is hidden here because the row already leads with one. */
+function openCompDatePicker(){
+  const el=$('compDate'); if(!el)return;
+  el.focus();
+  if(el.showPicker){ try{ el.showPicker(); }catch(e){} }
 }
 
 /* The name the check button and the date pill call. Completing and
@@ -301,8 +339,27 @@ function openCompletedDate(id,source){ return openComp(id,source); }
    opening means every way out of the edit sheet — Save, Cancel, the
    scrim, Escape, a swipe down — lands you back where you started rather
    than on the bare page behind it. */
+/* Same contract as openCompFrom(), for the edit sheet: every way out of
+   it — Save, Cancel, the scrim, Escape, a swipe down — lands back on the
+   activity sheet it was opened from, freshly re-read so the edit shows. */
+/* The detail sheet is deliberately LEFT OPEN underneath. Closing it
+   first meant the edit sheet slid away over a bare page and the detail
+   sheet slid back in a beat later, so Save and Cancel both flashed the
+   screen behind — where the notes page, which only swaps panes inside
+   one sheet, is seamless. #actSheet sits at a higher z-index so it
+   covers the sheet it was opened from, and the return re-renders that
+   sheet in place rather than re-presenting it. */
+function openEditActFrom(id){
+  onSheetClose('actSheet',()=>openActDetail(id));
+  return openEditAct(id);
+}
+
+/* The detail sheet is deliberately LEFT OPEN underneath, exactly as
+   openEditActFrom() leaves it: closing it first meant Save and Cancel
+   both slid this sheet away over a bare page, with the detail sheet
+   sliding back a beat later. #compSheet sits at a higher z-index so it
+   covers it, and the return re-renders it in place. */
 function openCompFrom(id){
-  closeModal('actDetailSheet');
   onSheetClose('compSheet',()=>openActDetail(id));
   return openComp(id);
 }
@@ -554,7 +611,13 @@ async function renderActListPicker(){
      row, and would otherwise be written straight back on Save. */
   const known=new Set(lists.map(l=>l.id));
   setTargetLists(targetListIds.filter(id=>known.has(id)));
-  if(!targetListIds.length) setTargetLists([lists[0].id]);
+  /* An activity that already exists must always be in at least one
+     list, so an edit falls back to the first. A NEW one created from
+     outside a collection deliberately does not: filing it into
+     whichever list happens to sort first is a silent, wrong answer the
+     user never gave, and the one they wanted is one tap away. The row
+     reads "Choose" and saveActivity() refuses until it is answered. */
+  if(!targetListIds.length&&editingActId) setTargetLists([lists[0].id]);
 
   const multi=multiListReady();
   $('actListLabel').textContent=multi?'Lists':'List';
@@ -574,7 +637,6 @@ async function renderActListPicker(){
     currentIds:targetListIds,
     onPick:picked=>{
       setTargetLists(Array.isArray(picked)?picked:[picked]);
-      if(!targetListIds.length) setTargetLists([lists[0].id]);
       renderActListValue(lists);
     },
   });
@@ -692,6 +754,15 @@ async function saveActivity(){
   /* A location is required, and this is also what turns typed text into
      coordinates — so the fields below are read AFTER it, not before.
      See A LOCATION IS REQUIRED in js/location.js. */
+  /* A new activity created from outside a collection has no list until
+     the user picks one — see renderActListPicker(). Nothing is filed
+     into a list nobody chose. */
+  if(!editingActId&&!targetListIds.length){
+    const btn=$('actListBtn');
+    if(btn){shakeEl(btn);btn.scrollIntoView({block:'center',behavior:'smooth'});}
+    showToast('Pick a list first');
+    return;
+  }
   if(!await requireLocation('aLoc','aLocError',$('actSaveBtn'))) return;
   const fields={
     name,
@@ -769,7 +840,7 @@ async function commitSaveActivity(fields,before){
          does one it was taken out of. */
       new Set([...wasIn,...nowIn]).forEach(id=>updateCollectionStats(id));
     } else {
-      const cols=listFieldsFor(targetListIds.length?targetListIds:(curListId?[curListId]:[]));
+      const cols=listFieldsFor(targetListIds);
       if(!cols){showToast('Create a list first');return;}
       Object.assign(fields,cols);
       const r=await dbInsert('Activities',fields);
@@ -779,7 +850,7 @@ async function commitSaveActivity(fields,before){
          filed against it immediately — even offline, where the activity
          itself is still sitting in the write queue. */
       noteFor=r.rows&&r.rows[0]&&r.rows[0].id;
-      (targetListIds.length?targetListIds:[curListId]).forEach(id=>updateCollectionStats(id));
+      targetListIds.forEach(id=>updateCollectionStats(id));
     }
     /* After the activity, never as part of it: they are separate rows
        in separate tables, and a note that fails must not take the
@@ -848,9 +919,51 @@ async function delActivity(id){
    "+N" tile — two rows of three. */
 const AD_GRID_MAX=6;
 
+/* The completed sheet's photo stage: one container that fades between
+   the media on its own. The interval stops itself once the stage has
+   left the DOM, so nothing has to be torn down by hand. */
+let adStageTimer=null;
+function adStageIndex(){
+  const st=document.querySelector('.ad-stage');if(!st)return 0;
+  return [...st.querySelectorAll('.ad-slide')].findIndex(s=>s.classList.contains('on'))||0;
+}
+function startAdStage(){
+  clearInterval(adStageTimer);adStageTimer=null;
+  const st=document.querySelector('.ad-stage');if(!st)return;
+  const sl=st.querySelectorAll('.ad-slide'),dots=st.querySelectorAll('.ad-dots i');
+  if(sl.length<2)return;
+  let n=0;
+  adStageTimer=setInterval(()=>{
+    if(!document.body.contains(st)){clearInterval(adStageTimer);adStageTimer=null;return;}
+    sl[n].classList.remove('on');dots[n]&&dots[n].classList.remove('on');
+    n=(n+1)%sl.length;
+    sl[n].classList.add('on');dots[n]&&dots[n].classList.add('on');
+  },3500);
+}
+
+/* The countdown block on a pending activity's plate. dateInfo() gives
+   one string; the plate wants it split into a numeral and its unit, so
+   "18 days left" reads as 18 over DAYS. Anything that is not a count —
+   a specific date, "Someday", an open band — falls through as one
+   `.open` label at the same size, because a smaller mono fallback made
+   the two read as different kinds of thing. */
+function countdownParts(di){
+  const m=/^(\d+\+?)\s+(\w+)/.exec(di.label||'');
+  if(m) return{big:m[1],unit:m[2],open:false};
+  return{big:di.label||'—',unit:'target',open:true};
+}
+
 async function openActDetail(id){
   const a=await fetchActivity(id);if(!a)return;
   editingActId=null;
+  /* Pending activities carry the notes log inline. It used to be
+     fetched behind the open sheet, which meant the section appeared a
+     beat after everything else and shoved the sheet's contents around
+     as it landed. The fetch starts here instead, in parallel with the
+     collections read, and is awaited before anything is painted — so
+     the sheet opens once, complete. */
+  const inlineNotes=!a.completed&&notesReady();
+  const notesP=inlineNotes?fetchNotes(a.id):null;
   const di=dateInfo(a);
   /* Only the lists this user can see. An activity shared into one of
      theirs is homed in someone else's, and naming a list they have no
@@ -876,36 +989,107 @@ async function openActDetail(id){
      completed activity has no notes tab at all — the record is the
      photos and "How it went". The bar sits above the title, and the
      Notes pane carries neither title nor badges. */
-  const tabbed=!a.completed&&notesReady();
 
   let h='';
-  /* The tab bar leads the sheet: the Notes pane is a log of its own and
-     carries no title or priority, so the header belongs to Details. */
-  if(tabbed){
-    h+=`<div class="ad-tabs" role="tablist">
-      <button class="ad-tab active" id="adTabBtnDetails" onclick="setActDetailTab('details')">Details</button>
-      <button class="ad-tab" id="adTabBtnNotes" onclick="setActDetailTab('notes')">Notes</button>
-    </div><div class="ad-pane active" id="adPaneDetails">`;
+  /* The pending sheet is one scrolling pane plus a notes page that
+     replaces it — no tab bar. The notes section on the details pane
+     is a preview and is entirely a button; tapping it opens the page,
+     which is where the composer lives. */
+  /* Pending activities are a stack of pages inside one sheet: the
+     details, the notes log, and the links. The wrapper therefore opens
+     for every pending activity, not only when the notes migration is
+     in place — links are a page regardless. */
+  const panes=!a.completed;
+  if(panes) h+=`<div class="ad-pane active" id="adPaneDetails">`;
+  /* A completed activity's actions are docked at the foot of the sheet
+     in one row, the same shape the pending sheet uses — so the record
+     itself (title, photos and words) starts at the top. */
+  /* No tab bar on a pending activity. The B-13 layout puts the notes
+     log inline, directly under the reference cards — see "PENDING
+     ACTIVITY SHEET" in detail.css. */
+  if(a.completed){
+    h+=`<div class="ad-head">
+      <div class="ad-title centered">${esc(a.name)}</div>
+      <div class="ad-badges">
+        <button class="badge ad-datebtn" onclick="openCompFrom('${a.id}')">
+          ${icon('calendar','ic-xs')}${esc(a.completedDate?fmtDate(a.completedDate,true):'Set date')}
+        </button>
+        ${a.location?`<span class="badge ad-locbadge">${icon('pin','ic-xs')}<span>${esc(a.location)}</span></span>`:''}
+      </div></div>`;
+  } else {
+    /* Pending: the plate, then the plan as chips, then a card per
+       reference field. See "PENDING ACTIVITY SHEET" in detail.css. */
+    const cd=countdownParts(di);
+    const pri=a.priority||'medium';
+    const target=a.targetDate
+      ? (isCustomDate(a.targetDate)?fmtDate(a.targetDate,true):a.targetDate)
+      : '';
+    h+=`<div class="ad-plate">
+      <div class="ad-plate-main">
+        ${lists.length?`<p class="t-eyebrow">${esc(lists[0].name)}</p>`:''}
+        <div class="ad-title">${esc(a.name)}</div>
+      </div>
+      <div class="ad-cdown${cd.open?' open':''}">
+        <b>${esc(cd.big)}</b><span>${esc(cd.unit)}</span>
+      </div></div>`;
+    h+=`<div class="ad-chips">
+      <span class="ad-chip c-${pri}"><small>Priority</small>${cap(pri)}</span>
+      ${target?`<span class="ad-chip c-target"><small>Target</small><b>${esc(target)}</b></span>`:''}
+      <span class="ad-chip c-remind"><small>Remind</small>${a.remindAt?esc(fmtDate(a.remindAt)):'None'}</span>
+    </div>`;
+    if(a.location){
+      h+=`<div class="ad-place c-where">
+        <span class="ad-place-disc">${icon('pin')}</span>
+        <div class="ad-place-body">
+          <span class="ad-place-k">Where</span>
+          <div class="ad-place-v">${esc(a.location)}</div>
+        </div>
+        <span class="ad-place-chev">${icon('chevron-right')}</span></div>`;
+    }
+    /* ONE Links card, whatever the count. A card per link turned an
+       activity with four references into four near-identical blocks
+       pushing everything else down the sheet — and none of them was
+       editable. The card names the first link, counts the rest, and is
+       a button onto the Links page, exactly as the notes preview is.
+       Empty reads "None": a field that vanishes when empty leaves the
+       sheet saying nothing about whether it was ever filled in. */
+    adLinks=[...(a.links||[])];adLinksFor=a.id;
+    h+=`<div class="ad-place c-link" id="adLinkCard" role="button" tabindex="0"
+      onclick="openActLinks()">
+      <span class="ad-place-disc">${icon('link')}</span>
+      <div class="ad-place-body">
+        <span class="ad-place-k">Links</span>
+        <div class="ad-place-v" id="adLinkSummary">${esc(adLinkSummary())}</div>
+      </div>
+      <span class="ad-place-chev">${icon('chevron-right')}</span></div>`;
+    /* The log, inline, below the reference cards. Rendered from notes
+       already in hand — see the fetch at the top of this function. */
+    if(inlineNotes) h+=`<div class="ad-nsec" id="adNotes" data-for="${esc(a.id)}"
+      role="button" tabindex="0" onclick="openActNotes()"></div>`;
   }
-  h+=`<div class="ad-head">
-    <div class="ad-title${a.completed?' centered':''}">${esc(a.name)}</div>
-    <div class="ad-badges">
-      <span class="tag ${a.completed?'tag-done':'tag-'+(a.priority||'medium')}">
-        ${a.completed?'Accomplished':cap(a.priority||'medium')}
-      </span>
-      ${a.completed?`<button class="badge b-done ad-datebtn"
-        onclick="openCompFrom('${a.id}')">
-        ${icon('calendar','ic-xs')}${esc(a.completedDate?fmtDate(a.completedDate,true):'Set date')}
-      </button>`:''}
-      ${!a.completed&&di.label?`<span class="badge b-${di.cls}">${esc(di.label)}</span>`:''}
-    </div></div>`;
 
   h+=`<div class="ad-head">`;
 
-  if(media.length===1){
+  /* MEDIA IS SHOWN ONLY WHILE THE ACTIVITY IS ACCOMPLISHED.
+
+     Marking something not-done writes only `date_completed` — the
+     media stays on the row untouched (see ONE-TAP COMPLETE above) and
+     openComp() reads it straight back into `upMedia`, so completing it
+     again brings every photo and video back exactly as it was. It is
+     hidden here rather than deleted because the pending sheet is a
+     plan: a record of having done the thing has no place on it. */
+  if(a.completed&&media.length){
+    /* One large stage that fades between the media on its own, and
+       opens the lightbox when tapped. */
+    h+=`<div class="ad-stage" onclick="openLB(${mediaArg},adStageIndex())">
+      ${media.map((m,i)=>`<div class="ad-slide${i?'':' on'}">${mediaTileHTML(m)}</div>`).join('')}
+      ${media.length>1?`<div class="ad-dots">${media.map((_,i)=>
+        `<i class="${i?'':'on'}"></i>`).join('')}</div>`:''}
+    </div>`;
+  } else if(a.completed&&media.length===1){
     h+=`<div class="ad-hero-wrap" onclick="openLB(${mediaArg},0)">
       ${mediaTileHTML(media[0],'ad-hero')}</div>`;
-  } else if(media.length>1){
+  } else if(a.completed&&media.length>1){
     /* Past six the grid runs several rows deep and pushes the notes and
        the actions off the bottom of the sheet, so it is capped at two
        rows: five tiles and a "+N" tile. The extra tile opens the
@@ -926,8 +1110,14 @@ async function openActDetail(id){
   /* What you wrote when you finished it reads with the photos, so it
      sits directly under them — above the location and the notes-from-
      before, which are reference rather than the story. */
+  const mediaCount=(()=>{const ph=media.filter(m=>m.type!=='video').length,
+    vd=media.length-ph,parts=[];
+    if(ph)parts.push(ph+(ph===1?' photo':' photos'));
+    if(vd)parts.push(vd+(vd===1?' video':' videos'));
+    return parts.join(', ');})();
   if(a.completed&&a.completionNotes){
-    h+=`<div class="ad-section"><div class="ad-section-label">How it went</div>
+    h+=`<div class="ad-section ad-note-sec"><div class="ad-section-label ad-note-head">How it went${
+      mediaCount?`<span class="ad-count">${mediaCount}</span>`:''}</div>
       <div class="ad-note prose">${esc(a.completionNotes)}</div></div>`;
   }
   /* The notes log. A placeholder now and filled in behind the sheet by
@@ -952,11 +1142,9 @@ async function openActDetail(id){
            ${icon('stack','ic-xs')}<span>${esc(l.name)}</span>
          </button>`).join('')}</div></div>`;
   }
-  if(a.location){
-    h+=`<div class="ad-section"><div class="ad-section-label">Location</div>
-      <div class="ad-note">${esc(a.location)}</div></div>`;
-  }
-  if(a.links&&a.links.length){
+  /* Location and links are the two tinted cards up on the plate for a
+     pending activity, so only a completed one repeats them here. */
+  if(a.completed&&a.links&&a.links.length){
     h+=`<div class="ad-section"><div class="ad-section-label">Links</div>
       <div class="group ad-links" style="margin:0">${a.links.map(l=>
         `<a class="ad-link" href="${esc(l)}" target="_blank" rel="noopener">
@@ -995,71 +1183,197 @@ async function openActDetail(id){
     : '';
 
   h+= a.completed
-    /* Editing is the thing you came here to do once something is done,
-       so it takes the full-width row. Un-completing and deleting are
-       both corrections — undoing a record rather than adding to one —
-       so they share the last row instead of each claiming a full-width
-       button of their own. */
-    ? `<div class="sheet-actions">
-        <button class="btn btn-tinted btn-block" onclick="openCompFrom('${a.id}')">
-          ${icon('pencil')}Edit
-        </button>
-        ${removeBtn}
-        <div class="sheet-actions-row">
-          <button class="btn btn-gray btn-block"
-                  onclick="closeModal('actDetailSheet');toggleComplete('${a.id}',true)">
-            ${icon('undo')}Mark as not done
-          </button>
-          ${delBtn}
-        </div>
-      </div>`
-    /* Still pending: finishing it is the primary action and keeps the
-       emphasis of a full-width row of its own. */
-    : `<div class="sheet-actions">
-        <button class="btn btn-green btn-block"
-                onclick="closeModal('actDetailSheet');toggleComplete('${a.id}',false)">
-          ${icon('check')}Mark accomplished
-        </button>
-        <button class="btn btn-gray btn-block" onclick="closeModal('actDetailSheet');openEditAct('${a.id}')">
-          ${icon('pencil')}Edit details
-        </button>
-        ${removeBtn}
-        ${delBtn}
-      </div>`;
+    /* The actions live in the bar at the top of the sheet now; only
+       the multi-list remove button has no home up there. */
+    ? (removeBtn?`<div class="sheet-actions">${removeBtn}</div>`:'')
+    /* Still pending: the actions are docked at the foot of the sheet,
+       outside the scroller — see the dock below. Only the multi-list
+       remove button stays in the flow. */
+    : (removeBtn?`<div class="sheet-actions">${removeBtn}</div>`:'');
 
-  if(tabbed){
-    h+=`</div><div class="ad-pane" id="adPaneNotes">
-      <div class="ad-section ad-notes-pane" id="adNotes" data-for="${esc(a.id)}"></div>
+  /* The notes page and the links page. Same scroller, swapped in by
+     openActNotes()/openActLinks(); each has its own back bar, and each
+     composer rides the dock. */
+  if(panes){
+    h+=`</div>`;
+    if(inlineNotes) h+=`<div class="ad-pane" id="adPaneNotes">
+      <div class="ad-navbar">
+        <button class="ad-back" onclick="adShowPane('details')">${icon('chevron-left','ic-sm')}Back</button>
+        <span class="ad-navtitle">Notes</span>
+      </div>
+      <div class="ad-notes-pane" id="adNotesFull"></div>
+    </div>`;
+    h+=`<div class="ad-pane" id="adPaneLinks">
+      <div class="ad-navbar">
+        <button class="ad-back" onclick="adShowPane('details')">${icon('chevron-left','ic-sm')}Back</button>
+        <span class="ad-navtitle">Links</span>
+      </div>
+      <div class="ad-links-pane" id="adLinksFull"></div>
     </div>`;
   }
 
   $('actDetailBody').innerHTML=h;
+
+  /* The dock is a sibling of the scroller, not part of it, so it is
+     pinned to the foot of the sheet and inset by the same gutters as
+     everything above it. Both states get one: edit / not-done /
+     delete when it is completed, and the pending trio otherwise. */
+  const dock=$('actDetailDock');
+  dock.hidden=false;
+  dock.innerHTML=a.completed?`
+    <div class="ad-dock-view">
+      <button class="ad-dock-disc red" aria-label="${many?'Delete everywhere':'Delete'}"
+        onclick="confirmDeleteActivity('${a.id}','${esc(a.name).replace(/'/g,'&#39;')}',${lists.length})">
+        ${icon('trash')}</button>
+      <button class="ad-dock-disc" aria-label="Mark as not done"
+        onclick="closeModal('actDetailSheet');toggleComplete('${a.id}',true)">${icon('undo')}</button>
+      <button class="btn btn-filled btn-block" onclick="openCompFrom('${a.id}')">
+        ${icon('pencil')}Edit
+      </button>
+    </div>`:`
+    <div class="ad-dock-view" id="adDockActions">
+      <button class="ad-dock-disc red" aria-label="${many?'Delete everywhere':'Delete'}"
+        onclick="confirmDeleteActivity('${a.id}','${esc(a.name).replace(/'/g,'&#39;')}',${lists.length})">
+        ${icon('trash')}</button>
+      <button class="ad-dock-disc" aria-label="Edit details"
+        onclick="openEditActFrom('${a.id}')">${icon('pencil')}</button>
+      <button class="btn btn-green btn-block"
+              onclick="closeModal('actDetailSheet');toggleComplete('${a.id}',false)">
+        ${icon('check')}Mark accomplished
+      </button>
+    </div>
+    ${panes?`<div class="ad-dock-view" id="adDockLink" hidden>
+      <div class="note-add">
+        <input id="adLinkInput" type="url" inputmode="url" autocomplete="off"
+          autocapitalize="off" spellcheck="false" placeholder="Paste a URL"
+          onkeydown="onLinkKey(event)" />
+        <button class="note-add-go show" onclick="addActLink()"
+          aria-label="Add link">${icon('plus','ic-sm')}</button>
+      </div></div>`:''}
+    ${inlineNotes?`<div class="ad-dock-view" id="adDockNote" hidden>
+      <div class="note-add">
+        <textarea id="adNoteInput" rows="1" maxlength="1000"
+          placeholder="Add a note…" autocapitalize="sentences"
+          oninput="onNoteInput()" onkeydown="onNoteKey(event)"></textarea>
+        <button class="note-add-go" id="adNoteGo" onclick="submitActivityNote('${esc(a.id)}')"
+          aria-label="Add note">${icon('plus','ic-sm')}</button>
+      </div></div>`:''}`;
+
+  /* Painted before the sheet is shown, so nothing moves once it is
+     open. The avatars still land behind it — a face arriving a moment
+     after the words changes no layout. */
+  if(inlineNotes){
+    /* The avatars are awaited HERE too, not repainted behind the open
+       sheet. Painting twice re-wrote the section's innerHTML a beat
+       after it was on screen, which is the flash this was supposed to
+       have fixed. The map is cached per collection, so only the first
+       activity opened in a list pays for it at all. */
+    const cid=noteCollectionId(a.id);
+    const [notes]=await Promise.all([notesP,cid?loadConversationAvatars(cid):null]);
+    paintActivityNotes(a.id,notes,cid);
+  }
+
   openModal('actDetailSheet');
-  /* Deliberately not awaited — see the placeholder above. */
-  if(tabbed) renderActivityNotes(a.id);
+  startAdStage();
 }
 
-/* Which half of the activity sheet is showing. Purely a view swap —
-   both panes are already rendered. */
-function setActDetailTab(which){
-  const notes=which==='notes';
-  const pd=$('adPaneDetails'),pn=$('adPaneNotes');
-  const bd=$('adTabBtnDetails'),bn=$('adTabBtnNotes');
-  if(!pd||!pn)return;
-  pd.classList.toggle('active',!notes);
-  pn.classList.toggle('active',notes);
-  bd.classList.toggle('active',!notes);
-  bn.classList.toggle('active',notes);
-  /* The two panes must be the same height: the notes log is short and
-     the sheet visibly shrank when you switched to it. Measure the pane
-     on its way out and floor the incoming one at that. */
-  const out=notes?pd:pn;
-  const inc=notes?pn:pd;
-  const hOut=out.offsetHeight;
-  if(hOut) inc.style.minHeight=hOut+'px';
-  const body=pd.closest('.sheet-body');
+/* The notes page replaces the details pane rather than sitting beside
+   it: the log needs the whole sheet to be worked in, and the dock
+   swaps the action bar for the composer so there is only ever one
+   thing at the foot of the sheet. */
+function openActNotes(){ adShowPane('notes'); }
+function closeActNotes(){ adShowPane('details'); }
+function openActLinks(){ renderActLinks(); adShowPane('links'); }
+
+/* One switch for all three pages, so a page added later cannot forget
+   to hide somebody else's dock. */
+function adShowPane(which){
+  const panes={details:'adPaneDetails',notes:'adPaneNotes',links:'adPaneLinks'};
+  Object.keys(panes).forEach(k=>{
+    const el=$(panes[k]); if(el) el.classList.toggle('active',k===which);
+  });
+  const docks={details:'adDockActions',notes:'adDockNote',links:'adDockLink'};
+  Object.keys(docks).forEach(k=>{
+    const el=$(docks[k]); if(el) el.hidden=(k!==which);
+  });
+  const body=$('actDetailBody');
   if(body) body.scrollTop=0;
 }
+
+/* ==============================================================
+   THE LINKS PAGE
+
+   Links used to be a chip field on the create/edit sheet, which meant
+   they could only be added at the moment of capture — exactly when
+   nobody has them — and a reference added later cost a full edit pass.
+   They are a page on the activity itself now, written one at a time
+   like notes, and the write is a single `links` column update rather
+   than anything the edit sheet has to know about.
+   ============================================================== */
+let adLinks=[],adLinksFor=null;
+
+/* What the card on the details page says. One link named, the rest
+   counted — the same trade the Lists row makes. */
+function adLinkSummary(){
+  if(!adLinks.length) return 'None';
+  const first=adLinks[0].replace(/^https?:\/\//,'');
+  return adLinks.length>1?`${first} +${adLinks.length-1} more`:first;
+}
+
+function renderActLinks(){
+  const box=$('adLinksFull');
+  if(!box)return;
+  box.innerHTML=adLinks.length
+    ? adLinks.map((l,i)=>`<div class="link-row">
+        <a href="${esc(l)}" target="_blank" rel="noopener">
+          ${icon('link','ic-sm')}<span>${esc(l.replace(/^https?:\/\//,''))}</span></a>
+        <button class="link-del" onclick="removeActLink(${i})"
+          aria-label="Remove link">${icon('x','ic-xs')}</button>
+      </div>`).join('')
+    : `<div class="note-empty"><p>No links yet</p></div>`;
+  const sum=$('adLinkSummary');
+  if(sum) sum.textContent=adLinkSummary();
+}
+
+function onLinkKey(e){ if(e.key==='Enter'){e.preventDefault();addActLink();} }
+
+function addActLink(){
+  const f=$('adLinkInput');if(!f)return;
+  let v=f.value.trim();
+  if(!v)return;
+  if(!/^https?:\/\//i.test(v)) v='https://'+v;
+  if(!adLinks.includes(v)) adLinks.push(v);
+  f.value='';
+  renderActLinks();
+  saveActLinks();
+}
+
+function removeActLink(i){
+  adLinks.splice(i,1);
+  renderActLinks();
+  saveActLinks();
+}
+
+/* Written straight through — the page has no Save, the way the notes
+   log has none. Not awaited by anything on screen; a failure puts the
+   stored value back so the page cannot claim a link it does not have. */
+async function saveActLinks(){
+  if(!adLinksFor)return;
+  const id=adLinksFor,next=[...adLinks];
+  const r=await dbUpdate('Activities',{links:next},{id});
+  if(r.error){
+    showToast('Couldn’t save that link');
+    const a=await fetchActivity(id);
+    if(a&&adLinksFor===id){adLinks=[...(a.links||[])];renderActLinks();}
+    return;
+  }
+  /* The edit sheet carries the links through untouched on Save, so the
+     copy it is holding has to keep up. */
+  if(editingActId===id) aLinks=[...next];
+  refreshAfterChange();
+}
+
+
 
 /* ==============================================================
    COLLECTION OVERFLOW MENU  (the ⋯ in the nav bar)
@@ -1104,9 +1418,10 @@ async function openCollectionMenu(){
 
 function setFilter(f){
   curFilter=f;
-  const seg=$('detFilter');
-  if(seg) seg.querySelectorAll('button').forEach((b,i)=>
-    b.classList.toggle('active',['all','pending','completed'][i]===f));
+  /* Both the lit segment and the sort label live in the control row,
+     which renderDetail() now builds once per collection — so the two
+     things that change without it are updated in one place. */
+  syncDetailControls();
   /* On the map, just re-filter the markers — a full re-render would
      zoom the map back out from under the user. */
   if(curView==='map'&&actMap){updateMapMarkers();return;}
@@ -1139,8 +1454,7 @@ function setSort(key){
      take the search field with it and drop focus mid-typing, which is
      the entire reason renderDetail() and renderActivitiesList() are
      separate in the first place. */
-  const btn=$('detSortBtn');
-  if(btn) btn.outerHTML=sortButtonHTML();
+  syncDetailControls();
   /* Order means nothing to a map, so there is nothing to redraw there —
      and a re-render would zoom it back out from under the user, the
      same trap setFilter() sidesteps. */
