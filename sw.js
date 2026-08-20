@@ -9,7 +9,7 @@
    installs pick the new build up instead of serving a stale one.
    ============================================================== */
 
-const CACHE_VERSION = 'v62';
+const CACHE_VERSION = 'v65';
 const SHELL_CACHE = `bucketlist-shell-${CACHE_VERSION}`;
 const VENDOR_CACHE = `bucketlist-vendor-${CACHE_VERSION}`;
 const IMAGE_CACHE = `bucketlist-images-${CACHE_VERSION}`;
@@ -35,6 +35,8 @@ const SHELL_ASSETS = [
   './css/import.css',
   './css/dupes.css',
   './css/sharing.css',
+  './css/messages.css',
+  './css/notes.css',
   './css/pwa.css',
   './css/responsive.css',
   './js/config.js',
@@ -61,6 +63,8 @@ const SHELL_ASSETS = [
   './js/collections.js',
   './js/detail.js',
   './js/activities.js',
+  './js/messages.js',
+  './js/notes.js',
   './js/me.js',
   './js/bulk.js',
   './js/map.js',
@@ -142,30 +146,74 @@ self.addEventListener('activate', event => {
 });
 
 /* ---------- Push ----------
-   Delivered by supabase/functions/send-reminders. The payload is JSON;
-   fall back to a generic banner if it is missing or malformed, because
-   a push that arrives and shows nothing is worse than a vague one. */
+   Two senders now, and they want different banners:
+
+     send-reminders     a date arrived  → the activity is the headline
+     send-message-push  somebody spoke  → "Sarah · Japan 2027"
+
+   They are told apart by payload.kind, which only the newer one sets;
+   anything without it is a reminder, so a push already in flight from
+   an older function still lands correctly.
+
+   The payload is JSON and a malformed one still shows a banner: a push
+   that arrives and shows nothing is worse than a vague one, and the
+   browser will show its own "This site has been updated in the
+   background" if we resolve without displaying anything at all. */
 self.addEventListener('push', event => {
   let payload = {};
   try { payload = event.data ? event.data.json() : {}; } catch { payload = {}; }
-  const title = payload.title || 'Reminder';
+  const isMessage = payload.kind === 'message';
+
+  const title = payload.title || (isMessage ? 'New message' : 'Reminder');
+  const body = payload.body ||
+    (isMessage ? 'Tap to read it.' : 'You have something coming up.');
+
+  /* Tagging collapses repeats rather than stacking them. A conversation
+     tags by collection, so a burst of messages in one list replaces
+     itself instead of filling the shade — renotify brings the alert
+     back for each one so it is still noticed. */
+  const tag = isMessage
+    ? 'bl-conv-' + (payload.collectionId || 'all')
+    : (payload.activityId ? 'bl-reminder-' + payload.activityId : 'bl-reminders');
+
   event.waitUntil(self.registration.showNotification(title, {
-    body: payload.body || 'You have something coming up.',
+    body,
     icon: 'icons/icon-192.png',
     badge: 'icons/favicon-32.png',
-    tag: payload.activityId ? 'bl-reminder-' + payload.activityId : 'bl-reminders',
-    data: { url: './index.html' },
+    tag,
+    renotify: isMessage,
+    data: {
+      url: './index.html',
+      kind: isMessage ? 'message' : 'reminder',
+      collectionId: payload.collectionId || null,
+    },
   }));
 });
 
-/* Tapping a reminder notification should bring the app forward rather
-   than opening a second copy of it. */
+/* Tapping should bring the app forward rather than opening a second
+   copy of it — and, for a message, land on the conversation it came
+   from. There is no URL routing in this app (see the backlog), so the
+   destination is handed to the running page as a postMessage rather
+   than as a query string; js/messages.js listens for it. A cold start
+   has no page to tell, so the collection id rides on the URL and
+   readPushLanding() in messages.js picks it up at boot. */
 self.addEventListener('notificationclick', event => {
+  const data = event.notification.data || {};
   event.notification.close();
   event.waitUntil((async () => {
     const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    for (const c of clients) { if ('focus' in c) return c.focus(); }
-    if (self.clients.openWindow) return self.clients.openWindow('./index.html');
+    for (const c of clients) {
+      if ('focus' in c) {
+        if (data.kind === 'message' && data.collectionId) {
+          c.postMessage({ type: 'open-conversation', collectionId: data.collectionId });
+        }
+        return c.focus();
+      }
+    }
+    const url = data.kind === 'message' && data.collectionId
+      ? './index.html?conv=' + encodeURIComponent(data.collectionId)
+      : './index.html';
+    if (self.clients.openWindow) return self.clients.openWindow(url);
   })());
 });
 

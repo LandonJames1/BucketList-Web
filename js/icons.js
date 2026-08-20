@@ -30,6 +30,13 @@ const ICON_PATHS = {
   'compass':      '<circle cx="12" cy="12" r="9"/><path d="M15.6 8.4 13.9 13.9 8.4 15.6 10.1 10.1z"/>',
   'compass-fill': '<circle cx="12" cy="12" r="9" fill="currentColor" stroke="none"/><path d="M15.6 8.4 13.9 13.9 8.4 15.6 10.1 10.1z" fill="var(--nav-bg)" stroke="none"/>',
 
+  /* Messages — a speech bubble carrying the house's solid-dot accent
+     on the end of its second line. Generic as a metaphor, and
+     deliberately so: this is the one glyph in the bar that has to be
+     read instantly by someone who has never opened the tab. */
+  'message':      '<path d="M7 3.6h10a3.4 3.4 0 0 1 3.4 3.4v5.6a3.4 3.4 0 0 1-3.4 3.4h-6.2l-4 3.3v-3.3a3.2 3.4 0 0 1-3.2-3.4V7a3.4 3.4 0 0 1 3.4-3.4z"/><path d="M8 8.4h8M8 11.7h4.4"/><circle cx="15.8" cy="11.7" r="1.3" fill="currentColor" stroke="none"/>',
+  'message-fill': '<path d="M7 3.6h10a3.4 3.4 0 0 1 3.4 3.4v5.6a3.4 3.4 0 0 1-3.4 3.4h-6.2l-4 3.3v-3.3a3.2 3.4 0 0 1-3.2-3.4V7a3.4 3.4 0 0 1 3.4-3.4z" fill="currentColor" stroke="none"/><path d="M8 8.4h8M8 11.7h4.4" stroke="var(--nav-bg)" stroke-width="2.1" stroke-linecap="round"/><circle cx="15.8" cy="11.7" r="1.3" fill="var(--nav-bg)" stroke="none"/>',
+
   /* Me — a summit with a planted flag. */
   'summit':      '<path d="M2.8 19.6h18.4"/><path d="M3.6 19.6 9.4 9.2l3.1 5.2"/><path d="M16.4 19.6V4.2"/><path d="M16.4 5.2c1.8-1 3.6.9 5.4 0v4.4c-1.8.9-3.6-1-5.4 0z"/>',
   'summit-fill': '<path d="M2.8 19.6h18.4" stroke="currentColor" stroke-width="2.1"/><path d="M3.4 19.6 9.4 9 13 15z" fill="currentColor" stroke="none"/><path d="M16.4 19.6V4.2" stroke="currentColor" stroke-width="2.1"/><path d="M16.4 5.2c1.8-1 3.6.9 5.4 0v4.4c-1.8.9-3.6-1-5.4 0z" fill="currentColor" stroke="none"/>',
@@ -85,7 +92,7 @@ const ICON_PATHS = {
 
 /* Icons whose art is already solid and must not be given a stroke. */
 const ICON_FILLED = new Set([
-  'home-fill', 'stack-fill', 'compass-fill', 'summit-fill',
+  'home-fill', 'stack-fill', 'compass-fill', 'summit-fill', 'message-fill',
   'check-circle', 'ellipsis', 'play',
 ]);
 

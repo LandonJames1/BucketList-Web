@@ -164,7 +164,7 @@ document.addEventListener('touchend',()=>{
 const SWIPE_MIN=64;              /* deliberate, not a stray drag */
 const SWIPE_RATIO=1.5;           /* clearly horizontal, not a scroll */
 const SWIPE_EDGE=34;             /* the escape hatch on a map screen */
-const PUSHED_PAGES=['detail','upnext','done'];
+const PUSHED_PAGES=['detail','upnext','done','conversation'];
 
 let pgSwipe=null;
 
@@ -190,11 +190,19 @@ document.addEventListener('touchend',e=>{
 
   if(PUSHED_PAGES.includes(curPage)){
     /* Back only. There is nothing to the right of a pushed screen. */
-    if(dx>0){ curPage==='detail'?goBack():nav('home'); }
+    if(dx>0){
+      if(curPage==='detail')            goBack();
+      else if(curPage==='conversation') nav('messages');
+      else                              nav('home');
+    }
     return;
   }
-  const i=TAB_ORDER.indexOf(curTab);
+  /* visibleTabs(), not TAB_ORDER: the Messages tab is hidden until
+     supabase/messages.sql has been run, and swiping onto a tab that is
+     not in the bar would strand you on a screen with nothing lit. */
+  const order=visibleTabs();
+  const i=order.indexOf(curTab);
   if(i<0)return;
-  const next=TAB_ORDER[i+(dx<0?1:-1)];
+  const next=order[i+(dx<0?1:-1)];
   if(next) selectTab(next);
 },{passive:true});

@@ -209,7 +209,7 @@
        None of the three is red: red belongs to the deadline badge
        above, and an overdue activity and an important one are different
        claims on your attention. */
-    .tag-high   { background: var(--tint-soft);   color: var(--tint-strong); }
+    .tag-high   { background: var(--pri-soft);    color: var(--pri-high-strong); }
     .tag-medium { background: var(--violet-soft); color: var(--violet); }
     .tag-low    { background: var(--slate-soft);  color: var(--slate); }
     .tag-done   { background: var(--green-soft);  color: var(--green); }
@@ -233,7 +233,7 @@
       content: ''; position: absolute; left: 0; top: 0; bottom: 0;
       width: 3.5px; z-index: 2; border-radius: 0 3px 3px 0;
     }
-    .pri-high::before   { background: var(--tint); }
+    .pri-high::before   { background: var(--pri-high); }
     .pri-medium::before { background: var(--violet); }
     .pri-low::before    { background: var(--slate); }
 
@@ -390,12 +390,12 @@
       width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
       background: var(--label-3);
     }
-    .seg-pri [data-pri="high"]   .pri-swatch { background: var(--tint); }
+    .seg-pri [data-pri="high"]   .pri-swatch { background: var(--pri-high); }
     .seg-pri [data-pri="medium"] .pri-swatch { background: var(--violet); }
     .seg-pri [data-pri="low"]    .pri-swatch { background: var(--slate); }
     /* The selected option takes its own hue for the label too, so the
        control says which colour is now in force without being read. */
-    .seg-pri [data-pri="high"].active   { color: var(--tint-strong); }
+    .seg-pri [data-pri="high"].active   { color: var(--pri-high-strong); }
     .seg-pri [data-pri="medium"].active { color: var(--violet); }
     .seg-pri [data-pri="low"].active    { color: var(--slate); }
 

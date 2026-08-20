@@ -1,0 +1,131 @@
+/*  ============================================================
+    NOTES — the append-only log on an activity.
+
+    Lives inside the activity detail sheet, so it borrows that
+    sheet's .ad-section-label and sits in the same rhythm as the
+    sections around it. Everything specific to it is here.
+
+    The visual argument: an entry is a *record of who said what and
+    when*, not a paragraph of prose, so the attribution line is as
+    much a part of it as the text. The meta line is mono (the app's
+    label voice) and the body is sans — deliberately NOT the serif
+    the completion note uses. "How it went" is a story you read
+    back; this is working state you scan.
+    ============================================================ */
+
+    /* .ad-section already carries the sheet's gutters and its 22px top
+       margin — this only adds the breathing room underneath, since the
+       composer at the bottom of the block would otherwise sit flush
+       against whatever section follows it. */
+    #adNotes { margin-bottom: 22px; }
+
+    .note-count {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 16px; height: 16px; padding: 0 4px; margin-left: 4px;
+      border-radius: 8px; background: var(--fill-3); color: var(--label-2);
+      font-size: 9px; letter-spacing: 0;
+    }
+
+    .note-log {
+      background: var(--bg-elevated);
+      border-radius: 12px; overflow: hidden;
+      box-shadow: var(--shadow-sm);
+    }
+    /* 17px to the left, matching .ad-note's padding, so a note's text
+       starts on the same line as every other section's content and as
+       the mono label above it. */
+    .note-row { position: relative; padding: 10px 16px 11px 17px; }
+    .note-row:not(:last-child)::after {
+      content: ''; position: absolute; left: 17px; right: 0; bottom: 0;
+      height: .5px; background: var(--separator);
+    }
+
+    .note-meta {
+      display: flex; align-items: center; gap: 7px;
+      /* nowrap with the author as the only shrinkable child, so the
+         row's height cannot depend on how long somebody's name is. */
+      flex-wrap: nowrap; min-height: 20px;
+    }
+    .note-who {
+      flex: 0 1 auto; min-width: 0;
+      font-family: var(--mono); font-size: 9.5px; font-weight: 500;
+      letter-spacing: .09em; text-transform: uppercase;
+      color: var(--label-2);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .note-who.gone { color: var(--label-4); }
+    .note-when {
+      flex: 0 0 auto;
+      font-family: var(--mono); font-size: 8.5px; letter-spacing: .05em;
+      color: var(--label-4);
+    }
+    .note-menu {
+      flex: 0 0 auto; margin-left: auto;
+      width: 26px; height: 26px; margin-right: -6px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 13px; color: var(--label-4);
+    }
+    .note-menu:active { background: var(--fill-3); }
+
+    .note-body {
+      margin-top: 3px;
+      font-size: 14.5px; line-height: 1.45; color: var(--label);
+      white-space: pre-wrap; overflow-wrap: anywhere;
+    }
+
+    /* Says what the log is for rather than just that it is empty —
+       this is a new idea in the app, and "no notes" would teach
+       nobody why they would want one. */
+    .note-empty {
+      padding: 12px 14px;
+      background: var(--fill-4); border-radius: 12px;
+      font-size: 13px; line-height: 1.45; color: var(--label-3);
+    }
+
+/*  ---- Adding one -------------------------------------------
+    Shaped like the conversation composer on purpose: adding to the
+    log and sending a message are the same gesture in two places,
+    and the log is where a message ends up. */
+    .note-add {
+      display: flex; align-items: flex-end; gap: 8px;
+      margin-top: 8px; padding: 4px 4px 4px 16px;
+      background: var(--bg-elevated); border-radius: 19px;
+      box-shadow: inset 0 0 0 .5px var(--separator-solid);
+      transition: box-shadow .18s;
+    }
+    .note-add:focus-within { box-shadow: inset 0 0 0 1.5px var(--tint); }
+    .note-add textarea {
+      flex: 1; min-width: 0; resize: none; border: none; background: none;
+      /* Never below 16px computed — Safari zooms the page otherwise. */
+      font-family: var(--sans); font-size: max(16px, 16px);
+      line-height: 1.4; color: var(--label);
+      padding: 7px 0; max-height: 140px; overflow-y: auto;
+    }
+    .note-add textarea::placeholder { color: var(--label-4); }
+    .note-add-go {
+      width: 30px; height: 30px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 15px; background: var(--tint); color: #fff;
+      opacity: .3; pointer-events: none;
+      transition: opacity .15s, transform .15s;
+    }
+    .note-add-go.show { opacity: 1; pointer-events: auto; }
+    .note-add-go:active { transform: scale(.88); }
+
+/*  ---- The field on the new/edit activity sheet --------------
+    A note written here becomes the log's first entry when the
+    activity saves. It is a textarea rather than an input because a
+    note is a sentence, and it sits above Links for the reason the
+    location field was pulled out of the old disclosure: the thing
+    people will actually use goes where they will actually see it. */
+    .fg textarea.fg-note {
+      display: block; width: 100%; resize: none;
+      min-height: 46px; max-height: 120px;
+      padding: 12px 14px;
+      background: var(--bg-elevated); border: none; border-radius: 12px;
+      box-shadow: inset 0 0 0 .5px var(--separator-solid);
+      font-family: var(--sans); font-size: max(16px, 17px);
+      line-height: 1.4; color: var(--label);
+    }
+    .fg textarea.fg-note::placeholder { color: var(--label-4); }
+    .fg textarea.fg-note:focus { box-shadow: inset 0 0 0 1.5px var(--tint); }

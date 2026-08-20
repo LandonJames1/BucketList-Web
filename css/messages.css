@@ -1,0 +1,358 @@
+/*  ============================================================
+    MESSAGES — the hub (a row per shared list) and a conversation.
+
+    Two very different layouts in one file, because they are one
+    feature:
+
+    - The hub is an ordinary scrolling page, built from the same
+      inset-row vocabulary as the rest of the app.
+    - A conversation is NOT. It is the only screen in the app that
+      is pinned to the bottom rather than the top: the newest
+      message sits above a docked composer, and the history scrolls
+      inside its own container. That makes it the second exception
+      to the .page model after the map, and for the same kind of
+      reason — see .page-conv below.
+    ============================================================ */
+
+/*  ---- The unread count on the tab bar ---------------------- */
+    .tab { position: relative; }
+    .tab-badge {
+      position: absolute; top: 2px; left: 50%; margin-left: 4px;
+      min-width: 17px; height: 17px; padding: 0 5px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 8.5px;
+      background: var(--red); color: #fff;
+      font-family: var(--mono); font-size: 9px; font-weight: 600;
+      letter-spacing: .02em;
+      /* The bar is translucent and the badge sits over a glyph, so it
+         needs a hard edge against both. */
+      box-shadow: 0 0 0 2px var(--nav-bg);
+    }
+
+/*  ============================================================
+    THE HUB
+    ============================================================ */
+    .conv-list {
+      margin: 4px var(--gx-r) 0 var(--gx-l);
+      background: var(--bg-elevated);
+      border-radius: 14px; overflow: hidden;
+      box-shadow: var(--shadow-sm);
+    }
+    .conv-row {
+      position: relative; width: 100%;
+      display: flex; align-items: center; gap: 12px;
+      padding: 11px 12px; min-height: 68px;
+      text-align: left; cursor: pointer;
+      transition: background .12s;
+    }
+    .conv-row:not(:last-child)::after {
+      content: ''; position: absolute; left: 66px; right: 0; bottom: 0;
+      height: .5px; background: var(--separator);
+    }
+    .conv-row:active { background: var(--fill-4); }
+
+    .conv-cover {
+      width: 46px; height: 46px; flex-shrink: 0;
+      border-radius: 12px; object-fit: cover;
+      background: var(--fill-3);
+      filter: brightness(.92) saturate(.92);
+    }
+    .conv-cover-blank {
+      display: flex; align-items: center; justify-content: center;
+      color: var(--label-4); filter: none;
+    }
+
+    .conv-body { flex: 1; min-width: 0; }
+    .conv-top {
+      display: flex; align-items: baseline; gap: 8px;
+      /* nowrap, and the name is the only shrinkable child: letting the
+         timestamp wrap makes row height depend on how long a list is
+         called, and the list visibly steps as you read down it. Same
+         rule .up-meta follows. */
+      flex-wrap: nowrap;
+    }
+    .conv-name {
+      flex: 0 1 auto; min-width: 0;
+      font-family: var(--serif); font-size: 18px; font-weight: 600;
+      line-height: 1.25; color: var(--label);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .conv-when {
+      flex: 0 0 auto; margin-left: auto;
+      font-family: var(--mono); font-size: 9.5px; font-weight: 500;
+      letter-spacing: .06em; text-transform: uppercase;
+      color: var(--label-3);
+    }
+    .conv-bottom {
+      display: flex; align-items: center; gap: 8px;
+      margin-top: 3px; min-height: 19px; flex-wrap: nowrap;
+    }
+    .conv-preview {
+      flex: 0 1 auto; min-width: 0;
+      font-size: 13.5px; line-height: 1.35; color: var(--label-2);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .conv-who { color: var(--label-3); }
+    .conv-empty-preview { color: var(--label-4); font-style: italic; }
+    .conv-unread {
+      flex: 0 0 auto; margin-left: auto;
+      min-width: 20px; height: 20px; padding: 0 6px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 10px; background: var(--tint); color: #fff;
+      font-family: var(--mono); font-size: 9.5px; font-weight: 600;
+    }
+    /* An unread conversation reads as unread at a glance, without
+       colour doing all the work — the count is already the colour. */
+    .conv-row.unread .conv-name { font-weight: 700; }
+    .conv-row.unread .conv-preview { color: var(--label); }
+
+    .conv-loading { padding: 60px 0; display: flex; justify-content: center; }
+
+/*  ============================================================
+    A CONVERSATION
+
+    Full height, like the map, and for a related reason: this screen
+    owns its own scrolling. The messages scroll inside .conv-scroll
+    between the nav bar and the composer, so the newest message and
+    the field you type into are both always where you left them.
+    ============================================================ */
+    .page-conv { padding: 0; min-height: 0; }
+    .page-conv.active { display: block; }
+
+    .conv-scroll {
+      position: fixed;
+      top: calc(var(--nav-h) + var(--nav-inset));
+      left: 0; right: 0;
+      /* Room for the composer, which is fixed below. */
+      bottom: calc(var(--chrome-bottom) + 58px);
+      overflow-y: auto; -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+      padding: 8px var(--gx-r) 12px var(--gx-l);
+    }
+    /* One column at width, matching .page's cap so a conversation does
+       not run the full width of a tablet. */
+    @media (min-width: 700px) {
+      .conv-scroll { padding-left: max(var(--gx-l), calc((100% - var(--content-max)) / 2)); }
+      .conv-scroll { padding-right: max(var(--gx-r), calc((100% - var(--content-max)) / 2)); }
+    }
+
+    .conv-more {
+      display: block; margin: 4px auto 14px; padding: 7px 14px;
+      border-radius: 999px; background: var(--fill-3);
+      font-family: var(--mono); font-size: 9.5px; font-weight: 500;
+      letter-spacing: .1em; text-transform: uppercase;
+      color: var(--label-2);
+    }
+
+/*  ---- The day separator ------------------------------------ */
+    .msg-day {
+      display: flex; align-items: center; gap: 10px;
+      margin: 16px 0 12px;
+      font-family: var(--mono); font-size: 9px; font-weight: 500;
+      letter-spacing: .12em; text-transform: uppercase;
+      color: var(--label-3);
+    }
+    .msg-day::before, .msg-day::after {
+      content: ''; flex: 1; height: .5px; background: var(--separator);
+    }
+
+/*  ---- A message -------------------------------------------- */
+    .msg { margin-bottom: 10px; display: flex; flex-direction: column; align-items: flex-start; }
+    .msg.mine { align-items: flex-end; }
+    /* Inside a run the header is dropped, so the gap tightens to show
+       the lines belong together. */
+    .msg.run { margin-top: -6px; }
+
+    .msg-head {
+      display: flex; align-items: center; gap: 6px;
+      margin: 0 0 4px 2px; max-width: 100%;
+    }
+    .msg.mine .msg-head { flex-direction: row-reverse; margin: 0 2px 4px 0; }
+
+    .msg-avatar {
+      width: 20px; height: 20px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 10px; background: var(--tint-soft); color: var(--tint);
+      font-family: var(--mono); font-size: 9.5px; font-weight: 600;
+    }
+    /* A deleted account gets a grey mark, not the tint — the tint means
+       "you can touch this" everywhere else in the app. */
+    .msg-avatar.gone { background: var(--fill-3); color: var(--label-4); }
+
+    .msg-who {
+      font-family: var(--mono); font-size: 9.5px; font-weight: 500;
+      letter-spacing: .09em; text-transform: uppercase;
+      color: var(--label-2);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    /* Said plainly rather than implied by styling. A name with no
+       account behind it that looks like every other name is the quiet
+       kind of wrong. */
+    .msg-gone {
+      flex-shrink: 0;
+      padding: 0 6px; height: 15px; line-height: 15px; border-radius: 7.5px;
+      background: var(--fill-3); color: var(--label-3);
+      font-family: var(--mono); font-size: 8px; font-weight: 500;
+      letter-spacing: .08em; text-transform: uppercase;
+    }
+    .msg-time {
+      flex-shrink: 0;
+      font-family: var(--mono); font-size: 8.5px; color: var(--label-4);
+      letter-spacing: .05em;
+    }
+
+    .msg-bubble {
+      max-width: 84%;
+      padding: 9px 12px; border-radius: 16px;
+      background: var(--bg-elevated);
+      box-shadow: var(--shadow-sm);
+      cursor: pointer;
+      border-bottom-left-radius: 5px;
+    }
+    .msg.mine .msg-bubble {
+      background: var(--tint-soft);
+      border-bottom-left-radius: 16px; border-bottom-right-radius: 5px;
+    }
+    .msg-bubble:active { filter: brightness(.97); }
+    .msg-text {
+      font-size: 15px; line-height: 1.42; color: var(--label);
+      white-space: pre-wrap; overflow-wrap: anywhere;
+    }
+
+/*  ---- The activity a message is about -----------------------
+    The point of the whole feature. It is a control, not decoration,
+    so it reads as one: a bordered capsule that opens the activity. */
+    .msg-chips { display: flex; flex-direction: column; gap: 5px; margin-top: 7px; }
+    .msg-chip {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 9px; border-radius: 10px;
+      background: var(--bg-raised);
+      box-shadow: inset 0 0 0 .5px var(--separator-solid);
+      text-align: left; max-width: 100%;
+      font-size: 12.5px; font-weight: 500; color: var(--label);
+    }
+    .msg-chip > span {
+      min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .msg-chip .ic { flex-shrink: 0; color: var(--label-3); }
+    .msg-chip.done .ic { color: var(--green); }
+    .msg-chip.done > span { text-decoration: line-through; color: var(--label-3); }
+    .msg-chip:active { background: var(--fill-4); }
+    /* The reference is permanent; the membership is not. Say so rather
+       than rendering a tap that does nothing. */
+    .msg-chip.gone { color: var(--label-4); font-style: italic; cursor: default; }
+
+/*  ---- The composer ------------------------------------------
+    Fixed to the bottom and deliberately allowed to ride up with the
+    iOS keyboard, unlike the tab bar (see syncTabbarToKeyboard in
+    nav.js, which spends real effort undoing exactly that). The .kb
+    class drops the tab-bar clearance once it has been lifted, since
+    the bar is no longer underneath it. */
+    .conv-composer {
+      position: fixed; left: 0; right: 0;
+      bottom: var(--chrome-bottom);
+      z-index: 90;
+      padding: 8px var(--gx-r) 8px var(--gx-l);
+      background: var(--nav-bg);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+      backdrop-filter: saturate(180%) blur(20px);
+      transition: bottom .18s var(--ease);
+    }
+    .conv-composer.kb { bottom: 0; padding-bottom: 8px; }
+    .conv-composer::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0;
+      height: .5px; background: var(--separator);
+    }
+    @media (min-width: 700px) {
+      .conv-composer { padding-left: max(var(--gx-l), calc((100% - var(--content-max)) / 2)); }
+      .conv-composer { padding-right: max(var(--gx-r), calc((100% - var(--content-max)) / 2)); }
+    }
+
+    .conv-composer-row {
+      display: flex; align-items: flex-end; gap: 8px;
+      background: var(--bg-elevated);
+      border-radius: 21px; padding: 4px 4px 4px 14px;
+      box-shadow: inset 0 0 0 .5px var(--separator-solid);
+      transition: box-shadow .18s;
+    }
+    .conv-composer-row:focus-within { box-shadow: inset 0 0 0 1.5px var(--tint); }
+    .conv-composer textarea {
+      flex: 1; min-width: 0; resize: none; border: none; background: none;
+      /* Never below 16px computed, or Safari zooms the page on focus
+         and stays zoomed. */
+      font-family: var(--sans); font-size: max(16px, 16px);
+      line-height: 1.4; color: var(--label);
+      padding: 8px 0; max-height: 120px; overflow-y: auto;
+    }
+    .conv-composer textarea::placeholder { color: var(--label-4); }
+    .conv-composer-go {
+      width: 34px; height: 34px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 17px; background: var(--tint); color: #fff;
+      opacity: .35; pointer-events: none;
+      transition: opacity .15s, transform .15s;
+    }
+    .conv-composer.has-text .conv-composer-go { opacity: 1; pointer-events: auto; }
+    .conv-composer-go:active { transform: scale(.88); }
+    .conv-composer-go .ic { width: 18px; height: 18px; }
+
+/*  ---- Activities attached to the message being typed -------- */
+    .conv-pending { display: none; flex-wrap: wrap; gap: 6px; padding: 0 4px 7px; }
+    .conv-pending.open { display: flex; }
+    .conv-pending-chip {
+      display: flex; align-items: center; gap: 5px;
+      max-width: 100%;
+      padding: 4px 4px 4px 8px; border-radius: 999px;
+      background: var(--tint-soft); color: var(--tint-strong);
+      font-size: 12px; font-weight: 500;
+    }
+    .conv-pending-chip > span {
+      min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .conv-pending-chip .ic { flex-shrink: 0; }
+    .conv-pending-chip button {
+      width: 20px; height: 20px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 10px; color: var(--tint-strong);
+    }
+    .conv-pending-chip button:active { background: var(--tint-soft); }
+
+/*  ---- The @ picker ------------------------------------------
+    Opens upward: the composer is at the bottom of the screen, so a
+    dropdown below it would be off-screen. */
+    .conv-mention {
+      display: none;
+      position: absolute; left: var(--gx-l); right: var(--gx-r);
+      bottom: calc(100% - 4px);
+      max-height: 46vh; overflow-y: auto;
+      background: var(--bg-raised);
+      border-radius: 14px; box-shadow: var(--shadow-lg);
+      z-index: 5;
+    }
+    .conv-mention.open { display: block; }
+    .conv-mention-head {
+      padding: 9px 14px 6px;
+      font-family: var(--mono); font-size: 9px; font-weight: 500;
+      letter-spacing: .12em; text-transform: uppercase;
+      color: var(--label-3);
+    }
+    .conv-mention-item {
+      width: 100%; display: flex; align-items: center; gap: 10px;
+      padding: 9px 14px; text-align: left;
+    }
+    .conv-mention-item:not(:last-child) { border-bottom: .5px solid var(--separator); }
+    .conv-mention-item:active { background: var(--fill-4); }
+    .conv-mention-item > .ic { width: 19px; height: 19px; flex-shrink: 0; color: var(--label-3); }
+    .conv-mention-item.done > .ic { color: var(--green); }
+    .conv-mention-body { min-width: 0; flex: 1; }
+    .conv-mention-name {
+      display: block; font-size: 15px; color: var(--label);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .conv-mention-name mark { background: var(--tint-soft); color: var(--tint-strong); border-radius: 3px; }
+    .conv-mention-sub {
+      display: block; margin-top: 1px;
+      font-family: var(--mono); font-size: 9.5px; letter-spacing: .05em;
+      color: var(--label-3);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }

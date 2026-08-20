@@ -11,11 +11,15 @@
 /* Which tab each screen belongs to, so the right tab stays lit while
    a pushed screen is showing. */
 const PAGE_TAB={home:'home',lists:'lists',globalmap:'map',me:'me',detail:'lists',
-  upnext:'home',done:'home'};
+  upnext:'home',done:'home',
+  messages:'messages',conversation:'messages'};
 
 function nav(page,listId){
   const prev=curPage;
   if(page==='detail'&&listId) curListId=listId;
+  /* A conversation is addressed by its collection id — see curConvId
+     in state.js. */
+  if(page==='conversation'&&listId) curConvId=listId;
   /* Opening a collection always starts in list view — including
      re-opening the one you were just in. The view mode is a per-visit
      choice, not a preference; leaving the map up because that is where
@@ -24,9 +28,16 @@ function nav(page,listId){
   if(page==='detail'&&prev!=='detail') curView='list';
 
   /* Pushed screens slide in from the right; switching tabs cross-fades. */
-  const PUSHED=['detail','upnext','done'];
+  const PUSHED=['detail','upnext','done','conversation'];
   const pushing = PUSHED.includes(page) && !PUSHED.includes(prev);
   if(pushing) backTab=curTab;
+  /* One pushed screen opening another that belongs to a DIFFERENT tab.
+     The conversation's ⋯ menu opens the collection it belongs to, and
+     Back from there has to return to Messages — without this, backTab
+     keeps whatever it was before the conversation was ever opened and
+     the chevron lands on the wrong tab. */
+  else if(PUSHED.includes(page)&&PUSHED.includes(prev)&&PAGE_TAB[page]!==PAGE_TAB[prev])
+    backTab=PAGE_TAB[prev];
 
   document.querySelectorAll('.page').forEach(p=>{
     p.classList.remove('active','anim-push','anim-fade');
@@ -50,6 +61,12 @@ function nav(page,listId){
      resizes it on the way back in, since a hidden container measures 0. */
   if(page!=='detail') destroyDetailMap();
 
+  /* The conversation's live subscription is torn down the same way and
+     for the same reason: it is a websocket held open for one screen,
+     and unlike the globe there is nothing to be gained by keeping it —
+     the messages are refetched on the way back in anyway. */
+  if(page!=='conversation') leaveConversation();
+
   window.scrollTo(0,0);
   updateNavbar();
 
@@ -60,12 +77,29 @@ function nav(page,listId){
   if(page==='detail')    renderDetail();
   if(page==='globalmap') renderGlobalMap();
   if(page==='me')        renderMe();
+  if(page==='messages')     renderMessages();
+  if(page==='conversation') renderConversation();
 }
 
 /* Which screen is the root of each tab, and the order they sit in the
    tab bar — which is the order js/gestures.js swipes through. */
-const TAB_ROOT={home:'home',lists:'lists',map:'globalmap',me:'me'};
-const TAB_ORDER=['home','lists','map','me'];
+const TAB_ROOT={home:'home',lists:'lists',messages:'messages',map:'globalmap',me:'me'};
+/* Messages sits third — the middle of the bar is the easiest reach on
+   a phone, and it is the tab with the most traffic once a list is
+   shared. It is hidden entirely until supabase/messages.sql has been
+   run (applyMessagesAvailability in messages.js), which is also why
+   the swipe order below simply skips it: TAB_ORDER is filtered to what
+   is actually on screen. */
+const TAB_ORDER=['home','lists','messages','map','me'];
+
+/* The tabs a sideways swipe can actually reach. A hidden Messages tab
+   must not be a dead stop in the middle of the bar. */
+function visibleTabs(){
+  return TAB_ORDER.filter(t=>{
+    const el=document.querySelector(`.tab[data-tab="${t}"]`);
+    return el&&el.style.display!=='none';
+  });
+}
 
 /* Tab bar taps.
 
@@ -128,6 +162,11 @@ function refreshAfterChange(src){
   if(p==='lists')          return renderCollections();
   if(p==='globalmap')      return renderGlobalMap();
   if(p==='me')             return renderMe();
+  if(p==='messages')       return renderMessages();
+  /* A conversation is not redrawn wholesale on a mutation: it repaints
+     itself from its own list as messages arrive, and a full re-render
+     would throw the reader back to the bottom mid-read. */
+  if(p==='conversation')   return;
   return renderDetail();
 }
 
@@ -162,10 +201,22 @@ function updateNavbar(){
     title.textContent=curPage==='upnext'?'Up Next':'Accomplished';
     left.innerHTML=`<button class="navbtn back" onclick="nav('home')">${icon('chevron-left')}<span>Home</span></button>`;
   } else if(curPage==='detail'){
-    left.innerHTML=`<button class="navbtn back" onclick="goBack()">${icon('chevron-left')}<span>Lists</span></button>`;
+    /* The label has to name where Back will actually land. A collection
+       can be opened from the Messages tab as well as from Lists (the
+       conversation's ⋯ menu), and goBack() honours backTab — so a
+       hardcoded "Lists" would point at the wrong screen. */
+    const backLabel=backTab==='messages'?'Messages':'Lists';
+    left.innerHTML=`<button class="navbtn back" onclick="goBack()">${icon('chevron-left')}<span>${backLabel}</span></button>`;
     right.innerHTML=`<button class="navbtn disc ghost" onclick="openCollectionMenu()" aria-label="List options">${icon('ellipsis')}</button>`;
     /* Asks plan-or-record first — see startNewActivity(). */
     fabFn=startNewActivity;fabLabel='New activity';
+  } else if(curPage==='messages'){
+    title.textContent='Messages';
+  } else if(curPage==='conversation'){
+    left.innerHTML=`<button class="navbtn back" onclick="nav('messages')">${icon('chevron-left')}<span>Messages</span></button>`;
+    right.innerHTML=`<button class="navbtn disc ghost" onclick="openConversationMenu()" aria-label="Conversation options">${icon('ellipsis')}</button>`;
+    /* The title is the list's name, set by renderConversation() once it
+       has been fetched. */
   } else if(curPage==='globalmap'){
     title.textContent='The Map';   /* the map has its own floating controls */
   } else if(curPage==='me'){

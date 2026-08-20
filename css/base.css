@@ -64,7 +64,7 @@
          not its hue, so the component CSS reads the same either way. */
       --tint:            #9c5a2e;
       --tint-strong:     #8a4d25;
-      --green:           #4a5340;
+      --green:           #6c8853;
       --red:             #a8443c;
       --orange:          #b8752f;
       --yellow:          #9a8433;
@@ -87,15 +87,25 @@
          belong to the deadline badge sitting immediately beside them,
          and an overdue activity and an important one are different
          claims on your attention. */
-      --slate:           #3d7f91;   /* low    — cool, recedes */
-      --violet:          #6d43b0;   /* medium — saturated purple */
-      /* high is --tint, the terracotta above. */
+      --slate:           #42879a;   /* low    — cool, recedes */
+      --violet:          #6c44ab;   /* medium — saturated purple */
+      /* High is the same terracotta as --tint in light mode, but it gets its
+         OWN token rather than borrowing that one. --tint means "tappable"
+         everywhere in the app, and the two only agree here by coincidence:
+         in dark mode --tint lifts to #d98f5c so buttons stay legible on the
+         near-black, while a high-priority rail stays the full-strength
+         terracotta. Sharing the token would force one of those to be wrong.
+         The same applies to --pri-soft, which is deliberately stronger than
+         the --tint-soft used by tinted buttons. */
+      --pri-high:        #9c5a2e;
+      --pri-high-strong: #8a481c;
 
       --tint-soft:       rgba(156,90,46,.13);
-      --green-soft:      rgba(74,83,64,.14);
+      --pri-soft:        rgba(156,90,46,.25);
+      --green-soft:      rgba(108,136,83,.25);
       --red-soft:        rgba(168,68,60,.12);
-      --violet-soft:     rgba(109,67,176,.15);
-      --slate-soft:      rgba(61,127,145,.15);
+      --violet-soft:     rgba(108,68,171,.25);
+      --slate-soft:      rgba(66,135,154,.25);
 
       /* ---- Depth ----
          Warm-tinted rather than neutral black, so shadows sit on the
@@ -162,22 +172,27 @@
 
         --tint:            #d98f5c;
         --tint-strong:     #e5a273;
-        --green:           #9db184;
+        --green:           #6c8853;
         --red:             #e0736a;
         --orange:          #d99a4e;
         --yellow:          #cfb85e;
         --purple:          #a695c9;
         --gray:            #8a8375;
         --sand:            #c7b795;
-        /* Same separation as light mode, lifted for a dark ground. */
-        --slate:           #63b6cb;
-        --violet:          #b78ff5;
+        /* One palette across both grounds: the four activity colours are the
+           same hexes as light mode, separated from the ground by the softer
+           .17 fills rather than by being lifted. */
+        --slate:           #42879a;
+        --violet:          #6c44ab;
+        --pri-high:        #9c5a2e;
+        --pri-high-strong: #ae6c40;
 
         --tint-soft:       rgba(217,143,92,.18);
-        --green-soft:      rgba(157,177,132,.18);
+        --pri-soft:        rgba(156,90,46,.17);
+        --green-soft:      rgba(108,136,83,.17);
         --red-soft:        rgba(224,115,106,.16);
-        --violet-soft:     rgba(183,143,245,.22);
-        --slate-soft:      rgba(99,182,203,.20);
+        --violet-soft:     rgba(108,68,171,.17);
+        --slate-soft:      rgba(66,135,154,.17);
 
         --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
         --shadow-md: 0 4px 16px rgba(0,0,0,.5);

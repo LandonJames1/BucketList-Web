@@ -40,6 +40,11 @@ function resetAccountState(){
   invalidateAll();
   invalidateSharedIds();
   resetSharingProbe();
+  /* The conversation cache, the unread badge and the live realtime
+     channel are all per-account — and the channel is subscribed under
+     the previous session's token, so it has to go with the rest. See
+     ONE ACCOUNT AT A TIME. */
+  resetMessagesState();
   /* Whether the *previous* account still existed says nothing about
      this one. See IS THIS SESSION STILL A REAL ACCOUNT? below. The
      watch is restarted by showApp(), so it never runs without a user
@@ -325,6 +330,14 @@ async function showApp(){
      revalidates — sending a column the table does not have fails the
      whole insert. See probeMultiList() in js/api.js. */
   probeMultiList();
+  /* And whether this project has the messages tables. The Messages tab
+     stays hidden until this answers true, and answering fills the hub
+     so the tab arrives with its unread count already on it. See
+     js/messages.js. */
+  probeMessages();
+  /* A message notification tapped while the app was closed lands here.
+     See ARRIVING FROM A NOTIFICATION in js/messages.js. */
+  handlePushLanding();
   /* A link shared into the app is held from boot until there is
      somewhere to file it. See js/share.js. */
   handleSharedInput();
@@ -811,6 +824,12 @@ document.addEventListener('visibilitychange',()=>{
      be behind — the same account may have been used on another device —
      so drop it, pull fresh, and redraw whatever is on screen. */
   revalidate().then(()=>refreshAfterChange());
+  /* The hub's unread counts are the one thing realtime deliberately
+     does not cover — postgres_changes filters on a single column, so
+     the live channel only reaches the conversation on screen. Coming
+     back to the app is when the rest of them get caught up. See the
+     header of js/messages.js. */
+  refreshConversations();
 });
 
 /* The network returning is the other moment the cache can be stale: a
@@ -828,6 +847,7 @@ window.addEventListener('online',()=>{
      moment it can be asked at all. */
   recheckSessionSoon();
   revalidate().then(()=>refreshAfterChange());
+  refreshConversations();
 });
 window.addEventListener('offline',()=>updateSyncUI());
 

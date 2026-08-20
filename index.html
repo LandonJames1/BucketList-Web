@@ -76,6 +76,8 @@
   <link rel="stylesheet" href="css/import.css" />
   <link rel="stylesheet" href="css/dupes.css" />
   <link rel="stylesheet" href="css/sharing.css" />
+  <link rel="stylesheet" href="css/messages.css" />
+  <link rel="stylesheet" href="css/notes.css" />
   <link rel="stylesheet" href="css/pwa.css" />
   <link rel="stylesheet" href="css/responsive.css" />
 </head>
@@ -267,6 +269,44 @@
   <div class="map-box" id="mapContainer"></div>
 </div>
 
+<!-- ===== MESSAGES TAB (root) =====
+     One row per shared list: the last thing said in it and how much of
+     it you have not read. Only shared lists have a conversation — a
+     list nobody else is in has nobody to talk to. See messages.js. -->
+<div class="page" id="page-messages">
+  <div class="large-title">
+    <div class="eyebrow">Sorting it out together</div>
+    <h1><em>Messages</em></h1>
+  </div>
+  <div id="messagesBody"></div>
+</div>
+
+<!-- ===== A CONVERSATION — pushed on top of Messages =====
+     The one screen in the app pinned to the bottom rather than the top:
+     the history scrolls inside .conv-scroll and the composer is docked
+     under it. That is why .page-conv drops the .page padding, the same
+     way .page-map does. -->
+<div class="page page-pushed page-conv" id="page-conversation">
+  <div class="conv-scroll" id="convScroll"></div>
+  <div class="conv-composer" id="convComposer">
+    <!-- Opens upward: the composer is at the bottom of the screen, so a
+         dropdown below it would be off screen. -->
+    <div class="conv-mention" id="convMention"></div>
+    <!-- The activities this message is about. Removable, because the
+         text the mention inserted is editable and the two could
+         otherwise only be separated by retyping the message. -->
+    <div class="conv-pending" id="convPending"></div>
+    <div class="conv-composer-row">
+      <textarea id="convComposerText" rows="1" maxlength="2000"
+        placeholder="Message — @ to mention an activity"
+        autocapitalize="sentences" enterkeyhint="send"
+        oninput="onConvComposerInput()" onkeydown="onConvComposerKey(event)"></textarea>
+      <button class="conv-composer-go" id="convComposerGo" onclick="sendMessage()"
+        aria-label="Send"></button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== MAP TAB =====
      Full bleed: the map fills the viewport and runs under both bars,
      with all of its controls floating on top. -->
@@ -330,6 +370,11 @@
 <nav class="tabbar" id="tabbar">
   <button class="tab active" data-tab="home" onclick="selectTab('home')" id="tabHome"></button>
   <button class="tab" data-tab="lists" onclick="selectTab('lists')" id="tabLists"></button>
+  <!-- Hidden until probeMessages() finds the table — see
+       applyMessagesAvailability() in messages.js. It is in the markup
+       either way so paintStaticIcons() and the bar's layout stay
+       unconditional. -->
+  <button class="tab" data-tab="messages" onclick="selectTab('messages')" id="tabMessages" style="display:none"></button>
   <button class="tab" data-tab="map" onclick="selectTab('map')" id="tabMap"></button>
   <button class="tab" data-tab="me" onclick="selectTab('me')" id="tabMe"></button>
 </nav>
@@ -518,18 +563,27 @@
         <input type="hidden" id="aRemind" /><input type="hidden" id="aRemindNote" />
       </div>
 
+      <!-- Notes. NOT the old "why is this on your list?" field, which
+           asked the wrong question at the moment of capture and was
+           rightly removed. This writes the first entry of the activity's
+           append-only notes log — the working state of a plan several
+           people are making ("we settled on the 14th", "Sarah is
+           booking the car"). Anything typed here is filed as a dated,
+           attributed entry when the activity saves, and the log itself
+           is read and added to on the activity detail sheet. Hidden
+           until supabase/messages.sql has been run. See notes.js. -->
+      <div class="fg" id="aNotesRow" style="display:none">
+        <label>Notes<span class="opt"> optional</span></label>
+        <textarea id="aNotes" class="fg-note" rows="1" maxlength="1000"
+          placeholder="Add a note — kept as a dated entry"
+          autocapitalize="sentences"></textarea>
+      </div>
+
       <!-- Links are shown outright rather than behind a "More options"
            disclosure. Once the date and list share a line the sheet is
            short enough to hold everything, and a collapsed field is one
            most people never open — the same reason Location was pulled
-           out of the disclosure before it.
-
-           There is deliberately no Notes field here. Asking "why is this
-           on your list?" at the moment of capture is asking the wrong
-           question at the wrong time: the answer is the activity's name,
-           and the field it sat in was the one people skipped. What you
-           thought about it afterwards belongs on the completion sheet,
-           in "How it went". -->
+           out of the disclosure before it. -->
       <div class="fg">
         <label>Links<span class="opt"> optional</span></label>
         <div class="chip-field" id="aLinksWrap" onclick="$('aLinkInput').focus()"></div>
@@ -1089,6 +1143,8 @@
 <script src="js/collections.js"></script>
 <script src="js/detail.js"></script>
 <script src="js/activities.js"></script>
+<script src="js/messages.js"></script>
+<script src="js/notes.js"></script>
 <script src="js/me.js"></script>
 <script src="js/bulk.js"></script>
 <script src="js/map.js"></script>

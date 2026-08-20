@@ -101,12 +101,18 @@ CLAUDE.md             This guide
 README.md             Human-facing setup + structure overview
 manifest.webmanifest  PWA metadata (name, icons, standalone display, theme color)
 sw.js                 Service worker — offline app shell + runtime caching. Must stay at the root.
-supabase/             Backend — schema.sql (reminders + reminder_deliveries), profiles.sql (the Users row, its RLS and the sign-up trigger), sharing.sql (shared lists), multilist.sql (one activity in several lists), home.sql (the saved Home address), storage.sql (the media bucket), cron.sql, and four Edge Functions: send-reminders, unfurl (shared links, screenshots *and* location prediction), geo (place search, holding the HERE key so the browser never does) and delete-account (erasing an account needs the service_role key, so it cannot live in the client). All optional except profiles.sql; each other piece probes for itself and the UI that needs it hides when it is absent.
+supabase/             Backend — schema.sql (reminders + reminder_deliveries), profiles.sql (the Users row, its RLS and the sign-up trigger), sharing.sql (shared lists), messages.sql (a conversation per shared list, plus the append-only activity_notes log), multilist.sql (one activity in several lists), home.sql (the saved Home address), storage.sql (the media bucket), cron.sql, and five Edge Functions: send-reminders, send-message-push (an immediate Web Push when a message is sent — see **Notifying a conversation**), unfurl (shared links, screenshots *and* location prediction), geo (place search, holding the HERE key so the browser never does) and delete-account (erasing an account needs the service_role key, so it cannot live in the client). All optional except profiles.sql; each other piece probes for itself and the UI that needs it hides when it is absent.
 css/                  One stylesheet per concern (see CSS file map)
 js/                   One script per concern (see JS file map)
 icons/                App icon PNGs + generate.py, the script that draws them
 Supabase Setup/       CSV exports of the Collections / Activities / Users tables (schema reference; STALE, see Back end)
+.github/workflows/    reminders.yml — the daily sweep that fires send-reminders. Replaces
+                      supabase/cron.sql; run one or the other, never both.
 _backup/              The original single-file version, kept as a safety net
+color-lab.html        A bench for the four activity colours (done / high / medium / low),
+                      rendering the real rails, capsules, cards and pins on both grounds at
+                      once. Dev tool only: not linked from index.html, not in sw.js. Open it
+                      directly; #ember / #signal / #ladder / #current pick a scheme.
 ```
 
 There is no build step. Serve statically: `python3 -m http.server 8000`.
@@ -141,11 +147,18 @@ There is no router and no URL state — reloading always lands on Home.
 | `page-done` | `done` | (pushed on Home) | `renderDone()` — everything ever completed |
 | `page-lists` | `lists` | Lists | `renderCollections()` — every collection as a photo card |
 | `page-detail` | `detail` | (pushed on Lists) | `renderDetail()` — one collection's activities |
+| `page-messages` | `messages` | Chat | `renderMessages()` — a row per shared list's conversation |
+| `page-conversation` | `conversation` | (pushed on Messages) | `renderConversation()` — one shared list's messages |
 | `page-globalmap` | `globalmap` | Map | `renderGlobalMap()` — every located activity |
 | `page-me` | `me` | You | `renderMe()` — profile and account actions |
 
-Tab labels are short ("Lists", "You") while every identifier in the code uses
-the domain word (`collections`, `me`). Both name the same thing.
+Tab labels are short ("Lists", "You", "Chat") while every identifier in the
+code uses the domain word (`collections`, `me`, `messages`). Both name the
+same thing.
+
+**The Messages tab is the fifth and last.** Five is the practical ceiling on a
+phone, and this one is hidden entirely until `supabase/messages.sql` has been
+run — see **Messages**.
 
 `nav(page, listId)` is the single entry point for changing screens. It:
 
@@ -1247,6 +1260,266 @@ why the `SECURITY DEFINER` helpers exist (policy recursion) and why
 Joining and inviting both need the network. Activities in an
 already-joined shared list queue and sync like any other.
 
+#### Messages
+
+`js/messages.js` plus `supabase/messages.sql`. A conversation per
+shared list, and a **Messages tab** collecting them — the fifth and
+last tab, since five is the practical ceiling on a phone.
+
+**Only shared lists have a conversation, and nothing creates one.** It
+is simply the messages that exist for a collection, so sharing a list
+makes one. A list nobody else is in has nobody to talk to, and a chat
+with yourself on every private list would be the tab's entire content
+for most people. The rule is "at least one `collection_members` row",
+which is the same set `sharedCollectionIds()` badges on the Lists tab,
+and `conversation_list()` applies it server-side so the two cannot
+disagree.
+
+##### Messages are deliberately NOT in the app's two backing queries
+
+This is the load-bearing decision, and everything else follows from it.
+Collections and activities are fetched whole, cached in memory and
+mirrored to IndexedDB, because both are bounded by how much one person
+curates. Messages are not: they grow forever and are read from the
+tail. Putting them in that cache would mean pulling every message in
+every list on every launch.
+
+So there are two things here and they are cached differently:
+
+- **The hub** is one RPC — `conversation_list()` — returning a row per
+  shared list with its last message and an unread count. Bounded by the
+  number of lists, so it caches for the session like everything else
+  and refreshes on foreground. Building it client-side is the thing
+  that would have dragged messages into the main cache.
+- **A conversation** is fetched when you open it, newest `CONV_PAGE`
+  (40) first, paging backwards as you scroll up. Nothing is kept
+  between visits.
+
+Paging backwards **corrects the scroll offset by the height it just
+added** (`loadOlderMessages`). Without it, loading older messages
+throws the reader to a different part of the conversation — the same
+class of defect as a list that re-flows while you read down it.
+
+##### Realtime, and how far it reaches
+
+`postgres_changes` filters on a **single column equality**. That is
+exactly a conversation (`collection_id=eq.X`) and it cannot express
+"any list I am in", which is what the hub would want. Rather than
+build a per-user broadcast channel with a database trigger behind it:
+
+- **the open conversation** gets a live channel, subscribed on entry
+  and torn down by `nav()` on the way out — the same treatment the
+  detail map gets, and for the same reason: it is a resource held for
+  one screen;
+- **the hub and the tab badge** refresh on foreground and after a send,
+  which is the trade `revalidate()` already makes everywhere else.
+
+`onRealtimeMessage()` has three guards worth keeping: a soft delete
+arrives as an *update*, so it is matched on `deleted_at` first; your
+own send is already on screen (drawn from the row `dbInsert` minted)
+so the echo is dropped by id; and it only sticks to the bottom **if
+the reader is already there**, or somebody else typing would yank you
+out of the history you were reading.
+
+##### Mentioning an activity
+
+The point of the feature: *"which one are we talking about?"* answered
+in the message rather than in the next three messages.
+
+Typing `@` opens a list of this collection's activities, scored by
+**`searchActivities()`** — Home's composer's own matcher, run against
+the in-memory cache, synchronous and free. Picking one **inserts the
+activity's name as ordinary text** so the sentence still reads, and
+attaches its id to `messages.activity_ids`. The array is authoritative
+and the chip under the message is drawn from it; the text is only the
+sentence. The chips above the composer are removable, because the
+inserted text is editable and the two could otherwise only be
+separated by retyping the message.
+
+**Scoped to the conversation's own collection, deliberately.** An
+activity in a list some of the readers cannot see would render as
+"no longer in this list" for them, which is a worse answer than not
+offering it — and the fix when you want to talk about something else
+is to add it to this list, which is one action away.
+
+That "no longer in this list" state is a real case, not a defensive
+branch: **the reference is permanent and the membership is not.** An
+activity removed from the list after being mentioned renders as a
+disabled chip saying so, rather than a tap that does nothing.
+
+##### A message outlives its author
+
+`sender_id` is `on delete set null`, and `sender_name` is a snapshot of
+the display name taken at send time — the same thing
+`collection_members.display_name` does. Deleting an account therefore
+leaves the conversation intact and readable, because deleting
+somebody's messages tears holes in a discussion other people had and
+still need.
+
+**And it says so.** A null `sender_id` renders the author greyed with
+a `Deleted account` chip beside the name. A name with no account behind
+it that looks like every other name is the quiet kind of wrong this app
+tries not to ship — see the same argument under **Moving house**.
+
+Deleting a message is a **soft** delete (`deleted_at`), so the thread
+does not reflow under somebody mid-read; the select filters it out.
+
+##### Things to keep
+
+- **Sending goes through `dbInsert`**, not `sb.from().insert()`, so a
+  message written in a tunnel is queued and replayed like any other
+  write. `applyOp()` ignores tables it does not cache, which is exactly
+  right — messages are not in the snapshot.
+- **`resetMessagesState()` is called from `resetAccountState()`** and
+  clears the hub cache, the badge, `curConvId` *and the live channel*,
+  which is subscribed under the previous session's token. See **One
+  account at a time**.
+- **The tab is in the markup but hidden** until `probeMessages()`
+  answers true (`applyMessagesAvailability`). `TAB_ORDER` therefore has
+  a companion, **`visibleTabs()`**, which is what the swipe gesture
+  reads — a hidden tab must not be a dead stop in the middle of the
+  bar.
+- **`nav()` sets `backTab` when one pushed screen opens another owned
+  by a different tab.** The conversation's ⋯ menu opens the collection
+  it belongs to, and Back from there has to return to Messages; the
+  detail screen's back label reads `backTab` rather than saying
+  "Lists" unconditionally.
+- **Anything that changes membership calls `refreshConversations()`**
+  (join, leave, remove), because membership decides which lists have a
+  conversation at all.
+
+##### Notifying a conversation
+
+**Immediate, and not on a schedule.** The two are different problems
+and it is worth stating why, because conflating them is the mistake
+that was made once in this file:
+
+- A **reminder** is *"tell me on March 3rd."* Nothing happens on March
+  3rd — no user acts, no row is written — so something has to wake up
+  and check the calendar. That is the *only* thing a schedule buys, and
+  it does not generalise.
+- A **message's** event is the insert itself, so it pushes the moment
+  it is sent.
+
+What is genuinely impossible is the *browser* scheduling its own
+notification for a future date (Notification Triggers never shipped
+past an experiment). A server pushing on an event is ordinary.
+
+**`send-message-push` is called from the client, not from a database
+trigger.** `sendMessage()` invokes it after the insert succeeds, via
+`notifyMessageSent()`. That buys: no `pg_net`, no trigger to keep in
+step with the table, the caller's JWT already in hand so the function
+can verify *who* is sending, and a failure that lands in the console
+rather than in Postgres logs.
+
+**The client is trusted with a message id and nothing else.** The body,
+the sender, the collection and the audience are all read back inside
+the function with the service role, and it refuses a message the caller
+did not send. Otherwise it would be "here is a payload, deliver it" —
+a way to push arbitrary text to arbitrary people with a valid JWT.
+
+The tradeoff, stated plainly: **a message that reaches the table any
+other way does not push.** In practice that is the offline queue
+replay, which upserts directly — so a message written in a tunnel syncs
+silently. Accepted rather than fixed; the alternative is the trigger.
+
+Everything else follows the shape `send-reminders` already arrived at:
+the audience is the owner plus every `collection_members` row, the
+sender is dropped from it, and 404/410 endpoints are pruned.
+
+**Muting is per person per list** (`conversation_prefs`, read only by
+the function). It stops the push and nothing else — the conversation
+still appears on the hub with its unread count, because a mute that
+also hid the list would be a way to lose one.
+
+**Tapping the notification has two entirely different paths**, and both
+are needed: the app already running is reached by a `postMessage` from
+`sw.js` (there is no URL routing here, so there is nothing to navigate
+to), and a cold start opens `?conv=<id>`, which `readPushLanding()`
+reads at boot. That reader follows `readEmailConfirmation()`'s pattern
+— it strips only its own key and puts the rest of the query string
+back — so it can run ahead of the two readers that blank the search
+string wholesale. An invite link followed to a message notification
+would otherwise lose one of the two.
+
+##### The conversation is the app's second full-height screen
+
+`.page-conv` drops the `.page` padding the way `.page-map` does, and
+for a related reason: it owns its own scrolling. The history scrolls
+inside `.conv-scroll`, pinned between the nav bar and a docked
+composer, so the newest message and the field you type into are both
+always where you left them.
+
+The composer is `position: fixed; bottom: var(--chrome-bottom)` and is
+**deliberately allowed to ride up with the iOS keyboard** — the exact
+behaviour `syncTabbarToKeyboard()` spends real effort undoing for the
+tab bar, and correct here for the same reason bottom-anchored sheets
+are left alone. The one correction is `syncComposerToKeyboard()`, which
+drops the tab-bar clearance once it has been lifted, since the bar is
+no longer underneath it.
+
+#### Notes on an activity
+
+`js/notes.js` plus the `activity_notes` table in the same migration, so
+`notesReady()` is `messagesReady()`.
+
+**This is not the old Notes field coming back.** That field asked "why
+is this on your list?" at the moment of capture, which is the wrong
+question at the wrong time — the answer is the activity's name — and it
+sat empty on nearly every row. That argument still holds and the
+paragraph explaining it should not be deleted from this file.
+
+This is a different thing with a different reason. Once a list is
+shared, notes are the **working state of a plan several people are
+making**: "we settled on the 14th", "Sarah is booking the car", "the
+permit window opens in March". A collaboration artifact, written after
+the activity exists rather than while it is being created.
+
+##### Append-only, and that is the whole design
+
+The app is last-write-wins with no presence, which is fine for a
+library one person curates and exactly wrong for a field two people
+might edit during one conversation — one of them would silently lose
+what they wrote.
+
+So a note is a **row**: attributed, timestamped, never rewritten. Two
+people adding at the same moment both succeed, because they are not
+writing to the same place. There is deliberately **no UPDATE policy**
+on the table. A wrong entry is removed and another added.
+
+**This is also why the log is not a JSON column.** `Activities.description`
+is dead and unused and would have needed no migration at all — and
+stuffing the log into it would have re-created the exact
+last-write-wins field the log exists to replace. `description` stays
+dead; see **Back end**.
+
+##### Where it appears
+
+- **The activity detail sheet** carries the log and its composer,
+  directly under the media. On a shared list this is the working state
+  of the plan, which is why somebody opened the activity at all;
+  location and links are reference and go below it. It is rendered into
+  a **placeholder** and filled in behind the sheet, because it is a
+  round trip and nothing else on that sheet should wait for it.
+- **The new/edit activity sheet** has a Notes field above Links, which
+  writes the log's **first entry**. It is written *after* the activity
+  and deliberately not as part of that write — they are different rows
+  in different tables, and a note that fails must not take the activity
+  down with it. The field is always empty, including on an edit:
+  filling it with existing entries would invite them to be rewritten,
+  which is the one thing a log must not allow.
+- **A message's ⋯ menu offers "Add to activity notes"**, which is the
+  reason the whole thing is worth building. A decision reached in the
+  conversation — *"ok, the 14th then"* — is exactly what should end up
+  on the activity, and the alternative is reading the message, opening
+  the activity and retyping it. The entry is attributed to **whoever
+  filed it**, not to the original sender: they wrote a message, not a
+  note, and promoting it was somebody else's decision.
+
+Removing an entry is the author's own, or the owner's of the list the
+activity is homed in — the moderation floor a shared space needs, via
+`owns_activity_collection()`. RLS decides; the buttons here only draw.
+
 #### The immersive map
 
 The Map tab is full bleed: `.page-map` drops all padding and the map
@@ -1803,9 +2076,27 @@ treatment — a rail down the row's leading edge and a capsule in the meta line
 
 | Priority | Token | Colour |
 | --- | --- | --- |
-| High | `--tint` | terracotta |
+| High | `--pri-high` | terracotta |
 | Medium | `--violet` | saturated purple |
 | Low | `--slate` | blue-teal |
+
+**High has its own token; it no longer borrows `--tint`.** In light mode the
+two hold the same terracotta, which is exactly why the old arrangement looked
+harmless — but they agree there by coincidence. `--tint` means "tappable", so
+in dark mode it lifts to `#d98f5c` to stay legible as a button on the
+near-black, while a high-priority rail wants the full-strength `#9c5a2e` in
+both modes. One token could only ever be right for one of them. `--pri-soft`
+is separate from `--tint-soft` for the same reason: the priority capsule sits
+at `.25`/`.17`, the tinted buttons at `.13`/`.18`. Four places read the
+priority tokens — `.tag-high`, `.pri-high::before` and the `.seg-pri` swatch
+in `components.css`, and `PRI_VAR` in `map.js`.
+
+**The four activity colours are one palette across both grounds.** Done,
+high, medium and low hold the same hexes in light and dark; only the soft
+fills change, from `.25` to `.17`. That is a deliberate departure from the
+rest of the palette, where every accent is lifted for the dark ground — these
+four are separated from their background by the fill strength instead, which
+keeps a priority reading as the same colour whichever mode you are in.
 
 **They are separated on chroma as well as hue, and that is deliberate.**
 Medium and low were `#8a72b5` and `#4d5a6b` — a muted violet and a muted
@@ -2322,9 +2613,9 @@ Other rules:
   completed; `--red` is destructive only. The token is named for its role, so
   the component CSS reads correctly whatever hue it holds.
 - **Priority has its own three-colour scale, and red is not on it.**
-  `--tint` (high), `--violet` (medium) and `--slate` (low). Medium has its own
-  token rather than reusing `--purple`, which the You tab uses at icon size and
-  wants darker. Red, orange and yellow belong to the deadline badge sitting
+  `--pri-high` (high), `--violet` (medium) and `--slate` (low). High has its
+  own token rather than reusing `--tint`, and medium its own rather than
+  reusing `--purple`, which the You tab uses at icon size and wants darker. Red, orange and yellow belong to the deadline badge sitting
   right beside it — an overdue activity and an important one are different
   claims on your attention, and sharing a colour made them argue. The two
   lower steps are cool in a warm palette, which is deliberate: they have to
@@ -2375,6 +2666,8 @@ Loaded in this order; **order matters**.
 | `import.css` | `.imp-*` — the sheet a shared link or screenshot opens into (its result checklist, the screenshot preview, the duplicate mark, the waiting and caption-fallback states) — plus `.shr-*` (`.shr-lead`/`.shr-url`/`.shr-note`), written for the iOS Shortcut setup sheet that is gone and kept because `sharing.css` leans on all three for the invite and accept-an-invite cards. |
 | `dupes.css` | `.dupe-*` — the "you may already have this" sheet. Deliberately quiet: no red, no alert iconography, an ordinary tinted confirm. It interrupts the fastest path in the app, so it has to read as a question. |
 | `sharing.css` | `.shr-people-*`/`.shr-avatar`/`.shr-role` and `.join-*` — the invite sheet's roster and the accept-an-invite card — plus `.shr-code-head`/`.shr-code` (the invite as something that can be read off one screen and typed into another) and `.join-code-input`. Reuses `.shr-lead`/`.shr-url`/`.shr-note` from `import.css` on purpose: both are "here is a link, here is what to do with it". |
+| `messages.css` | `.conv-*` (the hub's rows and the conversation's scroller, composer and `@` picker), `.msg-*` (a message, its author line, its bubble and the activity chips under it) and `.tab-badge`, the unread count on the tab bar. **`.page-conv` is the app's second full-height screen after the map** — it drops `.page`'s padding and owns its own scrolling; read the note there before changing it. |
+| `notes.css` | `.note-*` — the append-only log on an activity, its composer, and `.fg-note`, the field on the new/edit activity sheet that writes the log's first entry. The meta line is mono and the body is sans, deliberately **not** the serif `.ad-note.prose` uses: "How it went" is a story you read back, this is working state you scan. |
 | `pwa.css` | The offline banner, install bar, iOS Add-to-Home-Screen sheet. |
 | `responsive.css` | Only the two directions away from phone-first: <375px, and ≥700px where the app centres in a column instead of stretching. **Must load last.** |
 
@@ -2386,7 +2679,7 @@ Loaded in this order; **order matters**.
 | File | Domain |
 | --- | --- |
 | `config.js` | `SUPABASE_URL`/`SUPABASE_KEY`, **`HERE_API_KEY`** (place search; public by design, restrict it by origin in the HERE portal — empty falls back to Nominatim), the `sb` client (auth options spelled out rather than defaulted — note `detectSessionInUrl:false`, the one that is *not* a default: `auth.js` handles the email-confirmation landing itself), the `COVERS` array of default Unsplash covers, and `randCover(existingCovers)` (picks a cover the user isn't already using). |
-| `state.js` | Every shared mutable global: `currentUser`, the navigation triple (`curTab`, `curPage`, `backTab`), `curListId`, `editingListId`, `editingActId`, `completingId`, `curFilter`, **`curSort`** (see **Sorting a collection**), `curView`, `upMedia`, `coverPhoto`, `userProfile`, `pendingShare` (a link shared in, held from boot until there is a signed-in user to file it for), and the map handles. Other files declare their own feature-local globals next to their code (`aLinks`, `bulkEntries`, `actMap`, `lbPhotos`, `locTimer`). |
+| `state.js` | Every shared mutable global: `currentUser`, the navigation triple (`curTab`, `curPage`, `backTab`), `curListId`, **`curConvId`** (which conversation the conversation screen is showing — it *is* a collection id), `editingListId`, `editingActId`, `completingId`, `curFilter`, **`curSort`** (see **Sorting a collection**), `curView`, `upMedia`, `coverPhoto`, `userProfile`, `pendingShare` (a link shared in, held from boot until there is a signed-in user to file it for), and the map handles. Other files declare their own feature-local globals next to their code (`aLinks`, `bulkEntries`, `actMap`, `lbPhotos`, `locTimer`). |
 | `utils.js` | `$` (getElementById), `esc` (HTML-escape — **use it on every interpolated value**, all rendering is template strings), **`uuidv4`/`isUuid`** (client-minted row ids — read the warning under **Working offline** before touching them), `cap`, `todayISO`, `fmtDate(s, withYear)` (omits the year when it's the current one, unless `withYear` — a completed date is a record you look back on, so it always carries its year), `dateInfo(a)` (turns a target date like "This Year" into a `{label, cls}` urgency badge), `shakeEl`, `compress`, `confetti`, the priority pair `priClass`/`priTagHTML` (see **Showing priority**), **`ACT_SORTS`/`DEFAULT_ACT_SORT`/`sortActivities`** (see **Sorting a collection**), **`activityListLabel(a, lists)`** — what the `.list-chip` on a row says, now that an activity can be in several lists — and **`bootKeep`/`bootRead`/`bootDrop`**, the sessionStorage shelf that keeps `?join=`/`?share=` alive across a reload (see **Shared lists**; reading deliberately does not remove), plus **`bootKeepLong`/`bootReadLong`/`bootDropLong`** — the same shelf on localStorage with a 7-day TTL, so an invite survives the tab being closed while the recipient goes to find their password. |
 | `exif.js` | `exifReadLocation(file)` — the GPS fix out of a photo's EXIF, or null. Handles **JPEG and HEIC/HEIF/AVIF**, dispatching on magic bytes rather than `file.type`. Underneath: the JPEG walk (`exifFindTiff`), the HEIC box walk (`isoBoxes`, `isoType`, `heicReadLocation`, `heicExifExtent`, `heicExifItemId`, `heicItemExtent`, `heicTiffStart`, `isTiffAt`), and the shared TIFF reader both land on (`exifGpsFrom`, `exifTagValue`, `exifDMS`). Pure, no dependencies, every failure path returns null rather than throwing. **Must be called against the original `File`**: a canvas re-encode strips every tag. See **Where the photo was taken**. |
 | `fuzzy.js` | Approximate string matching, shared by duplicate detection and search. `similarity(a,b)` (symmetric — are these the same thing?) and `matchScore(q,text)` (asymmetric — does this row answer what is being typed?), plus `scoreFields()` and the primitives underneath: `fuzzyNorm`, `fuzzyTokens`, `fuzzyStem`, `fuzzyTokenSim`, `fuzzySoftDice`, `fuzzyTrigrams`, `fuzzyDice`, `fuzzyEditRatio`. Pure and synchronous. **See How the fuzzy matching works** — the constants are tuned, not derived. |
@@ -2399,7 +2692,7 @@ Loaded in this order; **order matters**.
 | File | Domain |
 | --- | --- |
 | `auth.js` | **`resetAccountState()`** — everything belonging to one account, cleared on every auth transition (see **One account at a time**) — **`ensureSessionLive`/`verifyLiveUser`/`authAnswerIsDefinitive`/`signOutStaleSession`/`resetSessionLiveCheck`/`recheckSessionSoon`/`startSessionWatch`/`stopSessionWatch`**, which is how a session belonging to a deleted account stops being trusted, on every device (see **Being signed into an account that no longer exists**) — **`inviteSweepDue()`/`authJustAuthenticated`**, which decide when to ask the server whether an invite is waiting for this address (see **An invite that survives creating an account**) — plus `showAuth`/`showApp` (swap `#authPage` against `#appWrap`; `showApp` boots into Home, loads the profile, triggers the iOS install hint, picks up any link shared in via `handleSharedInput()`, and starts the token auto-refresh). Also the `visibilitychange` handler that stops/starts auto-refresh — browsers suspend timers in a backgrounded PWA, and without restarting on resume the access token goes stale and the next request 401s, which reads to the user as being logged out — and the `onAuthStateChange` listener that keeps `currentUser` in step and only shows the login screen on a real `SIGNED_OUT`, `toggleAuthMode`/`applyAuthMode` (tracked by the `authIsSignUp` flag, not by reading the heading text), `setAuthError`, `handleAuth`, `handleSignOut`. Sign-up also inserts the `Users` profile row. Plus **the confirmation-email landing** — `readEmailConfirmation` (boot; reads `token_hash`/`code`/implicit tokens/`error`, and strips only its own keys), `consumeEmailConfirmation`, `confirmFailureHTML`, `confirmRedirectUrl`, `setAuthNotice`, `setAuthView`/`showCheckEmail`/`authBackToForm`, and the resend pair `sendConfirmationEmail`/`resendConfirmation`/`resendFromNotice`. See **Coming back through the confirmation email**. |
-| `nav.js` | `nav(page, listId)` — the single entry point for changing screens (see **Screens and navigation**). Plus `PAGE_TAB`, `TAB_ROOT`, `selectTab`, `goBack`, `dismissOverlays`, **`refreshAfterChange(src)`** (the single answer to "something was written, what redraws?" — see **Refreshing after a change**), `updateNavbar` (**where each screen's bar buttons are defined**, and where the collection FAB is bound to `startNewActivity`; there is no search bar button — see **Finding things again**), `applyNavCondense`, a debounced `resize` handler, **`setBodyScrollLock(lock)`** — the single place that touches body overflow — and **`syncTabbarToKeyboard()`**, which keeps the tab bar behind the software keyboard instead of riding up on top of it (see **Mobile layout rules**). |
+| `nav.js` | `nav(page, listId)` — the single entry point for changing screens (see **Screens and navigation**). Plus `PAGE_TAB`, `TAB_ROOT`, `TAB_ORDER` and **`visibleTabs()`** (the tabs a swipe can actually reach — the Messages tab is hidden until its migration is run), `selectTab`, `goBack`, `dismissOverlays`, **`refreshAfterChange(src)`** (the single answer to "something was written, what redraws?" — see **Refreshing after a change**), `updateNavbar` (**where each screen's bar buttons are defined**, and where the collection FAB is bound to `startNewActivity`; there is no search bar button — see **Finding things again**), `applyNavCondense`, a debounced `resize` handler, **`setBodyScrollLock(lock)`** — the single place that touches body overflow — and **`syncTabbarToKeyboard()`**, which keeps the tab bar behind the software keyboard instead of riding up on top of it (see **Mobile layout rules**). |
 | `gestures.js` | The two touch gestures, both delegated from `document`: **swipe a sheet down to dismiss it** (`.modal` and the action sheet) and **swipe sideways to change screen**. `overlayOpen`, `ownsHorizontal`/`ownsVertical` (surfaces with their own gesture), `SHEET_DISMISS_PX`/`SHEET_FLICK_PX`, `SWIPE_MIN`/`SWIPE_EDGE`, `TAB_ORDER` (in `nav.js`). See **Gestures** below. |
 | `modals.js` | `openModal` (**resets `.sheet-body` scrollTop** — see the note under *Sheets* below) / `closeModal` (they call `setBodyScrollLock`, so use them rather than toggling `.open` yourself), the scrim-click and Escape handlers, **`showActionSheet(opts)`** and `showConfirm` (iOS confirms destructive actions with an action sheet, not a dialog — `confirmDeleteCollection`/`confirmDeleteActivity` wrap it), the photo lightbox (swipe sideways to page, down to close), the list picker (`openListPicker`/`renderListPickerRows`/`listPickerPick`/`listPickerDone` — single- *and* multi-select, see **The list picker**), `ensurePickerRoom`/`releasePickerRoom` (see **Gestures**), and `showToast`. |
 
@@ -2426,6 +2719,8 @@ Loaded in this order; **order matters**.
 | `me.js` | `renderMe()` (stats), `renderMeIdentity()`, **Home** — `homePlace`/`loadHomePlace`/`saveHomePlace`/`resetHomePlace`/`renderMeHome`/`openHomeSheet`/`saveHomeSheet`/`clearHomePlace` and the `bl_home:<uid>` localStorage mirror (see **Home**), plus **`updateHomeActivities`/`clearHomeActivityFlags`** — the cascade that moves everything set to Home when the home address changes (see **Moving house**) — `openDeleteAccount`/`onDeleteAccountInput`/`deleteAccount` (see **Deleting an account**), `loadUserProfile()` (reads the `Users` row once per session into `userProfile` — **and creates it when missing**, via `createUserProfile`/`profileSeed`/`USERNAME_RE`; see **Signing up**), `confirmSignOut()`. The tab's one App row, Add to Home Screen, is wired to `pwaShowInstallHelp()` in `pwa.js`. *Share links into the app* and *Join a shared list* both used to sit beside it; the first went with the Shortcut tier (see **Sharing a link in**) and the second lives on the Lists tab, which is the screen the missing list was supposed to be on. |
 | `bulk.js` | The "add many at once" sheet, one card per row. Row values live in `bulkEntries[]` and the DOM is re-rendered from it wholesale, so **`saveBulkFieldValues()` must flush the inputs back into the array before any redraw** — every mutation helper does this. `_skipSaveBulk` suppresses that flush in `bulkApplyDown` (the "copy row 1" pills), which has already updated the array itself. `openBulkAdd(listId)` takes an explicit destination in `bulkListId`, defaulting to `curListId`: the sheet normally opens from a collection, but an import from Home has no collection context and passes the chosen list. |
 | `share.js` | **Turning a shared link or a screenshot into an activity.** `readSharedInput()` (boot; parses and strips the query param), `handleSharedInput()` (called from `showApp()`), `openImportSheet`/`runUnfurl`/**`importFailed`** (the link-keeps-the-card / screenshot-goes-to-the-sheet split)/`renderImportState`/`IMPORT_FAIL_STATE`/`SHOT_FAIL_NOTICE`, `pickScreenshot`/`handleScreenshot` (downscale and send to the vision path), `handOffSingle`/`handOffMany`/`shareSourceLinks`, and `looksLikeUrl`/`importFromComposer`. Loads after `activities.js` and `bulk.js` because it hands drafts to both. See **Sharing a link in** below. |
+| `messages.js` | **A conversation per shared list, and the hub over them.** `probeMessages`/`messagesReady`/`resetMessagesProbe`/`applyMessagesAvailability` (the tab is hidden until the migration is run), the hub cache (`fetchConversations`/`refreshConversations`/`invalidateConversations`/`cachedConversations`/`unreadTotal`/`updateMessagesBadge`) and its screen (`renderMessages`/`convRowHTML`), then one conversation — `openConversation`/`renderConversation`/`leaveConversation`, `loadMessages`/`loadOlderMessages`/`paintConversation`/`msgRowHTML`/`scrollConversationToEnd`, `sendMessage` (through `dbInsert`, so it queues offline), the `@` picker (`mentionQuery`/`updateMentionSuggest`/`pickMention`/`renderPendingMentions`/`removePendingMention`), `openMessageMenu`/`deleteMessage` (soft), read state (`markConversationRead`), realtime (`subscribeConversation`/`unsubscribeConversation`/`onRealtimeMessage`), `syncComposerToKeyboard`, the push pair `notifyMessageSent`/`loadConversationMute`/`toggleConversationMute`, the notification landing (`readPushLanding` at boot, `handlePushLanding` from `showApp`, and the `serviceWorker` message listener), and `resetMessagesState` — called by `resetAccountState()`. Plus the naming helpers `msgSenderLabel`/`msgSenderGone`/`msgIsMine` and the time ones `msgClock`/`msgWhenShort`/`msgDayLabel`, which `notes.js` also uses. See **Messages**. |
+| `notes.js` | **The append-only log on an activity.** `notesReady()` (= `messagesReady()`), `fetchNotes`, `renderActivityNotes`/`noteRowHTML`/`onNoteInput`/`onNoteKey`, `addNote`/`submitActivityNote`/`openNoteMenu`/`copyNote`/`deleteNote`, **`addMessageToNotes`** — promoting a message into the activity's log, which is the reason the feature exists — and the new/edit sheet's pair `resetActivityNoteField`/`flushActivityNoteField`. There is deliberately no update path. See **Notes on an activity**. |
 | `map.js` | All MapLibre GL. **`ensureMapLibre()`** — the library is loaded on demand here, not from `<head>`; at ~900KB it was the biggest single cost of a cold launch, blocking the parser on the way to a Home screen with no map on it. Both entry points await it and fall back to the "map unavailable" state if it cannot be fetched. Then `mapStyle()` (raster CARTO basemap + globe projection + sky), `webglOK()`, `actsToGeoJSON()`, and `attachActivityLayer()` — which adds the clustered GeoJSON source and the two symbol layers, and owns the click handlers. Then the marker icons (`ensureDotIcon`, `ensurePhotoIcon`, `ensureClusterIcon`, `stampPointIcons`). Then **one point, several activities**: `SAME_PLACE_DEG`/`CLUSTER_STACKED`/`samePlaceCluster` (is this bubble one place or a neighbourhood?), `indexActs`/`placeActs` (the id → activity index kept beside the layer data), `openClusterPlace`, `openPlaceSheet`/`placeTitle`/`sortPlaceActs`/`placeRowHTML`, and the two row actions `placeOpenActivity`/`placeToggleActivity` — see **Several activities at one point**. Then the two instances: the Map tab (`renderGlobalMap`, `fitGlobal`, `zoomGlobe`, `globeFillZoom`, `setGlobalMapFilter`) and the per-collection map (`renderMap`, `updateMapMarkers`). Plus `mapLoaded(map)` and `hasGeo`. Teardown is explicit — `destroyGlobalMap()`/`destroyDetailMap()` — because each map holds a WebGL context, but **only the detail map is torn down on navigation**. See **The immersive map** above for the traps. |
 | `pwa.js` | Service-worker registration and the install/offline UI: `isStandalone()`/`isIOS()` (which stamp `.standalone`/`.ios` on `<html>`), the `beforeinstallprompt` capture behind `pwaInstall()`, the iOS Add-to-Home-Screen sheet, `pwaShowInstallHelp()` (the Me tab row), and `pwaUpdateOnlineState()`. Dismissals persist in `localStorage` under `bl_*` keys. **It also calls `reg.update()` on foreground and on reconnect** — an installed PWA is rarely killed, and registration is the only moment the browser looks for a new `sw.js`, so without it a shipped fix can sit undelivered on the home-screen copy for days and look like it was never made. **`pwaHadController` gates the `controllerchange` reload** so it fires on an update and not on a first install — see **Shared lists**, where getting that wrong silently destroyed every invite link. |
 | `main.js` | Boot: `paintStaticIcons()` fills the empty icon placeholders left in `index.html` from the sprite map, then the three query-string readers run in a **fixed order** — `readEmailConfirmation()`, `readSharedInput()`, `readPendingJoin()` — all **before** the session restore, because a link can be shared in, an invite opened, or an address confirmed while signed out. Then `consumeEmailConfirmation()` is tried ahead of `restoreSession()`, and `showApp()`/`showAuth()` follows. **Loads last.** See **Staying signed in** (why `restoreSession()` is more than one `getSession()` call) and **Coming back through the confirmation email** (why the reader order is not arbitrary). |
@@ -2705,6 +3000,10 @@ they can be queued when there is no network.
 | `collection_members` *(optional)* | `collection_id`, `user_id`, `role`, `display_name`, `created_at` — added by `sharing.sql` |
 | `collection_invites` *(optional)* | `code` (PK), `collection_id`, `created_by`, `role`, `revoked`, `expires_at`, `created_at` |
 | `invite_claims` *(optional)* | `email`, `code` (composite PK), `created_at`, `claimed_at`, `claimed_by` — added by `sharing.sql` section 5. An invite waiting for an account that does not exist yet. **RLS on with no policies**, so only the two `SECURITY DEFINER` RPCs can see it. |
+| `messages` *(optional)* | `id`, `collection_id`, `sender_id` (**`on delete set null`**), `sender_name` (a snapshot), `body`, `activity_ids uuid[]`, `created_at`, `edited_at`, `deleted_at` — added by `messages.sql`. See **Messages** |
+| `conversation_reads` *(optional)* | `collection_id`, `user_id`, `last_read_at` (composite PK) — how far each person has read each conversation. Same shape as `reminder_deliveries`, for the same reason |
+| `conversation_prefs` *(optional)* | `collection_id`, `user_id`, `muted` (composite PK) — read only by `send-message-push`. Absent means nothing is muted, which is the right default |
+| `activity_notes` *(optional)* | `id`, `activity_id`, `author_id` (**`on delete set null`**), `author_name`, `body`, `created_at` — the append-only log. **No UPDATE policy, deliberately.** See **Notes on an activity** |
 | `push_subscriptions` | `id`, `user_id`, `endpoint` (unique), `p256dh`, `auth`, `user_agent`, `created_at` — added by `schema.sql` |
 | `reminder_deliveries` | `activity_id`, `user_id`, `remind_at` (composite PK), `sent_at` — added by `schema.sql`. Who has already been told about which reminder, per person. See **Reminders**. |
 
@@ -2715,7 +3014,16 @@ is ever created** — there is deliberately no INSERT policy on
 (callable by `anon`, because it runs before the account exists) records an
 invite against an address, and `claim_invites_for_me()` redeems whatever is
 waiting for the signed-in one and returns what it joined. See **An invite
-that survives creating an account**. The `SECURITY DEFINER` helpers `owns_collection`,
+that survives creating an account**. `messages.sql` adds `conversation_list()` — the whole Messages tab in
+one round trip, which is what keeps messages out of the app's two
+backing queries — plus two more `SECURITY DEFINER` helpers,
+`can_use_activity` and `owns_activity_collection`, which are
+`can_use_collection`/`owns_collection` reached through an activity.
+`can_use_activity` is installed in a wider form when
+`extra_collection_ids` exists, so notes on an activity filed in from
+another list are reachable too.
+
+The `SECURITY DEFINER` helpers `owns_collection`,
 `is_collection_member` and `can_use_collection` exist to break RLS
 policy recursion; read that file's header before touching them.
 
@@ -2734,7 +3042,11 @@ Schema notes and traps:
   dropped**: existing rows still hold whatever people typed, and a
   `drop column` is the one step of this that cannot be undone. Run
   `alter table "Activities" drop column description;` only if you are
-  certain nobody wants it back. `Collections.description` is a different
+  certain nobody wants it back. **Notes came back and this column was
+  deliberately not reused for them** — see **Notes on an activity**:
+  the log is append-only precisely so two people cannot clobber each
+  other, and a JSON array in one column would have been the
+  last-write-wins field it exists to replace. `Collections.description` is a different
   field and is very much alive — it is the blurb on a list's banner.
 - **`Collections.activites_completed` is misspelled in the database** (missing
   the second `i`). `api.js` matches the real column name. Don't "fix" it in code
@@ -3087,6 +3399,49 @@ Two things that will bite:
   long time accumulates ops indefinitely, and a queued write against a row
   another device has since deleted is dropped on replay with only a console
   warning — the user is told "1 change couldn't be synced" but not which.
+- **A message sent while offline never notifies anybody.** The push is
+  fired by the client right after the insert; the offline queue replays
+  through `sb.from().upsert()` in `flushQueue()`, which does not go near
+  it. Fixing it means either the database trigger this deliberately
+  avoids, or teaching `flushQueue()` to call `notifyMessageSent()` for
+  replayed `messages` inserts — the second is a few lines and is the one
+  to do if it bites.
+- **Nothing notifies about a note.** Adding to an activity's log is
+  silent, including when a message is promoted into it. Arguably correct
+  — the conversation already carried it — but somebody adding a note
+  nobody discussed goes unseen.
+- **The hub does not update live.** `postgres_changes` filters on a single
+  column, so realtime reaches the open conversation and nothing else — the
+  unread counts refresh on foreground and after a send. Somebody sitting on
+  the Messages tab watching it will not see a new message arrive in another
+  list. The fix is Supabase's broadcast-from-database pattern with a
+  per-user channel, which is a real amount of machinery for a case the push
+  above would mostly cover.
+- **A conversation cannot be read offline.** Unlike every other screen,
+  messages are not in the IndexedDB snapshot (deliberately — see
+  **Messages**), so a tunnel shows an explanatory empty state. *Sending*
+  offline works and queues. Caching the last page per conversation in its
+  own object store would close it without dragging messages into the main
+  snapshot.
+- **Notes cost a round trip per activity opened.** `renderActivityNotes()`
+  queries on every open of the activity sheet, whether or not that activity
+  has any notes, and whether or not its list is shared. It is a small query
+  behind a placeholder so nothing waits on it, but a count denormalised onto
+  `Activities` — or simply skipping the fetch on unshared lists — would
+  avoid most of them.
+- **There is no unread mark on individual messages.** `conversation_reads`
+  stores one `last_read_at` per person per list, which is enough for the
+  count and not enough to draw a "new messages" line in the thread itself.
+- **Reading a conversation marks the whole thing read**, even if you only
+  saw the top of it. Opening the screen calls `markConversationRead()`;
+  there is no per-message viewport tracking.
+- **`activity_ids` is never cleaned up.** An activity deleted outright
+  leaves its id in every message that mentioned it, which renders as "no
+  longer in this list" — correct-ish, but it conflates *deleted* with
+  *moved out of this list*. Distinguishing them needs a lookup the chip
+  deliberately does not make.
+- **A message cannot be edited.** Only soft-deleted. The `edited_at` column
+  exists and nothing writes it.
 - **Shared lists are last-write-wins with no presence.** Two people editing the
   same activity in the same minute silently clobber each other, and there is no
   indication that anyone else is in a list or has changed something. Realtime
@@ -3100,13 +3455,24 @@ Two things that will bite:
   means moving `remind_at` out to its own table, which is a real schema
   change and a real UI change — the sheet would have to say whose reminder
   it is showing.
-- **Background push is not actually switched on.** `VAPID_PUBLIC_KEY` is
-  empty in `config.js`, so `pushConfigured()` is false and tier 3 is dead for
-  everyone, owners included — reminders currently run on the Home banner and
-  the on-open local notification only. Generate a pair
-  (`npx web-push generate-vapid-keys`), paste the public half into
-  `config.js`, set the private half as a function secret, and deploy
-  `send-reminders`.
+- **Background push depends on the cron, not on the key or the deploy.**
+  `VAPID_PUBLIC_KEY` *is* set in `config.js` and `send-reminders` *is*
+  deployed (verified: a nonexistent function name returns 404, this one
+  returns 401 on a bad JWT). What is left is the two function secrets
+  (`VAPID_PRIVATE_KEY`, `CRON_SECRET`) and the pg_cron job from
+  `cron.sql`, which nothing in the repo can assert. Until the sweep
+  actually runs, reminders are the Home banner plus the on-open local
+  notification. (This entry used to say the key was empty; it is not.)
+- **⚠️ The cron call needs an `Authorization` header, and this is a silent
+  failure.** `send-reminders` is deployed with JWT verification on, so
+  Supabase's gateway rejects a bearer-less request *before it reaches the
+  function* — meaning the 401 never appears in the function's own logs and
+  the whole thing looks like a cron that never fired. `cron.sql` now
+  presents the anon key (public by design, already in `config.js`) purely
+  to clear the gateway; `x-cron-secret` is still what authorises the send.
+  Deploying with `--no-verify-jwt` is the alternative and is defensible
+  for this one function because it has that second gate — it remains
+  forbidden for `unfurl` and `geo`, which do not.
 - **A member can rename a shared list.** The RLS update policy on `Collections`
   allows owner-or-member; narrowing it to the owner is a one-line change in
   `sharing.sql` if that turns out to be wrong.

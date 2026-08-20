@@ -359,6 +359,8 @@ async function removeMember(userId){
       if(error){showToast(error.message||'Couldn’t remove them.');return;}
       _shareMembers=_shareMembers.filter(m=>m.user_id!==userId);
       invalidateSharedIds();
+      /* Membership decides which lists have a conversation at all. */
+      refreshConversations();
       const l=await fetchCollection(_shareListId);
       renderShareList(l);
       showToast('Removed');
@@ -397,6 +399,8 @@ async function leaveList(id){
      no longer visible, and a stale snapshot would keep drawing them. */
   invalidateAll();
   invalidateSharedIds();
+  /* Membership decides which lists have a conversation at all. */
+  refreshConversations();
   await snapshotClear();
   nav('lists');
   showToast('Left the list');
@@ -514,6 +518,8 @@ async function claimInvitesForMe(){
      missing rows it should have. */
   invalidateAll();
   invalidateSharedIds();
+  /* Membership decides which lists have a conversation at all. */
+  refreshConversations();
   await snapshotClear();
   await revalidate();
   console.log('[join] redeemed',joined.length,'claimed invite(s)');
@@ -684,6 +690,8 @@ async function acceptJoin(){
      is definitely missing rows it should have. */
   invalidateAll();
   invalidateSharedIds();
+  /* Membership decides which lists have a conversation at all. */
+  refreshConversations();
   await snapshotClear();
   await revalidate();
   nav('detail',data.collection_id);

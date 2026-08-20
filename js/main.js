@@ -16,6 +16,7 @@ function paintStaticIcons(){
     `<span class="ic-off">${icon(off)}</span><span class="ic-on">${icon(on)}</span><span>${label}</span>`);
   tab('tabHome','home','home-fill','Home');
   tab('tabLists','stack','stack-fill','Lists');
+  tab('tabMessages','message','message-fill','Chat');
   tab('tabMap','compass','compass-fill','Map');
   tab('tabMe','summit','summit-fill','You');
 
@@ -39,6 +40,7 @@ function paintStaticIcons(){
      decorative plus — see the note in index.html. */
   set('homeComposerShot',icon('camera'));
   set('homeComposerGo',icon('chevron-right'));
+  set('convComposerGo',icon('chevron-right'));
   set('actListChevron',icon('chevron-right'));
   set('aRemindChevron',icon('chevron-right'));
   set('meNotifyIcon',icon('clock'));
@@ -117,6 +119,11 @@ function hasStoredSession(){ return !!readStoredSession(); }
      running it ahead of them costs them nothing. See CONFIRMING AN
      EMAIL ADDRESS in js/auth.js. */
   readEmailConfirmation();
+  /* Also before the two below, and for the same reason: they blank the
+     whole search string once they have taken what they came for, and
+     this one removes only its own key. A message notification opened
+     on a link that also carries ?join= must not destroy either. */
+  readPushLanding();
   readSharedInput();
   readPendingJoin();
   /* The offline banner reflects the queue, which may be non-empty from

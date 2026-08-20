@@ -1,0 +1,698 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Activity Colour Lab — Someday We'll Die</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   COLOUR LAB — a bench for the four activity colours.
+   Standalone: not part of the app, not in sw.js, not linked from
+   index.html. Open it directly in a browser.
+
+   It renders the real components at real size (10px mono capsules,
+   3.5px rails, 17px serif names) on both grounds at once, because
+   that is the only honest way to judge a 4-colour scale.
+   ============================================================ */
+
+* , *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --serif: 'Newsreader', ui-serif, 'New York', Georgia, serif;
+  --sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, Roboto, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --ui-bg: #16140f;
+  --ui-panel: #211e18;
+  --ui-panel-2: #2b2720;
+  --ui-line: rgba(200,186,158,.16);
+  --ui-ink: #f2eee4;
+  --ui-ink-2: rgba(233,226,211,.66);
+  --ui-ink-3: rgba(220,212,196,.42);
+  --ui-accent: #d98f5c;
+}
+
+body {
+  font-family: var(--sans);
+  background: var(--ui-bg);
+  color: var(--ui-ink);
+  font-size: 14px; line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- shell ---------- */
+.wrap { display: grid; grid-template-columns: 340px minmax(0,1fr); min-height: 100vh; }
+@media (max-width: 900px) { .wrap { grid-template-columns: 1fr; } }
+
+.side {
+  border-right: 1px solid var(--ui-line);
+  padding: 20px 18px 60px;
+  position: sticky; top: 0; align-self: start; max-height: 100vh; overflow-y: auto;
+}
+@media (max-width: 900px) { .side { position: static; max-height: none; border-right: none; border-bottom: 1px solid var(--ui-line); } }
+
+.main { padding: 20px 22px 80px; min-width: 0; }
+
+h1 { font-family: var(--serif); font-size: 25px; font-weight: 500; letter-spacing: -.01em; line-height: 1.1; }
+.lede { color: var(--ui-ink-2); font-size: 12.5px; margin-top: 7px; }
+
+.eyebrow {
+  font-family: var(--mono); font-size: 9.5px; font-weight: 600;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--ui-ink-3);
+  margin: 26px 0 9px;
+}
+.side .eyebrow:first-of-type { margin-top: 22px; }
+
+/* ---------- scheme list ---------- */
+.schemes { display: flex; flex-direction: column; gap: 7px; }
+.scheme {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  background: var(--ui-panel); border: 1px solid var(--ui-line);
+  border-radius: 12px; padding: 10px 11px 11px; color: inherit;
+  font: inherit; transition: border-color .15s, background .15s;
+}
+.scheme:hover { background: var(--ui-panel-2); }
+.scheme[aria-pressed="true"] { border-color: var(--ui-accent); background: var(--ui-panel-2); }
+.scheme-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.scheme-name { font-weight: 600; font-size: 13.5px; letter-spacing: -.01em; }
+.scheme-dots { display: flex; gap: 4px; flex: 0 0 auto; }
+.scheme-dots i { width: 13px; height: 13px; border-radius: 50%; display: block; }
+.scheme-why { color: var(--ui-ink-2); font-size: 11.5px; margin-top: 5px; line-height: 1.35; }
+
+/* ---------- editors ---------- */
+.edit { display: flex; flex-direction: column; gap: 8px; }
+.role {
+  background: var(--ui-panel); border: 1px solid var(--ui-line);
+  border-radius: 12px; padding: 9px 10px;
+}
+.role-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  font-family: var(--mono); font-size: 9.5px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--ui-ink-2);
+  margin-bottom: 8px;
+}
+.role-head b { color: var(--ui-ink); font-weight: 600; }
+.role-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pick { display: flex; align-items: center; gap: 6px; }
+.pick input[type=color] {
+  width: 30px; height: 30px; padding: 0; border: 1px solid var(--ui-line);
+  border-radius: 8px; background: none; cursor: pointer; flex: 0 0 auto;
+}
+.pick input[type=color]::-webkit-color-swatch-wrapper { padding: 2px; }
+.pick input[type=color]::-webkit-color-swatch { border: none; border-radius: 6px; }
+.pick input[type=text] {
+  width: 100%; min-width: 0; background: var(--ui-bg); color: var(--ui-ink);
+  border: 1px solid var(--ui-line); border-radius: 8px;
+  font-family: var(--mono); font-size: 11px; padding: 6px 7px; text-transform: uppercase;
+}
+.pick input[type=text]:focus { outline: none; border-color: var(--ui-accent); }
+.mode-tag {
+  font-family: var(--mono); font-size: 8.5px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--ui-ink-3); margin-bottom: 4px; display: block;
+}
+
+.ratio { display: flex; gap: 5px; margin-top: 7px; flex-wrap: wrap; }
+.ratio span {
+  font-family: var(--mono); font-size: 9px; letter-spacing: .06em;
+  padding: 2px 6px; border-radius: 20px; border: 1px solid var(--ui-line);
+  color: var(--ui-ink-2);
+}
+.ratio span.ok { color: #9db184; border-color: rgba(157,177,132,.4); }
+.ratio span.warn { color: #d99a4e; border-color: rgba(217,154,78,.4); }
+.ratio span.bad { color: #e0736a; border-color: rgba(224,115,106,.45); }
+
+.slider { display: flex; align-items: center; gap: 9px; }
+.slider input { flex: 1; accent-color: var(--ui-accent); }
+.slider output { font-family: var(--mono); font-size: 11px; color: var(--ui-ink-2); width: 34px; text-align: right; }
+
+.btnrow { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 12px; }
+.btn {
+  font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: .1em;
+  text-transform: uppercase; padding: 8px 12px; border-radius: 9px; cursor: pointer;
+  background: var(--ui-panel-2); border: 1px solid var(--ui-line); color: var(--ui-ink);
+}
+.btn:hover { border-color: var(--ui-accent); }
+.btn.pri { background: var(--ui-accent); border-color: var(--ui-accent); color: #16140f; }
+
+textarea.out {
+  width: 100%; height: 260px; margin-top: 10px; resize: vertical;
+  background: var(--ui-bg); color: var(--ui-ink-2); border: 1px solid var(--ui-line);
+  border-radius: 10px; padding: 10px; font-family: var(--mono); font-size: 10.5px; line-height: 1.55;
+}
+textarea.out:focus { outline: none; border-color: var(--ui-accent); }
+
+/* ---------- preview stages ---------- */
+.stages { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+@media (max-width: 1180px) { .stages { grid-template-columns: 1fr; } }
+.stages.one { grid-template-columns: minmax(0, 460px); }
+
+.stage-wrap { min-width: 0; }
+.stage-label {
+  font-family: var(--mono); font-size: 9.5px; font-weight: 600; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--ui-ink-3); margin-bottom: 8px;
+}
+
+/* Everything below is a faithful copy of the app's own component CSS,
+   reading the same token names, so what you judge here is what ships. */
+.stage {
+  border-radius: 16px; overflow: hidden; border: 1px solid var(--ui-line);
+  background: var(--bg); color: var(--label);
+  font-family: var(--sans); font-size: 17px; line-height: 1.29; letter-spacing: -.01em;
+  padding: 16px 16px 20px;
+}
+.stage .t-eyebrow {
+  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--label-3);
+}
+.stage h2 {
+  font-family: var(--serif); font-size: 30px; font-weight: 500;
+  letter-spacing: -.02em; line-height: 1.06; margin: 5px 0 14px;
+}
+.sec { margin-top: 20px; }
+.sec-head {
+  font-family: var(--mono); font-size: 9.5px; font-weight: 600; letter-spacing: .13em;
+  text-transform: uppercase; color: var(--label-3); margin-bottom: 8px;
+}
+
+.act-group {
+  background: var(--bg-elevated); border-radius: 18px; overflow: hidden;
+  box-shadow: 0 1px 2px rgba(60,48,32,.06), 0 1px 1px rgba(60,48,32,.04);
+}
+.act-row {
+  position: relative; display: flex; align-items: center; gap: 11px;
+  padding: 11px 13px 11px 15px; min-height: 62px;
+}
+.act-row:not(:last-child)::after {
+  content: ''; position: absolute; left: 15px; right: 0; bottom: 0; height: .5px;
+  background: var(--separator);
+}
+.act-check { flex: 0 0 auto; color: var(--label-4); display: flex; }
+.act-check svg { width: 25px; height: 25px; }
+.act-row.done .act-check { color: var(--green); }
+.act-main { flex: 1; min-width: 0; }
+.act-name {
+  font-family: var(--serif); font-size: 18px; font-weight: 500; letter-spacing: -.01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.act-row.done .act-name { color: var(--label-3); text-decoration: line-through; }
+.act-meta {
+  display: flex; align-items: center; gap: 7px; margin-top: 5px;
+  min-height: 19px; flex-wrap: nowrap;
+}
+.badge {
+  font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: .08em;
+  text-transform: uppercase; white-space: nowrap; flex: 0 0 auto;
+}
+.badge.b-urgent   { color: var(--red); }
+.badge.b-soon     { color: var(--orange); }
+.badge.b-moderate { color: var(--yellow); }
+.badge.b-relaxed  { color: var(--label-2); }
+.badge.b-done     { color: var(--green); }
+.tag {
+  display: inline-flex; align-items: center; flex: 0 0 auto;
+  height: 19px; padding: 0 7px; border-radius: 11px;
+  font-family: var(--mono); font-size: 9px; font-weight: 600;
+  letter-spacing: .09em; text-transform: uppercase;
+}
+.tag-high   { background: var(--tint-soft);   color: var(--tint-strong); }
+.tag-medium { background: var(--violet-soft); color: var(--violet); }
+.tag-low    { background: var(--slate-soft);  color: var(--slate); }
+.tag-done   { background: var(--green-soft);  color: var(--green); }
+.list-chip {
+  flex: 0 1 auto; display: block; min-width: 0; max-width: 100%;
+  height: 19px; line-height: 18px; padding: 0 8px; border-radius: 9.5px;
+  box-shadow: inset 0 0 0 .5px var(--separator-solid);
+  font-family: var(--mono); font-size: 9px; font-weight: 500;
+  letter-spacing: .09em; text-transform: uppercase; color: var(--tint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dot { color: var(--label-3); font-size: 10px; }
+
+.pri-high::before, .pri-medium::before, .pri-low::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+  width: 3.5px; z-index: 2; border-radius: 0 3px 3px 0;
+}
+.pri-high::before   { background: var(--pri-high); }
+.pri-medium::before { background: var(--violet); }
+.pri-low::before    { background: var(--slate); }
+
+/* grid cards */
+.cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.act-card {
+  position: relative; background: var(--bg-elevated); border-radius: 14px;
+  overflow: hidden; box-shadow: 0 1px 2px rgba(60,48,32,.06);
+}
+.act-card .ph { height: 62px; background: var(--fill-3); }
+.act-card .bd { padding: 8px 9px 10px 11px; }
+.act-card .nm {
+  font-family: var(--serif); font-size: 14px; font-weight: 500; line-height: 1.15;
+  height: 32px; overflow: hidden;
+}
+.act-card .mt { margin-top: 6px; display: flex; }
+
+/* map pins */
+.pins { display: flex; align-items: flex-end; gap: 14px; padding: 12px 4px; }
+.pin { position: relative; width: 26px; height: 34px; }
+.pin i {
+  position: absolute; inset: 0 0 6px 0; border-radius: 50%;
+  box-shadow: 0 2px 5px rgba(30,24,16,.35); border: 2.5px solid var(--bg-elevated);
+}
+.pin.big { width: 32px; height: 41px; }
+.pin::after {
+  content: ''; position: absolute; left: 50%; bottom: 0; width: 3px; height: 8px;
+  transform: translateX(-50%); background: inherit;
+}
+
+/* priority chooser */
+.seg-pri { display: flex; gap: 6px; }
+.seg-pri button {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+  height: 40px; border-radius: 10px; background: var(--fill-4);
+  border: 1px solid transparent; cursor: pointer; color: var(--label-2);
+  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase;
+}
+.seg-pri button[aria-pressed="true"] { background: var(--bg-elevated); border-color: var(--separator-solid); color: var(--label); }
+.pri-swatch { width: 10px; height: 10px; border-radius: 50%; display: block; }
+.seg-pri [data-p="high"]   .pri-swatch { background: var(--pri-high); }
+.seg-pri [data-p="medium"] .pri-swatch { background: var(--violet); }
+.seg-pri [data-p="low"]    .pri-swatch { background: var(--slate); }
+
+/* skim strip — the three rails alone, nothing else */
+.skim { display: flex; gap: 0; border-radius: 12px; overflow: hidden; }
+.skim div { flex: 1; height: 46px; display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 9px; font-weight: 600; letter-spacing: .1em;
+  text-transform: uppercase; color: #fff; }
+.note { color: var(--label-3); font-size: 11.5px; margin-top: 8px; font-family: var(--sans); letter-spacing: 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <aside class="side">
+    <h1>Activity Colour Lab</h1>
+    <p class="lede">Four roles — <b>done</b>, and <b>high / medium / low</b> for what is still ahead. Pick a scheme, tune it, copy the tokens.</p>
+
+    <div class="eyebrow">Schemes</div>
+    <div class="schemes" id="schemes"></div>
+
+    <div class="eyebrow">The four colours</div>
+    <div class="edit" id="edit"></div>
+
+    <div class="eyebrow">Soft fill strength</div>
+    <div class="slider">
+      <input type="range" id="alphaL" min="6" max="34" value="25">
+      <output id="alphaLOut">.25</output>
+    </div>
+    <div class="slider" style="margin-top:6px">
+      <input type="range" id="alphaD" min="8" max="36" value="17">
+      <output id="alphaDOut">.17</output>
+    </div>
+    <p class="note" style="margin-top:6px;color:var(--ui-ink-3)">Capsule fill alpha — light, then dark.</p>
+
+    <div class="eyebrow">Tokens</div>
+    <div class="btnrow">
+      <button class="btn pri" id="copy">Copy CSS</button>
+      <button class="btn" id="reset">Reset scheme</button>
+    </div>
+    <textarea class="out" id="out" spellcheck="false"></textarea>
+  </aside>
+
+  <main class="main">
+    <div class="btnrow" style="margin:0 0 16px">
+      <button class="btn" data-view="both" aria-pressed="true">Both grounds</button>
+      <button class="btn" data-view="light" aria-pressed="false">Light only</button>
+      <button class="btn" data-view="dark" aria-pressed="false">Dark only</button>
+    </div>
+    <div class="stages" id="stages">
+      <div class="stage-wrap" data-mode="light">
+        <div class="stage-label">Light — parchment</div>
+        <div class="stage" id="stageL"></div>
+      </div>
+      <div class="stage-wrap" data-mode="dark">
+        <div class="stage-label">Dark — warm near-black</div>
+        <div class="stage" id="stageD"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+/* ============================================================
+   SCHEMES
+   Each is a thesis, not a palette. The constraints they all work
+   inside, taken from the app:
+     - green is completion and nothing else;
+     - no red, orange or yellow on a priority, because the deadline
+       badge sits immediately beside it and an overdue activity and
+       an important one are different claims on your attention;
+     - the three steps must read as a RANKING at 10px, which needs
+       separation on hue AND chroma, not hue alone.
+   ============================================================ */
+const SCHEMES = {
+  current: {
+    name: 'Shipped',
+    why: 'What is in base.css now (v63). One palette across both grounds \u2014 the same four hexes in light and dark, separated by the soft fill (.25 / .17) rather than by lifting the colours.',
+    light: { done:'#6c8853', high:'#9c5a2e', medium:'#6c44ab', low:'#42879a' },
+    dark:  { done:'#6c8853', high:'#9c5a2e', medium:'#6c44ab', low:'#42879a' }
+  },
+  previous: {
+    name: 'Previous',
+    why: 'What shipped before v63. Olive / terracotta / violet / teal, lifted for the dark ground, with high borrowing --tint.',
+    light: { done:'#4a5340', high:'#9c5a2e', medium:'#6d43b0', low:'#3d7f91' },
+    dark:  { done:'#9db184', high:'#d98f5c', medium:'#b78ff5', low:'#63b6cb' }
+  },
+  ember: {
+    name: 'Ember',
+    why: 'Keeps terracotta on top \u2014 it is the app\'s voice \u2014 but swaps the cold violet for a warm orchid, so the ladder descends warm \u2192 cool. Least disruptive of the three.',
+    light: { done:'#4f6442', high:'#a1552a', medium:'#93357f', low:'#316d7c' },
+    dark:  { done:'#a7bd8b', high:'#e0955f', medium:'#e28ac9', low:'#6fc0d2' }
+  },
+  signal: {
+    name: 'Signal',
+    why: 'Gives high its own colour so a priority never looks like a button. Magenta \u2192 indigo \u2192 teal: three big hue steps with chroma falling, and nothing warm left to argue with the deadline badge.',
+    light: { done:'#4f6442', high:'#a02a74', medium:'#5a45bb', low:'#316d7c' },
+    dark:  { done:'#a3ba88', high:'#f078bd', medium:'#9b8cf5', low:'#63b6cb' }
+  },
+  ladder: {
+    name: 'Ladder',
+    why: 'One hue, three strengths. The purest read as a ranking \u2014 you never have to learn which colour outranks which \u2014 at the cost of hue as a second cue.',
+    light: { done:'#4f6442', high:'#452a86', medium:'#6f52b8', low:'#645b8a' },
+    dark:  { done:'#a3ba88', high:'#cbaaff', medium:'#a98fea', low:'#9a8ec6' }
+  },
+  custom: {
+    name: 'Custom',
+    why: 'Yours. Edit any scheme and it forks to here, so the named ones stay honest.',
+    light: { done:'#4f6442', high:'#a1552a', medium:'#93357f', low:'#316d7c' },
+    dark:  { done:'#a7bd8b', high:'#e0955f', medium:'#e28ac9', low:'#6fc0d2' }
+  }
+};
+const ROLES = [
+  { key:'done',   label:'Done',   token:'--green' },
+  { key:'high',   label:'High',   token:'--pri-high' },
+  { key:'medium', label:'Medium', token:'--violet' },
+  { key:'low',    label:'Low',    token:'--slate' }
+];
+
+/* The grounds these colours have to survive on, straight from base.css. */
+const GROUND = {
+  light: {
+    bg:'#eeeae2', 'bg-elevated':'#fbf9f5', 'fill-3':'rgba(122,112,92,.12)', 'fill-4':'rgba(122,112,92,.07)',
+    label:'#1c1a16', 'label-2':'rgba(58,55,48,.74)', 'label-3':'rgba(78,74,64,.52)', 'label-4':'rgba(110,104,92,.34)',
+    separator:'rgba(120,110,92,.20)', 'separator-solid':'#d6d0c4',
+    tint:'#9c5a2e', red:'#a8443c', orange:'#b8752f', yellow:'#9a8433'
+  },
+  dark: {
+    bg:'#16140f', 'bg-elevated':'#211e18', 'fill-3':'rgba(200,186,158,.11)', 'fill-4':'rgba(200,186,158,.07)',
+    label:'#f2eee4', 'label-2':'rgba(233,226,211,.68)', 'label-3':'rgba(220,212,196,.46)', 'label-4':'rgba(210,200,182,.28)',
+    separator:'rgba(200,186,158,.16)', 'separator-solid':'#3a352c',
+    tint:'#d98f5c', red:'#e0736a', orange:'#d99a4e', yellow:'#cfb85e'
+  }
+};
+
+// #ember / #signal / #ladder / #current in the URL opens straight into one,
+// which is the cheapest way to flip between them side by side in two tabs.
+let active = SCHEMES[location.hash.slice(1)] ? location.hash.slice(1) : 'current';
+let alpha = { light: .25, dark: .17 };
+const $ = id => document.getElementById(id);
+
+/* ---------- colour maths ---------- */
+const hex2rgb = h => {
+  h = h.replace('#','');
+  if (h.length === 3) h = h.split('').map(c=>c+c).join('');
+  const n = parseInt(h,16);
+  return [ (n>>16)&255, (n>>8)&255, n&255 ];
+};
+const rgb2hex = ([r,g,b]) => '#' + [r,g,b].map(v=>Math.round(v).toString(16).padStart(2,'0')).join('');
+const lum = ([r,g,b]) => {
+  const f = v => { v/=255; return v <= .03928 ? v/12.92 : Math.pow((v+.055)/1.055, 2.4); };
+  return .2126*f(r) + .7152*f(g) + .0722*f(b);
+};
+const contrast = (a, b) => {
+  const [x,y] = [lum(a), lum(b)].sort((p,q)=>q-p);
+  return (x + .05) / (y + .05);
+};
+const over = (fg, a, bg) => fg.map((v,i) => v*a + bg[i]*(1-a));   // composite a translucent fill
+const soft = (hex, a) => { const [r,g,b] = hex2rgb(hex); return `rgba(${r},${g},${b},${a})`; };
+const isHex = s => /^#?[0-9a-f]{6}$/i.test(s.trim());
+
+/* Push a hex a little darker/lighter, for the --tint-strong equivalent. */
+function shift(hex, amt) {
+  return rgb2hex(hex2rgb(hex).map(v => Math.max(0, Math.min(255, v + amt))));
+}
+
+/* ---------- rendering ---------- */
+function vars(mode) {
+  const s = SCHEMES[active][mode];
+  const g = GROUND[mode];
+  const a = alpha[mode];
+  const strong = mode === 'light' ? shift(s.high, -18) : shift(s.high, 18);
+  const out = { ...g };
+  out['green']  = s.done;
+  out['pri-high'] = s.high;
+  out['violet'] = s.medium;
+  out['slate']  = s.low;
+  out['tint-strong'] = strong;
+  out['green-soft']  = soft(s.done,   a);
+  out['tint-soft']   = soft(s.high,   a);
+  out['violet-soft'] = soft(s.medium, a);
+  out['slate-soft']  = soft(s.low,    a);
+  return out;
+}
+
+const CHECK_EMPTY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>';
+const CHECK_DONE  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M8 12.4l2.6 2.6L16 9.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+function row(name, pri, badge, badgeCls, chip, done) {
+  const priTag = done ? '' :
+    `<span class="tag tag-${pri}">${pri}</span>`;
+  return `
+    <div class="act-row ${done ? 'done' : 'pri-'+pri}">
+      <span class="act-check">${done ? CHECK_DONE : CHECK_EMPTY}</span>
+      <div class="act-main">
+        <div class="act-name">${name}</div>
+        <div class="act-meta">
+          ${done ? '<span class="tag tag-done">Done</span>' : priTag}
+          <span class="badge ${badgeCls}">${badge}</span>
+          <span class="dot">·</span>
+          <span class="list-chip">${chip}</span>
+        </div>
+      </div>
+    </div>`;
+}
+
+function stageHTML() {
+  return `
+    <div class="t-eyebrow">Collection</div>
+    <h2>Japan 2027</h2>
+
+    <div class="act-group">
+      ${row('Book the ryokan in Hakone','high','3 days left','b-urgent','Japan 2027',false)}
+      ${row('Climb Fushimi Inari at dawn','high','12 days left','b-soon','Japan 2027',false)}
+      ${row('Learn to make soba','medium','This year','b-moderate','Cooking',false)}
+      ${row('Ride the Shinkansen','medium','Next year','b-relaxed','Japan 2027',false)}
+      ${row('Find a good kissaten','low','Next year','b-relaxed','Japan 2027',false)}
+      ${row('Watch sumo practice','low','In 2-3 years','b-relaxed','Japan 2027',false)}
+      ${row('Eat at Sukiyabashi Jiro','high','Mar 4','b-done','Japan 2027',true)}
+    </div>
+
+    <div class="sec">
+      <div class="sec-head">Skim test — the rails alone</div>
+      <div class="skim">
+        <div style="background:var(--pri-high)">High</div>
+        <div style="background:var(--violet)">Medium</div>
+        <div style="background:var(--slate)">Low</div>
+        <div style="background:var(--green)">Done</div>
+      </div>
+      <p class="note">If you cannot rank these three left-to-right without reading them, the scale is not a scale.</p>
+    </div>
+
+    <div class="sec">
+      <div class="sec-head">Grid cards</div>
+      <div class="cards">
+        <div class="act-card pri-high"><div class="ph"></div><div class="bd"><div class="nm">Book the ryokan in Hakone</div><div class="mt"><span class="badge b-urgent">3 days left</span></div></div></div>
+        <div class="act-card pri-medium"><div class="ph"></div><div class="bd"><div class="nm">Learn to make soba</div><div class="mt"><span class="badge b-moderate">This year</span></div></div></div>
+        <div class="act-card pri-low"><div class="ph"></div><div class="bd"><div class="nm">Find a good kissaten</div><div class="mt"><span class="badge b-relaxed">Next year</span></div></div></div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-head">Map pins</div>
+      <div class="pins">
+        <span class="pin big" style="background:var(--pri-high)"><i style="background:var(--pri-high)"></i></span>
+        <span class="pin" style="background:var(--violet)"><i style="background:var(--violet)"></i></span>
+        <span class="pin" style="background:var(--slate)"><i style="background:var(--slate)"></i></span>
+        <span class="pin" style="background:var(--green)"><i style="background:var(--green)"></i></span>
+      </div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-head">Priority chooser</div>
+      <div class="seg-pri">
+        <button data-p="high" aria-pressed="true"><span class="pri-swatch"></span>High</button>
+        <button data-p="medium"><span class="pri-swatch"></span>Med</button>
+        <button data-p="low"><span class="pri-swatch"></span>Low</button>
+      </div>
+    </div>
+  `;
+}
+
+function paint() {
+  ['light','dark'].forEach(mode => {
+    const el = mode === 'light' ? $('stageL') : $('stageD');
+    const v = vars(mode);
+    Object.entries(v).forEach(([k,val]) => el.style.setProperty('--'+k, val));
+    el.style.setProperty('--tint', v.tint);
+    if (!el.dataset.built) { el.innerHTML = stageHTML(); el.dataset.built = '1'; }
+  });
+  renderEditors();
+  renderSchemeList();
+  writeOut();
+}
+
+/* ---------- side panel ---------- */
+function renderSchemeList() {
+  const host = $('schemes');
+  host.innerHTML = Object.entries(SCHEMES).map(([k,s]) => `
+    <button class="scheme" data-s="${k}" aria-pressed="${k===active}">
+      <span class="scheme-top">
+        <span class="scheme-name">${s.name}</span>
+        <span class="scheme-dots">
+          <i style="background:${s.light.high}"></i>
+          <i style="background:${s.light.medium}"></i>
+          <i style="background:${s.light.low}"></i>
+          <i style="background:${s.light.done}"></i>
+        </span>
+      </span>
+      <span class="scheme-why">${s.why}</span>
+    </button>`).join('');
+  host.querySelectorAll('.scheme').forEach(b => b.onclick = () => {
+    active = b.dataset.s; history.replaceState(null, '', '#' + active); paint();
+  });
+}
+
+function ratioPills(mode, role) {
+  const s = SCHEMES[active][mode], g = GROUND[mode], a = alpha[mode];
+  const base = hex2rgb(s[role]);
+  const card = hex2rgb(g['bg-elevated']);
+  const fill = over(base, a, card);
+  const strongHex = role === 'high' ? (mode==='light'? shift(s.high,-18) : shift(s.high,18)) : s[role];
+  const text = contrast(hex2rgb(strongHex), fill);       // capsule text on its own soft fill
+  const rail = contrast(base, card);                     // rail against the row it sits on
+  const cls = v => v >= 4.5 ? 'ok' : v >= 3 ? 'warn' : 'bad';
+  return `<span class="${cls(text)}">capsule ${text.toFixed(1)}</span>
+          <span class="${rail>=3?'ok':rail>=1.9?'warn':'bad'}">rail ${rail.toFixed(1)}</span>`;
+}
+
+function renderEditors() {
+  const host = $('edit');
+  host.innerHTML = ROLES.map(r => `
+    <div class="role">
+      <div class="role-head"><b>${r.label}</b><span>${r.token}</span></div>
+      <div class="role-grid">
+        <div>
+          <span class="mode-tag">Light</span>
+          <div class="pick">
+            <input type="color" data-m="light" data-r="${r.key}" value="${SCHEMES[active].light[r.key]}">
+            <input type="text" data-m="light" data-r="${r.key}" value="${SCHEMES[active].light[r.key]}">
+          </div>
+        </div>
+        <div>
+          <span class="mode-tag">Dark</span>
+          <div class="pick">
+            <input type="color" data-m="dark" data-r="${r.key}" value="${SCHEMES[active].dark[r.key]}">
+            <input type="text" data-m="dark" data-r="${r.key}" value="${SCHEMES[active].dark[r.key]}">
+          </div>
+        </div>
+      </div>
+      <div class="ratio">${ratioPills('light', r.key)}${ratioPills('dark', r.key)}</div>
+    </div>`).join('');
+
+  host.querySelectorAll('input').forEach(inp => {
+    inp.addEventListener('input', e => {
+      const val = e.target.value;
+      if (!isHex(val)) return;
+      const hex = (val[0]==='#'? val : '#'+val).toLowerCase();
+      // Editing anything forks the scheme into Custom, so the named ones stay honest.
+      if (active !== 'custom') {
+        SCHEMES.custom.light = { ...SCHEMES[active].light };
+        SCHEMES.custom.dark  = { ...SCHEMES[active].dark };
+        active = 'custom';
+      }
+      SCHEMES.custom[e.target.dataset.m][e.target.dataset.r] = hex;
+      paint();
+    });
+  });
+}
+
+/* ---------- token output ---------- */
+function writeOut() {
+  const l = SCHEMES[active].light, d = SCHEMES[active].dark;
+  const highIsTint = l.high.toLowerCase() === GROUND.light.tint.toLowerCase()
+              && d.high.toLowerCase() === GROUND.dark.tint.toLowerCase();
+  const note = highIsTint
+    ? `/* High reuses --tint, as today: no extra token needed. */`
+    : `/* High has its own colour now, so it needs its own token — --tint\n   must keep meaning "tappable". Add --pri-high below, then repoint\n   four places at it:\n     css/components.css  .tag-high { background: var(--pri-soft); color: var(--pri-high-strong) }\n     css/components.css  .pri-high::before { background: var(--pri-high) }\n     css/components.css  .seg-pri [data-pri="high"] .pri-swatch\n     js/map.js           PRI_VAR high  ->  '--pri-high' */`;
+
+  const block = (m, s) => {
+    const a = alpha[m];
+    const strong = m==='light' ? shift(s.high,-18) : shift(s.high,18);
+    return [
+      `  --green:            ${s.done};`,
+      `  --pri-high:         ${s.high};`,
+      `  --pri-high-strong:  ${strong};`,
+      `  --violet:           ${s.medium};   /* medium */`,
+      `  --slate:            ${s.low};   /* low */`,
+      ``,
+      `  --green-soft:       ${soft(s.done,a)};`,
+      `  --pri-soft:         ${soft(s.high,a)};`,
+      `  --violet-soft:      ${soft(s.medium,a)};`,
+      `  --slate-soft:       ${soft(s.low,a)};`
+    ].join('\n');
+  };
+
+  $('out').value =
+`/* ${SCHEMES[active].name} — css/base.css */
+${note}
+
+:root {
+${block('light', l)}
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+${block('dark', d).split('\n').map(x=>x?'  '+x:x).join('\n')}
+  }
+}`;
+}
+
+/* ---------- wiring ---------- */
+$('alphaL').addEventListener('input', e => { alpha.light = e.target.value/100; $('alphaLOut').textContent = alpha.light.toFixed(2).slice(1); paint(); });
+$('alphaD').addEventListener('input', e => { alpha.dark  = e.target.value/100; $('alphaDOut').textContent = alpha.dark.toFixed(2).slice(1); paint(); });
+
+$('copy').addEventListener('click', async () => {
+  await navigator.clipboard.writeText($('out').value);
+  $('copy').textContent = 'Copied';
+  setTimeout(() => $('copy').textContent = 'Copy CSS', 1200);
+});
+$('reset').addEventListener('click', () => {
+  SCHEMES.custom.light = { ...SCHEMES.ember.light };
+  SCHEMES.custom.dark  = { ...SCHEMES.ember.dark };
+  active = 'ember'; paint();
+});
+
+document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => {
+  document.querySelectorAll('[data-view]').forEach(x => x.setAttribute('aria-pressed', x===b));
+  const v = b.dataset.view;
+  $('stages').classList.toggle('one', v !== 'both');
+  document.querySelectorAll('.stage-wrap').forEach(w => {
+    w.style.display = (v === 'both' || w.dataset.mode === v) ? '' : 'none';
+  });
+});
+
+paint();
+</script>
+</body>
+</html>

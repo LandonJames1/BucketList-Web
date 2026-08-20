@@ -477,6 +477,10 @@ async function openNewActivity(prefillName,notice){
   setPriorityChoice('medium');
   $('aDateCustom').value='';onTargetDateChange();
   renderTagChips('aLinks');
+  /* The notes log belongs to the activity, so the field here is only
+     ever "write the first entry" — it never shows what is already
+     there. See notes.js. */
+  resetActivityNoteField();
   setRemindField(null,'');
   $('actSheetTitle').textContent='New Activity';
   $('actSaveBtn').textContent='Add';
@@ -519,6 +523,11 @@ async function openEditAct(id){
   setPriorityChoice(a.priority||'medium');
   aLinks=[...(a.links||[])];
   renderTagChips('aLinks');
+  /* Empty on an edit too: the log is append-only and is read on the
+     activity detail sheet. Filling this with the existing entries
+     would invite them to be rewritten, which is the one thing a log
+     must not allow. */
+  resetActivityNoteField();
   setRemindField(a.remindAt,a.remindNote);
   $('actSheetTitle').textContent='Edit Activity';
   $('actSaveBtn').textContent='Save';
@@ -740,7 +749,7 @@ async function commitSaveActivity(fields,before){
        needs its stats rebuilt — the ones it left and the ones it landed
        in. Reading the old row before the write is the only way to know
        where it was. */
-    let offline=false;
+    let offline=false,noteFor=null;
     if(editingActId){
       const wasIn=(before&&before.listIds)||[];
       const nowIn=targetListIds.length?targetListIds:wasIn;
@@ -755,6 +764,7 @@ async function commitSaveActivity(fields,before){
       const r=await dbUpdate('Activities',fields,{id:editingActId});
       if(r.error)throw r.error;
       offline=!!r.offline;
+      noteFor=editingActId;
       /* The union of both sets: a list gained needs recounting, and so
          does one it was taken out of. */
       new Set([...wasIn,...nowIn]).forEach(id=>updateCollectionStats(id));
@@ -765,8 +775,17 @@ async function commitSaveActivity(fields,before){
       const r=await dbInsert('Activities',fields);
       if(r.error)throw r.error;
       offline=!!r.offline;
+      /* The id was minted client-side by stampRow(), so the note can be
+         filed against it immediately — even offline, where the activity
+         itself is still sitting in the write queue. */
+      noteFor=r.rows&&r.rows[0]&&r.rows[0].id;
       (targetListIds.length?targetListIds:[curListId]).forEach(id=>updateCollectionStats(id));
     }
+    /* After the activity, never as part of it: they are separate rows
+       in separate tables, and a note that fails must not take the
+       activity down with it. Not awaited — nothing on screen is
+       waiting for it. */
+    if(noteFor) flushActivityNoteField(noteFor);
     closeModal('actSheet');
     if(offline) showToast('Saved — will sync when you’re back online');
     /* Whatever screen is actually showing owns the row that changed.
@@ -892,6 +911,19 @@ async function openActDetail(id){
     h+=`<div class="ad-section"><div class="ad-section-label">How it went</div>
       <div class="ad-note prose">${esc(a.completionNotes)}</div></div>`;
   }
+  /* The notes log. A placeholder now and filled in behind the sheet by
+     renderActivityNotes(), because it is a round trip and nothing else
+     on this sheet should wait for it — the photos and the buttons are
+     what the sheet is about.
+
+     It sits directly under the media rather than down with location
+     and links: on a shared list this is the working state of the plan,
+     which is the reason somebody opened the activity at all. Reference
+     fields go below it. */
+  if(notesReady()){
+    h+=`<div class="ad-section" id="adNotes" data-for="${esc(a.id)}"></div>`;
+  }
+
   /* Which lists it is in, but only once that is news. At one list the
      answer is the screen you came from, and a section restating it on
      every activity in the app would be noise on the overwhelming
@@ -981,6 +1013,8 @@ async function openActDetail(id){
 
   $('actDetailBody').innerHTML=h;
   openModal('actDetailSheet');
+  /* Deliberately not awaited — see the placeholder above. */
+  if(notesReady()) renderActivityNotes(a.id);
 }
 
 /* ==============================================================
@@ -998,6 +1032,17 @@ async function openCollectionMenu(){
     {label:'Add Many at Once', icon:'plus',   onSelect:openBulkAdd},
     {label:'Edit List',        icon:'pencil', onSelect:openEditList},
   ];
+
+  /* The conversation is reachable from here as well as from the
+     Messages tab, because those are the two places people look for it:
+     the hub when they are catching up, the list when they are already
+     looking at the thing being discussed. Only shown where there is
+     actually a conversation — a list nobody else is in has nobody to
+     talk to. See js/messages.js. */
+  if(listHasConversation(curListId)){
+    items.splice(3,0,{label:'Messages',icon:'message',
+      onSelect:()=>openConversationForList(curListId)});
+  }
   /* Sharing only appears once the backend supports it — the same rule
      the reminder row follows. See js/sharing.js. */
   if(sharingReady()){

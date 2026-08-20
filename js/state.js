@@ -15,6 +15,11 @@ let currentUser=null;
 let curTab='home',curPage='home',backTab='lists';
 
 let curListId=null,editingListId=null,editingActId=null;
+/* Which conversation the conversation screen is showing. Kept beside
+   curListId because it IS a collection id — a conversation belongs to
+   a shared list rather than existing in its own right. See
+   js/messages.js. */
+let curConvId=null;
 /* upMedia is the working list of {type,url,poster} entries for whichever
    sheet is open — see js/media.js. It was upPhotos, an array of base64
    data URLs, before photos moved into Supabase Storage and video existed

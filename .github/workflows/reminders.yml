@@ -1,0 +1,106 @@
+# =============================================================
+# Daily reminder sweep.
+#
+# This replaces supabase/cron.sql. Both do the same one thing — POST
+# to the send-reminders function once a day — and this one is
+# preferred because it needs no pg_cron and no pg_net extension, keeps
+# its secrets in GitHub rather than inlined in a SQL statement stored
+# in the database, and gives you a run log you can actually read.
+# Use one or the other, not both, or every reminder fires twice.
+#
+# ---- Why this is a schedule and message push is not ----
+#
+# A reminder is "tell me on March 3rd". Nothing happens on March 3rd —
+# no user acts, no row is written — so something has to wake up and
+# check the calendar. That is the only thing a schedule buys.
+#
+# A message's event is the insert itself, so it pushes immediately from
+# send-message-push. Nothing here is involved in that.
+#
+# ---- Setup ----
+#
+#   1. Repo → Settings → Secrets and variables → Actions, add:
+#        SUPABASE_ANON_KEY   the publishable key, same one in config.js
+#        CRON_SECRET         any long random string
+#   2. supabase secrets set CRON_SECRET=<the same value>
+#   3. supabase functions deploy send-reminders
+#
+# BOTH headers below are required and they do different jobs:
+#   Authorization  gets past Supabase's gateway, which rejects a
+#                  bearer-less request BEFORE it reaches the function —
+#                  a 401 that never appears in the function's own logs
+#                  and looks exactly like a cron that never fired.
+#   x-cron-secret  is what actually authorises the send. The anon key
+#                  is public by design and authorises nothing here.
+# =============================================================
+
+name: Daily reminders
+
+on:
+  schedule:
+    # 14:00 UTC — mid-morning in the US. Cron here is always UTC, so
+    # this does not follow daylight saving; shift it by hand twice a
+    # year if that matters.
+    - cron: '0 14 * * *'
+  # So you can prove it works without waiting until tomorrow:
+  # Actions → Daily reminders → Run workflow.
+  workflow_dispatch:
+
+# Two runs overlapping would be harmless (reminder_deliveries is keyed
+# per person per date, so the second finds nothing to send) but there is
+# no reason to allow it.
+concurrency:
+  group: daily-reminders
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger send-reminders
+        env:
+          PROJECT_REF: xxdmendegyxlkikejvps
+          ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${ANON_KEY:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::SUPABASE_ANON_KEY and CRON_SECRET must both be set as repository secrets."
+            exit 1
+          fi
+
+          # --fail-with-body so a 4xx/5xx fails the step AND still prints
+          # what the server said. Plain --fail swallows the body, which
+          # is the half that tells you which of the two headers was wrong.
+          # -sS keeps the progress meter out of the log but keeps errors.
+          http_code=$(curl -sS --fail-with-body \
+            -o response.json -w '%{http_code}' \
+            --max-time 90 --retry 2 --retry-delay 10 --retry-connrefused \
+            -X POST "https://${PROJECT_REF}.supabase.co/functions/v1/send-reminders" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${ANON_KEY}" \
+            -H "x-cron-secret: ${CRON_SECRET}" \
+            -d '{}') || {
+              echo "::error::send-reminders call failed."
+              # 401 here is nearly always one of the two headers: the
+              # gateway rejects a bad/absent bearer token, the function
+              # itself rejects a bad x-cron-secret. The body says which.
+              cat response.json 2>/dev/null || true
+              exit 1
+            }
+
+          echo "HTTP ${http_code}"
+          cat response.json
+          echo ""
+
+          # The function answers 200 with a JSON summary — due,
+          # recipients, sent, delivered, pruned. "sent: 0" on a day with
+          # nothing due is a success, not a failure, so this only
+          # surfaces the numbers rather than asserting on them.
+          echo "### Reminder sweep" >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          cat response.json >> "$GITHUB_STEP_SUMMARY"
+          echo '' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
