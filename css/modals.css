@@ -765,6 +765,12 @@
        the sheet underneath rather than a replacement for it, so seeing
        a sliver of that sheet behind it is correct here. */
     #dupeSheet { z-index: 210; }
+    /* The list picker opens over the activity sheet (z 205) and the
+       completion sheet (z 205), and is LATER in document order than
+       both — which counts for nothing against a higher z-index, so
+       without this it renders behind the sheet that opened it and
+       cannot be tapped. */
+    #listPickerSheet { z-index: 215; }
     /* It used to force its own full height so the sheet underneath did
        not show above it. Every .modal is now one locked height, so it
        covers the sheet below by construction. */
