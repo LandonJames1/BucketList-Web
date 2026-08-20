@@ -9,7 +9,7 @@
    installs pick the new build up instead of serving a stale one.
    ============================================================== */
 
-const CACHE_VERSION = 'v65';
+const CACHE_VERSION = 'v72';
 const SHELL_CACHE = `bucketlist-shell-${CACHE_VERSION}`;
 const VENDOR_CACHE = `bucketlist-vendor-${CACHE_VERSION}`;
 const IMAGE_CACHE = `bucketlist-images-${CACHE_VERSION}`;
@@ -186,6 +186,7 @@ self.addEventListener('push', event => {
       url: './index.html',
       kind: isMessage ? 'message' : 'reminder',
       collectionId: payload.collectionId || null,
+      activityId: payload.activityId || null,
     },
   }));
 });
@@ -206,13 +207,17 @@ self.addEventListener('notificationclick', event => {
       if ('focus' in c) {
         if (data.kind === 'message' && data.collectionId) {
           c.postMessage({ type: 'open-conversation', collectionId: data.collectionId });
+        } else if (data.kind === 'reminder' && data.activityId) {
+          c.postMessage({ type: 'open-activity', activityId: data.activityId });
         }
         return c.focus();
       }
     }
     const url = data.kind === 'message' && data.collectionId
       ? './index.html?conv=' + encodeURIComponent(data.collectionId)
-      : './index.html';
+      : data.kind === 'reminder' && data.activityId
+        ? './index.html?act=' + encodeURIComponent(data.activityId)
+        : './index.html';
     if (self.clients.openWindow) return self.clients.openWindow(url);
   })());
 });

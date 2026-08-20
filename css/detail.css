@@ -416,3 +416,29 @@
     }
     .ad-link span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .ad-link:not(:last-child) { border-bottom: .5px solid var(--separator); }
+
+/*  ---- The activity sheet's two halves -----------------------
+    A pending activity carries Details and Notes as tabs rather
+    than one long column: the log needs room to be worked in and
+    was competing with the photos and the action buttons. A
+    completed activity has no Notes tab and no tab bar. */
+    .ad-tabs {
+      display: flex; gap: 4px; padding: 3px;
+      margin: 0 var(--gx-r) 18px var(--gx-l); border-radius: 10px;
+      background: var(--fill-4);
+    }
+    .ad-tab {
+      flex: 1; height: 30px; border-radius: 8px;
+      font-family: var(--mono); font-size: 10px; font-weight: 500;
+      letter-spacing: .09em; text-transform: uppercase;
+      color: var(--label-2); transition: background .15s, color .15s;
+    }
+    .ad-tab.active {
+      background: var(--bg-elevated); color: var(--label);
+      box-shadow: var(--shadow-sm);
+    }
+    /* The Notes pane opens on its own log — no title above it — so it
+       carries the gap the header would otherwise have given it. */
+    .ad-pane > .ad-notes-pane:first-child { margin-top: 0; }
+    .ad-pane { display: none; }
+    .ad-pane.active { display: block; }

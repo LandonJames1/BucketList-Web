@@ -290,8 +290,6 @@ async function clearHomeActivityFlags(){
 function renderMeHome(){
   const row=$('meHomeRow');
   if(!row)return;
-  const v=$('meHomeValue');
-  if(v) v.textContent=_homePlace&&_homePlace.location?_homePlace.location:'Not set';
 }
 
 function openHomeSheet(){
@@ -354,9 +352,6 @@ function renderMeNotifications(){
   if(!remindersReady()){row.style.display='none';return;}
   row.style.display='';
   const state=notificationState();
-  const label={granted:'On',denied:'Blocked in browser settings',
-               default:'Off',unsupported:'Not supported'}[state];
-  $('meNotifyValue').textContent=label;
   row.onclick=state==='default'?requestNotifications:()=>{
     if(state==='denied') showToast('Allow notifications in your browser settings');
     else if(state==='granted') showToast('Reminders are on');

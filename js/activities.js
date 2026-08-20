@@ -870,7 +870,24 @@ async function openActDetail(id){
      date when it is done, priority and deadline when it is not — and
      the name is centred over them on a completed activity, where the
      sheet is a record rather than a plan. */
-  let h=`<div class="ad-head">
+  /* Pending activities split the sheet in two: Details and Notes.
+     The notes log needs room to be worked in, and it was competing
+     with the photos and the action buttons for the same screen. A
+     completed activity has no notes tab at all — the record is the
+     photos and "How it went". The bar sits above the title, and the
+     Notes pane carries neither title nor badges. */
+  const tabbed=!a.completed&&notesReady();
+
+  let h='';
+  /* The tab bar leads the sheet: the Notes pane is a log of its own and
+     carries no title or priority, so the header belongs to Details. */
+  if(tabbed){
+    h+=`<div class="ad-tabs" role="tablist">
+      <button class="ad-tab active" id="adTabBtnDetails" onclick="setActDetailTab('details')">Details</button>
+      <button class="ad-tab" id="adTabBtnNotes" onclick="setActDetailTab('notes')">Notes</button>
+    </div><div class="ad-pane active" id="adPaneDetails">`;
+  }
+  h+=`<div class="ad-head">
     <div class="ad-title${a.completed?' centered':''}">${esc(a.name)}</div>
     <div class="ad-badges">
       <span class="tag ${a.completed?'tag-done':'tag-'+(a.priority||'medium')}">
@@ -881,7 +898,9 @@ async function openActDetail(id){
         ${icon('calendar','ic-xs')}${esc(a.completedDate?fmtDate(a.completedDate,true):'Set date')}
       </button>`:''}
       ${!a.completed&&di.label?`<span class="badge b-${di.cls}">${esc(di.label)}</span>`:''}
-    </div>`;
+    </div></div>`;
+
+  h+=`<div class="ad-head">`;
 
   if(media.length===1){
     h+=`<div class="ad-hero-wrap" onclick="openLB(${mediaArg},0)">
@@ -920,9 +939,6 @@ async function openActDetail(id){
      and links: on a shared list this is the working state of the plan,
      which is the reason somebody opened the activity at all. Reference
      fields go below it. */
-  if(notesReady()){
-    h+=`<div class="ad-section" id="adNotes" data-for="${esc(a.id)}"></div>`;
-  }
 
   /* Which lists it is in, but only once that is news. At one list the
      answer is the screen you came from, and a section restating it on
@@ -1011,10 +1027,38 @@ async function openActDetail(id){
         ${delBtn}
       </div>`;
 
+  if(tabbed){
+    h+=`</div><div class="ad-pane" id="adPaneNotes">
+      <div class="ad-section ad-notes-pane" id="adNotes" data-for="${esc(a.id)}"></div>
+    </div>`;
+  }
+
   $('actDetailBody').innerHTML=h;
   openModal('actDetailSheet');
   /* Deliberately not awaited — see the placeholder above. */
-  if(notesReady()) renderActivityNotes(a.id);
+  if(tabbed) renderActivityNotes(a.id);
+}
+
+/* Which half of the activity sheet is showing. Purely a view swap —
+   both panes are already rendered. */
+function setActDetailTab(which){
+  const notes=which==='notes';
+  const pd=$('adPaneDetails'),pn=$('adPaneNotes');
+  const bd=$('adTabBtnDetails'),bn=$('adTabBtnNotes');
+  if(!pd||!pn)return;
+  pd.classList.toggle('active',!notes);
+  pn.classList.toggle('active',notes);
+  bd.classList.toggle('active',!notes);
+  bn.classList.toggle('active',notes);
+  /* The two panes must be the same height: the notes log is short and
+     the sheet visibly shrank when you switched to it. Measure the pane
+     on its way out and floor the incoming one at that. */
+  const out=notes?pd:pn;
+  const inc=notes?pn:pd;
+  const hOut=out.offsetHeight;
+  if(hOut) inc.style.minHeight=hOut+'px';
+  const body=pd.closest('.sheet-body');
+  if(body) body.scrollTop=0;
 }
 
 /* ==============================================================

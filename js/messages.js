@@ -322,6 +322,7 @@ async function renderConversation(){
   const scroll=$('convScroll');
   scroll.innerHTML='<div class="conv-loading"><div class="spinner"></div></div>';
   $('convComposerText').value='';
+  autogrowComposer($('convComposerText'));
   _pendingMentions=[];
   renderPendingMentions();
 
@@ -566,8 +567,12 @@ async function sendMessage(){
 async function notifyMessageSent(messageId){
   if(!messageId||!navigator.onLine) return;
   try{
-    const{error}=await sb.functions.invoke('send-message-push',{body:{messageId}});
+    const{data,error}=await sb.functions.invoke('send-message-push',{body:{messageId}});
     if(error) console.info('[messages] push not sent:',error.message||error);
+    /* A 200 can still mean nobody was told — no registered devices,
+       everyone muted, nobody else in the list. Logged because that is
+       otherwise indistinguishable from a push that went out. */
+    else console.info('[messages] push:',data);
   }catch(e){
     /* Not deployed, or unreachable. The conversation works regardless —
        this is the same degradation everything optional here has. */
@@ -583,6 +588,18 @@ function onConvComposerKey(e){
   }
 }
 
+/* iMessage's composer: one line at rest, growing a line at a time, and
+   only scrolling once it hits the cap. The overflow has to be toggled
+   rather than left on auto, or the box shows a scrollbar from the first
+   character. */
+function autogrowComposer(input){
+  if(!input) return;
+  input.style.height='auto';
+  const h=Math.min(input.scrollHeight,120);
+  input.style.height=h+'px';
+  input.style.overflowY=input.scrollHeight>120?'auto':'hidden';
+}
+
 function onConvComposerInput(){
   const input=$('convComposerText');
   const wrap=$('convComposer');
@@ -590,8 +607,7 @@ function onConvComposerInput(){
   wrap.classList.toggle('has-text',!!input.value.trim()||!!_pendingMentions.length);
   /* Grow with the text up to a cap, then scroll — a composer that
      eats the conversation is worse than one that scrolls. */
-  input.style.height='auto';
-  input.style.height=Math.min(input.scrollHeight,120)+'px';
+  autogrowComposer(input);
   updateMentionSuggest();
 }
 
@@ -1030,15 +1046,16 @@ function listHasConversation(cid){
    reason it does there — an invite link followed to a message
    notification would otherwise lose one of the two.
    ============================================================== */
-let pendingConv=null;
+let pendingConv=null,pendingAct=null;
 
 function readPushLanding(){
   try{
     const p=new URLSearchParams(location.search);
-    const id=p.get('conv');
-    if(!id) return;
-    pendingConv=id;
-    p.delete('conv');
+    const id=p.get('conv'),act=p.get('act');
+    if(!id&&!act) return;
+    pendingConv=id||null;
+    pendingAct=act||null;
+    p.delete('conv');p.delete('act');
     const rest=p.toString();
     history.replaceState({},'',location.pathname+(rest?'?'+rest:'')+location.hash);
   }catch(e){ /* a malformed URL is not worth failing the boot over */ }
@@ -1046,6 +1063,9 @@ function readPushLanding(){
 
 /* Called from showApp(), once there is a user to open it for. */
 function handlePushLanding(){
+  const act=pendingAct;
+  pendingAct=null;
+  if(act) openActivityFromPush(act);
   const id=pendingConv;
   pendingConv=null;
   if(!id) return;
@@ -1060,8 +1080,23 @@ function handlePushLanding(){
 if('serviceWorker' in navigator){
   navigator.serviceWorker.addEventListener('message',e=>{
     const d=e.data;
-    if(!d||d.type!=='open-conversation'||!d.collectionId) return;
-    if(!currentUser||!messagesReady()) return;
+    if(!d||!currentUser) return;
+    if(d.type==='open-activity'&&d.activityId) return openActivityFromPush(d.activityId);
+    if(d.type!=='open-conversation'||!d.collectionId) return;
+    if(!messagesReady()) return;
     nav('conversation',d.collectionId);
   });
+}
+
+/* A reminder notification names one activity, so tapping it should land
+   on that activity and not merely on the app. There is no URL routing
+   here, so "landing" means navigating to the collection it is homed in
+   and opening its sheet on top — the same place a tap on its row goes. */
+async function openActivityFromPush(id){
+  try{
+    const a=await fetchActivity(id);
+    if(!a) return;
+    if(a.listId) nav('detail',a.listId);
+    openActDetail(id);
+  }catch(e){ /* a reminder that cannot be opened is not worth an error */ }
 }

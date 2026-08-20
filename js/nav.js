@@ -213,7 +213,7 @@ function updateNavbar(){
   } else if(curPage==='messages'){
     title.textContent='Messages';
   } else if(curPage==='conversation'){
-    left.innerHTML=`<button class="navbtn back" onclick="nav('messages')">${icon('chevron-left')}<span>Messages</span></button>`;
+    left.innerHTML=`<button class="navbtn back" onclick="nav('messages')" aria-label="Messages">${icon('chevron-left')}</button>`;
     right.innerHTML=`<button class="navbtn disc ghost" onclick="openConversationMenu()" aria-label="Conversation options">${icon('ellipsis')}</button>`;
     /* The title is the list's name, set by renderConversation() once it
        has been fetched. */
@@ -248,7 +248,13 @@ function applyNavCondense(){
   const bar=$('navbar');
   const marker=document.querySelector('.page.active .large-title h1');
   let condensed;
-  if(marker){
+  /* The conversation owns its own scroller, so the window never moves
+     and the bar would never condense — leaving the list's name, which
+     is the only thing saying which conversation this is, at opacity 0.
+     It has no large title to collapse, so it is condensed always. */
+  if(curPage==='conversation'){
+    condensed=true;
+  } else if(marker){
     /* Condense once the large title's baseline passes under the bar. */
     condensed = marker.getBoundingClientRect().bottom <= navChromeTop()+2;
     /* Pushed screens have no large title of their own; they show the
@@ -315,11 +321,17 @@ function setBodyScrollLock(lock){
 function syncTabbarToKeyboard(){
   const vv=window.visualViewport;
   const bar=$('tabbar');
-  if(!vv||!bar||!isIOS())return;
-  /* How much of the layout viewport sits below the visual one. Zero
-     with the keyboard closed, the keyboard's height with it open. */
-  const lift=Math.max(0,Math.round(window.innerHeight-(vv.height+vv.offsetTop)));
-  bar.style.transform=lift?`translate3d(0,${lift}px,0)`:'';
+  if(!vv||!bar)return;
+  /* Measured, not assumed. Clear the correction, ask where the bar
+     actually landed relative to the LAYOUT viewport's bottom, and push
+     it back by exactly that. A platform that already pins fixed
+     elements to the layout viewport measures a drift of zero and gets
+     no transform, so this needs no isIOS() guess — and it cannot be
+     defeated by a browser lifting the bar by something other than the
+     keyboard's height. THE BAR MUST NEVER MOVE. */
+  bar.style.transform='';
+  const drift=Math.round(window.innerHeight-bar.getBoundingClientRect().bottom);
+  if(drift>1) bar.style.transform=`translate3d(0,${drift}px,0)`;
 }
 
 if(window.visualViewport){

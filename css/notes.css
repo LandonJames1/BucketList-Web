@@ -73,14 +73,7 @@
       white-space: pre-wrap; overflow-wrap: anywhere;
     }
 
-    /* Says what the log is for rather than just that it is empty —
-       this is a new idea in the app, and "no notes" would teach
-       nobody why they would want one. */
-    .note-empty {
-      padding: 12px 14px;
-      background: var(--fill-4); border-radius: 12px;
-      font-size: 13px; line-height: 1.45; color: var(--label-3);
-    }
+    /* An empty log draws nothing. */
 
 /*  ---- Adding one -------------------------------------------
     Shaped like the conversation composer on purpose: adding to the
@@ -88,18 +81,17 @@
     and the log is where a message ends up. */
     .note-add {
       display: flex; align-items: flex-end; gap: 8px;
-      margin-top: 8px; padding: 4px 4px 4px 16px;
+      margin-top: 8px; padding: 3px 3px 3px 14px;
       background: var(--bg-elevated); border-radius: 19px;
       box-shadow: inset 0 0 0 .5px var(--separator-solid);
-      transition: box-shadow .18s;
     }
-    .note-add:focus-within { box-shadow: inset 0 0 0 1.5px var(--tint); }
     .note-add textarea {
       flex: 1; min-width: 0; resize: none; border: none; background: none;
       /* Never below 16px computed — Safari zooms the page otherwise. */
       font-family: var(--sans); font-size: max(16px, 16px);
       line-height: 1.4; color: var(--label);
-      padding: 7px 0; max-height: 140px; overflow-y: auto;
+      padding: 5px 0; height: 30px; max-height: 140px; overflow-y: hidden;
+      outline: none;
     }
     .note-add textarea::placeholder { color: var(--label-4); }
     .note-add-go {
@@ -129,3 +121,17 @@
     }
     .fg textarea.fg-note::placeholder { color: var(--label-4); }
     .fg textarea.fg-note:focus { box-shadow: inset 0 0 0 1.5px var(--tint); }
+
+/*  ---- The Notes tab of the activity sheet ------------------
+    The log gets the height it needs to be worked in: it scrolls
+    inside itself, with the composer pinned beneath it, so the
+    sheet's own scroll is never fighting the log's. */
+    .ad-notes-pane {
+      margin: 18px var(--gx-r) 0 var(--gx-l);
+      display: flex; flex-direction: column;
+    }
+    .ad-notes-pane .note-log {
+      max-height: 52vh; overflow-y: auto;
+      overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+    }
+    .ad-notes-pane .note-add textarea { max-height: 200px; }

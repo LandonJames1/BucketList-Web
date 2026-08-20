@@ -44,6 +44,30 @@ After structural edits, regenerate the function inventory with:
 for f in js/*.js; do echo "=== $f"; grep -oE '^(async function|function|let|const) [A-Za-z0-9_$]+' "$f"; done
 ```
 
+## ⛔ TWO RULES THAT ARE NOT NEGOTIABLE
+
+**1. STOP WRITING HELP TEXT.** No explanatory subtext under labels, no
+"this is what this field is for" captions, no empty-state paragraphs
+teaching a feature, no reassuring sentence under a heading. The app
+should be legible from its controls and its content. If a control needs
+a paragraph to be understood, the control is wrong — fix the control.
+A label, a placeholder, and nothing else. When in doubt, delete it.
+Explanations belong in *this file*, where the next person editing the
+code reads them, not on the user's screen.
+
+**2. THE BOTTOM TAB BAR MUST NEVER MOVE WHEN THE KEYBOARD OPENS.**
+Focusing any field anywhere — the message composer above all — must
+leave `.tabbar` exactly where it was. iOS re-anchors fixed elements to
+the *visual* viewport when the software keyboard opens, which lifts the
+bar on top of the keyboard. `syncTabbarToKeyboard()` in `nav.js` undoes
+it by **measuring** the bar's real offset from the layout viewport's
+bottom and translating back by that amount — no platform sniffing, no
+assumption about the keyboard's height, so it cannot silently stop
+working. Do not add a guard in front of it, do not remove the
+`visualViewport` listeners, and do not generalise the correction to
+bottom-anchored sheets or the conversation composer, which are *meant*
+to ride up with the keyboard.
+
 ## ⚠️ Critical constraints — read before editing JS
 
 This app was refactored out of one 2,804-line `index.html`, but it is **NOT
@@ -1450,6 +1474,11 @@ inside `.conv-scroll`, pinned between the nav bar and a docked
 composer, so the newest message and the field you type into are both
 always where you left them.
 
+**The nav bar is condensed unconditionally here** (`applyNavCondense()`).
+`.navbar-title` is `opacity: 0` until `.condensed`, and this screen has no
+large title and never scrolls the window — so the list's name, the only thing
+identifying which conversation you are in, was invisible.
+
 The composer is `position: fixed; bottom: var(--chrome-bottom)` and is
 **deliberately allowed to ride up with the iOS keyboard** — the exact
 behaviour `syncTabbarToKeyboard()` spends real effort undoing for the
@@ -1495,8 +1524,8 @@ dead; see **Back end**.
 
 ##### Where it appears
 
-- **The activity detail sheet** carries the log and its composer,
-  directly under the media. On a shared list this is the working state
+- **The activity detail sheet's Notes tab** carries the log and its
+  composer, and only on a *pending* activity. On a shared list this is the working state
   of the plan, which is why somebody opened the activity at all;
   location and links are reference and go below it. It is rendered into
   a **placeholder** and filled in behind the sheet, because it is a
@@ -2715,7 +2744,7 @@ Loaded in this order; **order matters**.
 | `home.js` | The Home tab. `renderHome()` plus one function per section, the shared `upNextRowHTML()`/`sortUpNext()` the Up Next screen also uses, the context-free composer (`homeQuickAdd`, which asks plan-or-record via `startNewActivity()` — or routes to `importFromComposer()` when what was typed is a URL, see **Sharing a link in**), the composer's search half (`updateHomeSuggest`/`homeSuggestRowHTML`/`openHomeSuggest`/`closeHomeSuggest`, plus `searchActivities`/`searchMark`/`SEARCH_MIN`/`SEARCH_ACT_WEIGHTS` — all that survives of the deleted Search screen; see **One field, both questions** and **Finding things again**), and `toggleCompleteFrom()` — Home's copy of the completion toggle, which cannot rely on `curListId`. |
 | `collections.js` | `renderCollections()` (the Lists tab) plus the collection CRUD: `openNewList`, `openEditList`, `renderCoverPreview`, `clearCover`, `handleCoverUpload`, `saveList`, `delList`. `delList` deletes the collection's activities first — there is no DB cascade — and, once an activity can be in several lists, deletes only the ones with nowhere else to go and unlinks the rest. |
 | `detail.js` | One collection. Rendering is **deliberately split in two**: `renderDetail()` builds the banner and the controls, `renderActivitiesList()` rebuilds only the list. Search and filter call the second, so the search field never loses focus mid-typing. Also `activityRowHTML`/`activityCardHTML`, `sortButtonHTML()` (the sort control beside the filter), and the quick-add composer helpers (`composerHTML`, `onComposerKey`, `focusComposer`). |
-| `activities.js` | The whole activity flow. **Creating always goes through a sheet** — `quickAddActivity()` only takes the composer's text and hands it to **`startNewActivity()`**, the plan-or-record chooser, which opens either `openNewActivity(name)` or **`openCompDraft(name)`** (see **Adding something you already did**, plus `setCompNameShape`/`renderCompListRow`/`commitCompDraft`). Nothing here inserts an activity directly except `commitSaveActivity()` and `commitCompDraft()`, which are those two sheets' own Saves. `toggleComplete(id, isDone)` is the one-tap completion (see the note below). Then `openNewActivity`, `openEditAct`, `saveActivity`, `delActivity`, plus `renderActListPicker()`/`renderActListValue()`/`setTargetLists()` and the `targetListIds` global (with `targetListId` as a read-only alias for the home list) — the Lists row that lets an activity be filed from outside any collection, and which is hidden when there is no choice to make. Also `listFieldsFor()` and `removeActivityFromList()` — see **One activity, several lists**. Also **`setActivityNotice`** — the one line the activity sheet can carry saying why it opened empty, written only by a screenshot import that could not be read (see **Sharing a link in**) — and `setPriorityChoice` (**the only way to set priority** — it keeps the swatched buttons and the hidden `#aPri` value in step), `openComp`/`openCompletedDate`/`confirmComplete` — the one completion sheet, every field on it — and `updateMediaRequirement()`, which is why that sheet will not save a *new* completion with no photo or video (see **The two-speed activity flow**) — and `openActDetail` which builds the activity sheet. Plus `openCollectionMenu` (the ⋯ action sheet, which holds the view switcher and everything the old five-button hero row spelled out), `setFilter`, `setView`, and `openSortMenu`/`setSort`. |
+| `activities.js` | The whole activity flow. **Creating always goes through a sheet** — `quickAddActivity()` only takes the composer's text and hands it to **`startNewActivity()`**, the plan-or-record chooser, which opens either `openNewActivity(name)` or **`openCompDraft(name)`** (see **Adding something you already did**, plus `setCompNameShape`/`renderCompListRow`/`commitCompDraft`). Nothing here inserts an activity directly except `commitSaveActivity()` and `commitCompDraft()`, which are those two sheets' own Saves. `toggleComplete(id, isDone)` is the one-tap completion (see the note below). Then `openNewActivity`, `openEditAct`, `saveActivity`, `delActivity`, plus `renderActListPicker()`/`renderActListValue()`/`setTargetLists()` and the `targetListIds` global (with `targetListId` as a read-only alias for the home list) — the Lists row that lets an activity be filed from outside any collection, and which is hidden when there is no choice to make. Also `listFieldsFor()` and `removeActivityFromList()` — see **One activity, several lists**. Also **`setActivityNotice`** — the one line the activity sheet can carry saying why it opened empty, written only by a screenshot import that could not be read (see **Sharing a link in**) — and `setPriorityChoice` (**the only way to set priority** — it keeps the swatched buttons and the hidden `#aPri` value in step), `openComp`/`openCompletedDate`/`confirmComplete` — the one completion sheet, every field on it — and `updateMediaRequirement()`, which is why that sheet will not save a *new* completion with no photo or video (see **The two-speed activity flow**) — and `openActDetail`/`setActDetailTab` which build the activity sheet and swap its Details/Notes tabs. Plus `openCollectionMenu` (the ⋯ action sheet, which holds the view switcher and everything the old five-button hero row spelled out), `setFilter`, `setView`, and `openSortMenu`/`setSort`. |
 | `me.js` | `renderMe()` (stats), `renderMeIdentity()`, **Home** — `homePlace`/`loadHomePlace`/`saveHomePlace`/`resetHomePlace`/`renderMeHome`/`openHomeSheet`/`saveHomeSheet`/`clearHomePlace` and the `bl_home:<uid>` localStorage mirror (see **Home**), plus **`updateHomeActivities`/`clearHomeActivityFlags`** — the cascade that moves everything set to Home when the home address changes (see **Moving house**) — `openDeleteAccount`/`onDeleteAccountInput`/`deleteAccount` (see **Deleting an account**), `loadUserProfile()` (reads the `Users` row once per session into `userProfile` — **and creates it when missing**, via `createUserProfile`/`profileSeed`/`USERNAME_RE`; see **Signing up**), `confirmSignOut()`. The tab's one App row, Add to Home Screen, is wired to `pwaShowInstallHelp()` in `pwa.js`. *Share links into the app* and *Join a shared list* both used to sit beside it; the first went with the Shortcut tier (see **Sharing a link in**) and the second lives on the Lists tab, which is the screen the missing list was supposed to be on. |
 | `bulk.js` | The "add many at once" sheet, one card per row. Row values live in `bulkEntries[]` and the DOM is re-rendered from it wholesale, so **`saveBulkFieldValues()` must flush the inputs back into the array before any redraw** — every mutation helper does this. `_skipSaveBulk` suppresses that flush in `bulkApplyDown` (the "copy row 1" pills), which has already updated the array itself. `openBulkAdd(listId)` takes an explicit destination in `bulkListId`, defaulting to `curListId`: the sheet normally opens from a collection, but an import from Home has no collection context and passes the chosen list. |
 | `share.js` | **Turning a shared link or a screenshot into an activity.** `readSharedInput()` (boot; parses and strips the query param), `handleSharedInput()` (called from `showApp()`), `openImportSheet`/`runUnfurl`/**`importFailed`** (the link-keeps-the-card / screenshot-goes-to-the-sheet split)/`renderImportState`/`IMPORT_FAIL_STATE`/`SHOT_FAIL_NOTICE`, `pickScreenshot`/`handleScreenshot` (downscale and send to the vision path), `handOffSingle`/`handOffMany`/`shareSourceLinks`, and `looksLikeUrl`/`importFromComposer`. Loads after `activities.js` and `bulk.js` because it hands drafts to both. See **Sharing a link in** below. |
@@ -2948,6 +2977,16 @@ There is no fourth entry point. The Search screen's "add what you typed"
   **There is no Target section.** The deadline badge in the header already
   says it, and a second copy three sections down said it twice.
 
+  **A pending activity's sheet is two tabs: Details and Notes, and the
+  tab bar is the first thing on the sheet.** The Notes pane carries no
+  title and no badges — it is a log, and the header belongs to Details.
+  `setActDetailTab()` swaps `#adPaneDetails`/`#adPaneNotes`; both are
+  rendered up front, so switching costs nothing. The notes log needed room
+  to be worked in and was competing with the photos and the action buttons
+  for the same screen. **A completed activity has no tab bar and no notes
+  at all** — its record is the photos and "How it went", and the log is the
+  working state of a plan that no longer has one.
+
   **The media grid is capped at six tiles** (`AD_GRID_MAX` in
   `activities.js`) — two rows. Past that it shows five and folds the rest
   behind a `+N` tile (`.ad-photo-more`) that opens the lightbox at the first
@@ -3171,14 +3210,15 @@ these are the defaults, not overrides.
   *visual* viewport while leaving the layout viewport alone — Safari then
   re-anchors fixed elements to the visual one, so the bar climbs and parks
   on top of the keyboard, under the predictive-text row. Script cannot opt
-  out of that, but `syncTabbarToKeyboard()` in `nav.js` measures it: the gap
-  between the bottom of `visualViewport` and the bottom of the layout
-  viewport is exactly how far Safari lifted it, so translating back down by
-  that much returns it to where it belongs. Three things to keep:
-  - **iOS only.** Chrome on Android already pins fixed elements to the
-    layout viewport, which is the behaviour being reproduced; applying the
-    correction there too would push the bar a whole keyboard *below* the
-    screen.
+  out of that, but `syncTabbarToKeyboard()` in `nav.js` corrects it by
+  **measuring the bar itself**: it clears its own transform, reads
+  `getBoundingClientRect().bottom` against `window.innerHeight`, and
+  translates back down by the difference. Three things to keep:
+  - **Measured, not platform-sniffed.** A browser that already pins fixed
+    elements to the layout viewport (Chrome on Android) measures a drift of
+    zero and gets no transform, so no `isIOS()` guess is involved — and one
+    that lifts the bar by something other than the keyboard's height is
+    still corrected exactly.
   - **The tab bar and nothing else.** Bottom-anchored sheets *should* rise
     with the keyboard — that is the entire reason they are bottom-anchored.
     Do not generalise this to them.
@@ -3259,6 +3299,13 @@ these are the defaults, not overrides.
   scrolled, because `.sheet-grabber` is `position: absolute` on the `.modal`
   and stays put. This cost real time twice: it presented as "the activity sheet
   has no title" when the title was there all along. `openModal()` resets it.
+- **Every bottom sheet is one locked height — 75dvh — never its content
+  height.** `.modal` sets `height`, not just `max-height`, so the activity
+  sheet, the completion sheet and the reminder sheet are all the same size
+  whatever is inside them. A sheet that resizes per contents reads as the app
+  guessing. Landscape opens it out to full height, since there is no room to
+  give up. Don't add a per-sheet height override; `#remindSheet`'s is gone
+  because every sheet now covers the one below it by construction.
 - **Sheets are the only modal style below 700px** — bottom-anchored, full width,
   rounded top. Anchoring to the bottom edge keeps a focused field in a stable
   place when the keyboard resizes the viewport. At ≥700px `responsive.css`

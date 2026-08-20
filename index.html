@@ -298,7 +298,7 @@
     <div class="conv-pending" id="convPending"></div>
     <div class="conv-composer-row">
       <textarea id="convComposerText" rows="1" maxlength="2000"
-        placeholder="Message — @ to mention an activity"
+        placeholder="@ to pick activity"
         autocapitalize="sentences" enterkeyhint="send"
         oninput="onConvComposerInput()" onkeydown="onConvComposerKey(event)"></textarea>
       <button class="conv-composer-go" id="convComposerGo" onclick="sendMessage()"
@@ -332,7 +332,6 @@
     <button class="row tappable has-leading" id="meNotifyRow" style="display:none">
       <span class="row-leading li-orange" id="meNotifyIcon"></span>
       <span class="row-body"><span class="row-title">Reminder alerts</span></span>
-      <span class="row-trailing"><span id="meNotifyValue"></span></span>
     </button>
     <!-- One saved place. It is the "Home" shortcut at the top of every
          location dropdown, and — quietly, and more usefully — the bias
@@ -341,7 +340,6 @@
     <button class="row tappable has-leading" id="meHomeRow" onclick="openHomeSheet()">
       <span class="row-leading li-green" id="meHomeIcon"></span>
       <span class="row-body"><span class="row-title">Home</span></span>
-      <span class="row-trailing"><span id="meHomeValue">Not set</span></span>
     </button>
     <button class="row tappable has-leading" onclick="pwaShowInstallHelp()">
       <span class="row-leading li-blue"></span>

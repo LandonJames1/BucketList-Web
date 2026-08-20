@@ -35,7 +35,9 @@ function ownsVertical(el){
     el.closest('.photo-previews')||
     /* Completion notes scroll inside their own capped block, so a drag
        there is reading, not dismissing. */
-    el.closest('.ad-note.prose')));
+    el.closest('.ad-note.prose')||
+    /* The notes log scrolls inside its own capped block too. */
+    el.closest('.note-log')));
 }
 
 /* ==============================================================
@@ -170,8 +172,16 @@ let pgSwipe=null;
 
 document.addEventListener('touchstart',e=>{
   pgSwipe=null;
-  if(e.touches.length!==1||overlayOpen())return;
+  if(e.touches.length!==1)return;
   const t=e.touches[0];
+  /* An overlay owns the gesture — but the activity sheet's two tabs are
+     a pager, so a sideways swipe on it changes tab rather than screen. */
+  if(overlayOpen()){
+    if($('actDetailSheet').classList.contains('open')&&$('adPaneNotes')&&
+       !ownsHorizontal(e.target))
+      pgSwipe={x0:t.clientX,y0:t.clientY,t0:Date.now(),tabs:true};
+    return;
+  }
   const w=window.innerWidth;
   const nearEdge=t.clientX<=SWIPE_EDGE||t.clientX>=w-SWIPE_EDGE;
   /* On a map, only the edges are ours. */
@@ -181,12 +191,18 @@ document.addEventListener('touchstart',e=>{
 
 document.addEventListener('touchend',e=>{
   const s=pgSwipe; pgSwipe=null;
-  if(!s||overlayOpen())return;
+  if(!s||(!s.tabs&&overlayOpen()))return;
   const t=e.changedTouches[0];
   const dx=t.clientX-s.x0, dy=t.clientY-s.y0;
   if(Math.abs(dx)<SWIPE_MIN||Math.abs(dx)<Math.abs(dy)*SWIPE_RATIO)return;
   /* A slow drag is someone repositioning their hand, not a swipe. */
   if(Date.now()-s.t0>700)return;
+
+  if(s.tabs){
+    if(!$('adPaneNotes'))return;
+    setActDetailTab(dx<0?'notes':'details');
+    return;
+  }
 
   if(PUSHED_PAGES.includes(curPage)){
     /* Back only. There is nothing to the right of a pushed screen. */

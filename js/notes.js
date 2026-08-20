@@ -83,7 +83,7 @@ async function renderActivityNotes(activityId){
 
   const list=notes.length
     ? `<div class="note-log">${notes.map(n=>noteRowHTML(n,activityId)).join('')}</div>`
-    : `<div class="note-empty">Nothing noted yet. Anything added here is kept as a dated entry, so a shared plan has one history rather than several.</div>`;
+    : '';
 
   still.innerHTML=`
     <div class="ad-section-label">Notes${notes.length?` <span class="note-count">${notes.length}</span>`:''}</div>
@@ -120,6 +120,7 @@ function onNoteInput(){
   if(!el) return;
   el.style.height='auto';
   el.style.height=Math.min(el.scrollHeight,140)+'px';
+  el.style.overflowY=el.scrollHeight>140?'auto':'hidden';
   const go=$('adNoteGo');
   if(go) go.classList.toggle('show',!!el.value.trim());
 }

@@ -109,7 +109,7 @@
 
       .coll-grid { grid-template-columns: repeat(3, 1fr); }
       .acts-grid { grid-template-columns: repeat(3, 1fr); }
-      .modal { border-radius: var(--r-sheet); max-height: min(720px, calc(100dvh - 88px)); }
+      .modal { border-radius: var(--r-sheet); height: min(720px, 75dvh); max-height: calc(100dvh - 88px); }
       .modal-overlay { align-items: center; padding: 20px; }
       .modal-overlay .modal { transform: translateY(24px) scale(.98); }
       .modal-overlay.open .modal { transform: none; }
@@ -136,7 +136,9 @@
       .det-banner-desc, .det-progress { display: none; }
       #mapContainer { height: 56vh; min-height: 200px; }
       #globalMapContainer { min-height: 200px; }
-      .modal { max-height: calc(100dvh - 12px); }
+      /* Landscape has no room to give up, so the locked height opens out
+         rather than staying at 75%. */
+      .modal { height: calc(100dvh - 12px); max-height: calc(100dvh - 12px); }
       .large-title { padding-top: 0; padding-bottom: 4px; }
       .large-title h1 { font-size: 26px; }
     }

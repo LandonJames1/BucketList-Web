@@ -23,8 +23,12 @@
     .modal {
       position: relative;
       width: 100%; max-width: 560px;
-      /* Stops just short of the top edge, the way a UIKit page sheet
-         leaves the previous screen peeking behind it. */
+      /* FIXED HEIGHT, NOT CONTENT HEIGHT. Every bottom sheet in the app
+         is the same size whatever is inside it — a sheet that resizes
+         itself per contents makes the app feel like it is guessing.
+         75% of the viewport, capped so it still stops short of the top
+         edge the way a UIKit page sheet does. */
+      height: 75dvh;
       max-height: calc(100dvh - 44px - var(--safe-top));
       display: flex; flex-direction: column;
       background: var(--sheet-bg);
@@ -33,6 +37,9 @@
       transform: translateY(100%);
       transition: transform .38s var(--ease);
       overflow: hidden;
+    }
+    @supports not (height: 75dvh) {
+      .modal { height: 75vh; max-height: calc(100vh - 44px - var(--safe-top)); }
     }
     .modal-overlay.open .modal { transform: none; }
 
@@ -689,15 +696,9 @@
        the sheet underneath rather than a replacement for it, so seeing
        a sliver of that sheet behind it is correct here. */
     #dupeSheet { z-index: 210; }
-    /* Full height, not content height. It opens on top of the activity
-       sheet, and at its natural size the sheet underneath showed above
-       it — two stacked sheets reading as one confused stack. Matching
-       the .modal max-height means it covers exactly what the sheet below
-       it covers. */
-    #remindSheet .modal { height: calc(100dvh - 44px - var(--safe-top)); }
-    @supports not (height: 100dvh) {
-      #remindSheet .modal { height: calc(100vh - 44px - var(--safe-top)); }
-    }
+    /* It used to force its own full height so the sheet underneath did
+       not show above it. Every .modal is now one locked height, so it
+       covers the sheet below by construction. */
 
 /*  ============================================================
     DATE PICKER ROOM

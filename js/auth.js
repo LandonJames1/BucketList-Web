@@ -281,6 +281,17 @@ async function showApp(){
      has no snapshot, returns false, and waits exactly as before. */
   const warm=await primeFromSnapshot();
 
+  /* A first-ever launch has no snapshot, so nav('home') below goes
+     straight to the network — and the two scope probes would still be
+     in flight when it did. Both of them invalidate and refetch when
+     they flip true, so that first render cost a *full* fetch of both
+     tables twice: once filtered to owned lists and the home-list
+     column, once correctly. The probes are one column with limit 1 and
+     run in parallel, so paying a single round trip here buys the
+     doubled one back. Only on a cold launch: a snapshot-primed boot is
+     already correct by construction and must not wait for anything. */
+  if(!warm) await Promise.all([probeSharing(),probeMultiList()]);
+
   /* Boot into the dashboard. */
   nav('home');
 
