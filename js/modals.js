@@ -220,19 +220,11 @@ function confirmDeleteCollection(){
     onConfirm:()=>delList(curListId),
   });
 }
-/* `inLists` is how many lists the activity belongs to. It changes what
-   this warning has to say: deleting from inside one list, when the
-   activity is also in three others, destroys it in all four — and the
-   user is standing on a screen that shows them one. Saying so is the
-   difference between a confirmation and a trap. Removing it from just
-   this list is the other button on the sheet. */
-function confirmDeleteActivity(id,name,inLists){
-  const many=inLists>1;
+function confirmDeleteActivity(id,name){
   showConfirm({
     title:'Delete Activity',
-    message:(name?`"${name}" will be permanently deleted`:'This cannot be undone')+
-      (many?`, and removed from all ${inLists} lists it is in.`:'.'),
-    confirmLabel:many?'Delete Everywhere':'Delete',
+    message:name?`"${name}" will be permanently deleted.`:'This cannot be undone.',
+    confirmLabel:'Delete',
     onConfirm:async()=>{closeModal('actDetailSheet');await delActivity(id);},
   });
 }
@@ -249,42 +241,24 @@ function confirmDeleteActivity(id,name,inLists){
    a glance, and only shows a search field once there are enough lists
    for scanning to be slower than typing.
 
-   ---- Two modes ----
-
-   Single: tapping a row picks it and closes. `onPick` gets an id.
-
-   Multi (`multi:true`): rows toggle, the bar grows a Done button, and
-   `onPick` gets an **ordered array** of ids. The order is the thing to
-   preserve — the first entry is the activity's home list, which is the
-   one every part of the app names when it has room for exactly one
-   (see activityListIds in js/api.js). So a row being re-checked goes
-   to the end rather than back where it was, and unchecking the first
-   promotes the second.
-
-   The whole set cannot be empty. An activity in no list is reachable
-   from nowhere, so the last checked row refuses to uncheck rather than
-   silently leaving the sheet in a state Done would have to reject.
+   Tapping a row picks it and closes; `onPick` gets an id. It is
+   single-select and there is nothing to confirm, so there is no Done
+   button — a sheet that closes itself must not also offer one. There
+   was briefly a multi-select mode here, for when an activity could
+   belong to several lists at once; it went with that feature.
    ============================================================== */
-let _lpLists=[],_lpOnPick=null,_lpCurrentId=null,_lpMulti=false,_lpPicked=[];
+let _lpLists=[],_lpOnPick=null,_lpCurrentId=null;
 
-/* openListPicker({subtitle, currentId, currentIds, multi, title, onPick}) */
+/* openListPicker({subtitle, currentId, title, onPick}) */
 async function openListPicker(opts){
   opts=opts||{};
   _lpOnPick=opts.onPick||null;
-  _lpMulti=!!opts.multi;
   _lpCurrentId=opts.currentId||null;
-  _lpPicked=_lpMulti?(opts.currentIds||[]).filter(Boolean).slice():[];
 
-  $('listPickerTitle').textContent=opts.title||(_lpMulti?'Lists':'Add to List');
+  $('listPickerTitle').textContent=opts.title||'Add to List';
   const sub=$('listPickerSub');
   if(opts.subtitle){sub.textContent=opts.subtitle;sub.style.display='';}
   else sub.style.display='none';
-
-  /* The Done button only exists in multi mode: with one tap per choice
-     there is nothing to confirm, and a sheet that closes itself must
-     not also offer a button that closes it. */
-  $('listPickerDone').style.display=_lpMulti?'':'none';
-  $('listPickerDoneSpacer').style.display=_lpMulti?'none':'';
 
   if(!cacheWarm()) $('listPickerRows').innerHTML='<div class="spinner"></div>';
   openModal('listPickerSheet');
@@ -309,44 +283,18 @@ function renderListPickerRows(){
     box.innerHTML=`<div class="lp-empty">${term?'No lists match that.':'No lists yet.'}</div>`;
     return;
   }
-  box.innerHTML=rows.map(l=>{
-    const at=_lpMulti?_lpPicked.indexOf(l.id):-1;
-    const on=_lpMulti?at>=0:l.id===_lpCurrentId;
-    /* Only in multi mode, and only once there is more than one, is
-       "which is the home list" a question worth answering on screen —
-       it is what a row's chip says elsewhere in the app, so the sheet
-       has to say which one it will be. */
-    const home=_lpMulti&&at===0&&_lpPicked.length>1
-      ?'<span class="lp-home">Home</span>':'';
-    return `<button class="lp-row${on?' current':''}" onclick="listPickerPick('${l.id}')">
+  box.innerHTML=rows.map(l=>
+    `<button class="lp-row${l.id===_lpCurrentId?' current':''}" onclick="listPickerPick('${l.id}')">
        <img class="lp-cover" src="${esc(coverFor(l))}" alt="" loading="lazy"/>
        <span class="lp-name">${esc(l.name)}</span>
-       ${home}
        <span class="lp-check">${icon('check')}</span>
-     </button>`;
-  }).join('');
+     </button>`).join('');
 }
 
 function listPickerPick(id){
-  if(_lpMulti){
-    const at=_lpPicked.indexOf(id);
-    if(at<0) _lpPicked.push(id);
-    else if(_lpPicked.length>1) _lpPicked.splice(at,1);
-    else { shakeEl($('listPickerRows')); return; }   /* the last one stays */
-    renderListPickerRows();
-    return;
-  }
   const fn=_lpOnPick;
   closeModal('listPickerSheet');
   if(fn) setTimeout(()=>fn(id),160);
-}
-
-/* Multi mode only. Cancel and the scrim both leave without calling
-   back, so the activity sheet behind this keeps whatever it had. */
-function listPickerDone(){
-  const fn=_lpOnPick,picked=_lpPicked.slice();
-  closeModal('listPickerSheet');
-  if(fn) setTimeout(()=>fn(picked),160);
 }
 
 /* "New List" just opens the list sheet. The Home composer deliberately

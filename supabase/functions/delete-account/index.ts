@@ -44,13 +44,7 @@
       not do. Every object still referenced by a surviving activity is
       now kept; only the rest of the folder goes.
 
-   2. LIST LINKS. An activity homed in someone else's list can carry
-      one of the caller's collections in `extra_collection_ids`
-      (multilist.sql). Deleting that collection used to leave the id
-      behind, dangling, on a row belonging to somebody else. It is
-      stripped instead.
-
-   3. CLAIMED INVITES. invite_claims rows are keyed by email address,
+   2. CLAIMED INVITES. invite_claims rows are keyed by email address,
       so they outlive the account unless they are removed by hand.
 
    What the caller must NOT take with them, and does not: activities
@@ -122,34 +116,6 @@ function mediaUrls(photos: unknown): string[] {
   return out;
 }
 
-/* Take the caller's now-deleted collections out of every surviving
-   activity's extra_collection_ids. Run AFTER the collections are gone,
-   so whatever still matches is by definition somebody else's row.
-
-   A round trip per row, which is the same cost delList() pays in
-   js/collections.js for the same reason: PostgREST has no way to
-   express "subtract this set from this array column". The count is
-   bounded by how many of the caller's lists other people filed things
-   into, which is small or zero. */
-async function unlinkDeletedCollections(
-  admin: any, ids: string[],
-): Promise<string | null> {
-  if (!ids.length) return null;
-  const { data, error } = await admin.from('Activities')
-    .select('id, extra_collection_ids').overlaps('extra_collection_ids', ids);
-  /* Column absent — multilist.sql is optional, and without it there is
-     no second way for an activity to reference a collection. */
-  if (error) return error.code === '42703' ? null : `stale list links: ${error.message}`;
-
-  for (const row of data || []) {
-    const kept = (row.extra_collection_ids || []).filter((c: string) => !ids.includes(c));
-    const { error: e } = await admin.from('Activities')
-      .update({ extra_collection_ids: kept }).eq('id', row.id);
-    if (e) return `stale list links: ${e.message}`;
-  }
-  return null;
-}
-
 /* The object names under `${uid}/` that activities in `listIds` are
    still showing. Null means the question could not be answered, which
    is different from "nothing" — the caller keeps the whole folder
@@ -167,19 +133,11 @@ async function mediaStillInUse(
   const keep = new Set<string>();
   if (!listIds.length) return keep;
 
-  const rows: any[] = [];
-  /* Homed in one of those lists. */
+  /* An activity belongs to exactly one list, so being homed in one of
+     these is the whole question. */
   const home = await admin.from('Activities').select('photos').in('collection_id', listIds);
   if (home.error) return null;
-  rows.push(...(home.data || []));
-
-  /* Linked into one of them from elsewhere. The column is optional —
-     multilist.sql may not have been run — and "column does not exist"
-     (42703) simply means there is no second way in. */
-  const extra = await admin.from('Activities').select('photos')
-    .overlaps('extra_collection_ids', listIds);
-  if (extra.error && extra.error.code !== '42703') return null;
-  if (!extra.error) rows.push(...(extra.data || []));
+  const rows: any[] = home.data || [];
 
   const marker = `/${uid}/`;
   for (const r of rows) {
@@ -250,10 +208,9 @@ Deno.serve(async (req) => {
 
   const ids = (owned || []).map((c: { id: string }) => c.id);
   if (ids.length) {
-    /* Anything homed in a list being deleted goes with it. An activity
-       merely *linked* into one of these lists from elsewhere is left
-       alone — it belongs to whoever owns its home list. See
-       supabase/multilist.sql. */
+    /* Everything in a list being deleted goes with it. An activity
+       belongs to exactly one list, so collection_id is the whole
+       question. */
     const { error } = await admin.from('Activities').delete().in('collection_id', ids);
     if (error) failures.push(`activities: ${error.message}`);
     /* Members of a list about to disappear. The FK cascades, but only
@@ -264,13 +221,6 @@ Deno.serve(async (req) => {
     if (memErr && memErr.code !== '42P01') failures.push(`memberships: ${memErr.message}`);
     const { error: colErr } = await admin.from('Collections').delete().eq('user_id', uid);
     if (colErr) failures.push(`collections: ${colErr.message}`);
-
-    /* Anything still standing that was ALSO filed into one of those
-       lists keeps a dangling id in extra_collection_ids otherwise. The
-       row belongs to somebody else, so leaving a reference to a
-       collection that no longer exists on it is the caller's mess left
-       in another person's list. */
-    note(await unlinkDeletedCollections(admin, ids));
   }
 
   /* ---- 3. Everything else keyed to the user ---- */

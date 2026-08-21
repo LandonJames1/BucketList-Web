@@ -125,7 +125,7 @@ CLAUDE.md             This guide
 README.md             Human-facing setup + structure overview
 manifest.webmanifest  PWA metadata (name, icons, standalone display, theme color)
 sw.js                 Service worker — offline app shell + runtime caching. Must stay at the root.
-supabase/             Backend — schema.sql (reminders + reminder_deliveries), profiles.sql (the Users row, its RLS and the sign-up trigger), sharing.sql (shared lists), messages.sql (a conversation per shared list, plus the append-only activity_notes log), multilist.sql (one activity in several lists), home.sql (the saved Home address), avatars.sql (the profile photo, plus the one RPC that lets other people see it), storage.sql (the media bucket), cron.sql, and five Edge Functions: send-reminders, send-message-push (an immediate Web Push when a message is sent — see **Notifying a conversation**), unfurl (shared links, screenshots *and* location prediction), geo (place search, holding the HERE key so the browser never does) and delete-account (erasing an account needs the service_role key, so it cannot live in the client). All optional except profiles.sql; each other piece probes for itself and the UI that needs it hides when it is absent.
+supabase/             Backend — schema.sql (reminders + reminder_deliveries), profiles.sql (the Users row, its RLS and the sign-up trigger), sharing.sql (shared lists), messages.sql (a conversation per shared list, plus the append-only activity_notes log), single-list.sql (drops the retired extra_collection_ids column), target-rollover.sql (one-time: resolves stored target bands to real dates — see **A band is resolved on the way in**), home.sql (the saved Home address), avatars.sql (the profile photo, plus the one RPC that lets other people see it), storage.sql (the media bucket), cron.sql, and five Edge Functions: send-reminders, send-message-push (an immediate Web Push when a message is sent — see **Notifying a conversation**), unfurl (shared links, screenshots *and* location prediction), geo (place search, holding the HERE key so the browser never does) and delete-account (erasing an account needs the service_role key, so it cannot live in the client). All optional except profiles.sql; each other piece probes for itself and the UI that needs it hides when it is absent.
 css/                  One stylesheet per concern (see CSS file map)
 js/                   One script per concern (see JS file map)
 icons/                App icon PNGs + generate.py, the script that draws them
@@ -2020,7 +2020,7 @@ to them are pointed at from lists that do not:
   costs kilobytes, a file wrongly deleted costs somebody else a photo.
   If the question cannot be answered at all, the whole folder stays.
 - **List links.** An activity homed in someone else's list can carry one
-  of the caller's collections in `extra_collection_ids`.
+  of the caller's collections in the retired `extra_collection_ids`.
   `unlinkDeletedCollections()` strips those out after the collections go,
   rather than leaving a dangling id on another person's row.
 - **Claimed invites.** `invite_claims` is keyed by email address, so it
@@ -2201,7 +2201,55 @@ value, and code that reads it must handle both:
 Because the column is text, adding real dates needed no schema change.
 `isCustomDate()` tells them apart and `presetTargetDate()` resolves a band to
 the end of its window, so `dateInfo()` and `daysToTarget()` can treat both
-uniformly. In the sheet the two are one control: a `__custom__` sentinel option
+uniformly.
+
+##### A band is resolved on the way in, not on the way out
+
+**A band is a relative label and `target_date` is an absolute field, so
+storing the string stored a promise that decays.** "Next Year" picked in 2026
+means 2027 — but the client resolved it again on every read, so in 2027 the
+same row read as 2028. The deadline the user set once quietly moved every
+January, forever.
+
+The fix is **not** a scheduled job rewriting rows, which would be a yearly
+sweep that can never be allowed to miss. `resolveTargetDate()` (`utils.js`)
+resolves a band to the date it means **at the moment it is saved** and stores
+that; `targetBand()` already derives the label back from a real date, so a row
+stored as `2027-12-31` *becomes* "This year" the instant 2027 begins — on every
+device, with nothing scheduled. Four bands resolve: This Month, This Year,
+Next Year, In 2-3 Years (to the far edge, +3).
+
+**`In 5+ Years` is deliberately not resolved.** It names no deadline at all —
+it resolves to +5 only so it can be sorted and grouped, which is exactly why
+`OPEN_BANDS` refuses to count it down — so pinning it to a date would invent
+the fact the band exists to avoid stating. It stays a literal string forever,
+and `OPEN_BANDS` keeps its `In 2-3 Years` entry too, for rows written before
+this.
+
+Things to keep:
+
+- **Every write path calls it, no read path does.** `readTargetDate()`
+  (`activities.js`) and `saveBulkActivities()` (`bulk.js`) are the two.
+  Resolving on read is the bug this replaced.
+- **`isoLocal()`, never `toISOString()`.** The latter converts to UTC first, so
+  local midnight on 31 December comes back as the 30th anywhere east of
+  Greenwich and every band resolves a day early.
+- **`bandForStored()` is the reverse, and only the edit sheet uses it.**
+  A stored date that is *exactly* what a band resolves to today reopens with
+  that band selected rather than dumping the user into the specific-date field.
+  The match has to be exact, or a date the user genuinely picked would be
+  snapped to the end of its band on the next save — and because it is exact,
+  re-saving an untouched row writes back the identical value.
+- **The band you picked stops being the band you see, and that is the
+  feature.** Choose "Next year" in December 2026, reopen in January 2027, and
+  it reads "This year". It will be reported as a bug; it is not.
+- A band-resolved date that no longer aligns with any band shows as the date
+  it is — a "2-3 years" row resolved to `2029-12-31` reads as *Dec 31, 2029*
+  from 2027, which is honest: from there it is a date, not a range.
+- **`supabase/target-rollover.sql` migrates existing rows**, resolving from
+  *today* rather than each row's `created_at` — so it writes exactly the date
+  the app is already showing and nothing on screen changes. Its header explains
+  the other reading and how to take it. In the sheet the two are one control: a `__custom__` sentinel option
 reveals the date field, and `readTargetDate()` collapses select + field back
 into the single value that gets stored. The sentinel is never written.
 
@@ -2314,94 +2362,53 @@ olive — done outranks priority. The Lists tab shows an outstanding
 high-priority count per collection (`.coll-card-pri`) so the tab says which
 list wants attention before you open any of them.
 
-#### One activity, several lists
+#### One activity, one list
 
-`supabase/multilist.sql` plus `activityListIds`/`splitListIds` in `api.js`. An
-activity can belong to **any number of collections** — a personal list and a
-shared one at the same time — and it is still **one row**, so completing it,
-adding photos to it or renaming it happens once and shows up everywhere.
+An activity belongs to **exactly one collection**, `Activities.collection_id`.
+There is no second membership and no way to add one — `listFieldsFor()` in
+`api.js` writes that single column and `setTargetLists()` in `activities.js`
+caps the chosen set at one id.
 
-**It is an array column, not a junction table**, and the SQL file's header is
-where that argument lives in full. The short version: two queries back this
-entire app and both are cached in memory and mirrored to IndexedDB, so a
-junction table would be a third query, a third snapshot store, new offline
-replay logic and a new SECURITY DEFINER helper — where a column is carried by
-the cache, the snapshot and the write queue for free. Both allow an unbounded
-number of lists.
+**It used to be able to belong to several**, via an `extra_collection_ids`
+array column added by a `multilist.sql` migration. That is gone from the app
+and `supabase/single-list.sql` takes it off the table — read that file's
+header before running it, because dropping the column loses every extra
+membership.
 
-**`collection_id` is unchanged and still the home list.** The extras live in
-`extra_collection_ids`, and `activityListIds()` is the one place the two are
-assembled, exposed as `a.listIds` with the home list always first.
-`a.listId` still means the home list. Four rules follow from that:
+Two things survive the removal and are worth knowing:
 
-1. **Anywhere the app has room for exactly one list, it names the home one.**
-   `activityListLabel(a, lists)` is that decision, shared by Home's Up Next,
-   the Up Next screen, search results, the reminder rows and the duplicate
-   sheet, and it counts only the lists this user can actually *see* — an
-   activity shared into one of yours is homed in someone else's.
-2. **Membership is `listIds.includes(id)`, never `listId === id`.**
-   `fetchActivitiesFor()`, the Lists tab's per-collection counts, and search's
-   collection-name field all match on the set. Getting this wrong shows an
-   activity in the list it was created in and nowhere else, which looks like
-   the feature silently not working.
-3. **It degrades like everything else optional.** `probeMultiList()` checks
-   for the column once at sign-in; without it the picker stays single-select
-   and `listFieldsFor()` leaves the array off the payload entirely — sending
-   a column the table does not have fails the whole insert. Like
-   `probeSharing()`, it **races the first render** and drops the activities
-   cache when it flips true, or an activity shared into one of your lists
-   stays invisible until a reload.
-4. **An activity must always be in at least one list.** One in none is in the
-   database, on the map, and reachable from nowhere. The picker refuses to
-   uncheck the last row and `removeActivityFromList()` refuses to empty the
-   set.
+- **`a.listIds` still exists**, as a one-element array. Every caller that
+  asked "is this activity in that list?" walks the set, and keeping the shape
+  meant none of them had to be rewritten. `listIds[0]` and `listId` can never
+  disagree, because `mapActivity()` builds one from the other.
+- **`recountCollection()` counts on `collection_id`**, which is now simply
+  correct — it used to undercount an activity that was in several lists.
+  Nothing reads those columns anyway (see **Back end**).
 
-**Getting rid of something now means two different things, and only one of
-them is destructive.** *Remove from this list* is an update, is grey, and is
-not confirmed — nothing is lost and it is undone by ticking the list again.
-*Delete* destroys the row in every list at once, so on a multi-list activity
-it says **Delete Everywhere** and the confirmation names the count. The RLS
-delete policy is deliberately **not** widened to the extra lists: being able
-to put an activity on a list you share does not make its photos and its
-completion record yours to destroy.
-
-Deleting a whole collection follows the same logic — `delList()` unlinks the
-activities that live elsewhere too and deletes only the ones with nowhere to
-go. That costs a round trip per activity, so the old single bulk delete is
-kept verbatim for anyone who has not run the migration, where no activity can
-have a second list.
-
-Two things it does **not** do: `recountCollection()` still counts on
-`collection_id` alone, so the two denormalised columns undercount a
-multi-list activity — nothing reads them (see **Back end**). And the bulk-add
-sheet files everything into one list, which is the right default for it.
+Deleting an activity destroys the row, and deleting a collection deletes its
+activities in one statement. Both used to have a second, gentler meaning
+(*remove from this list*, leaving the activity alive elsewhere); with one
+list there is nothing to remove it to, so `removeActivityFromList()` and the
+"Delete Everywhere" wording are gone.
 
 #### The list picker
 
-`openListPicker({subtitle, currentId, currentIds, multi, title, onPick})` in
+`openListPicker({subtitle, currentId, title, onPick})` in
 `modals.js` is the one way to assign an activity to a collection, used by both
-the Home composer and the activity sheet's Lists row. Both previously called
+the Home composer and the activity sheet's List row. Both previously called
 `showActionSheet()`, which lays out a 57px full-width button per list — fine at
 three, an unusable tower at twenty. The picker is a normal sheet with a compact
 scrollable list, a cover thumbnail per row, and a search field that appears only
 past seven lists. **Don't route this back through an action sheet.**
 
-**Two modes.** Single-select: a tap picks and closes, and `onPick` gets an id.
-Multi-select (`multi:true`, used by the activity sheet once the migration is
-run): rows toggle, the bar grows a **Done** button, and `onPick` gets an
-**ordered array** — the first entry is the home list, so re-checking a row
-appends it and unchecking the first promotes the second. The current home
-carries a `HOME` badge once there is more than one, since that is the list
-every other screen will name.
+**Single-select, and only that.** A tap picks and closes, and `onPick` gets an
+id. There is no Done button: with one tap per choice there is nothing to
+confirm. It had a multi-select mode while an activity could be in several
+lists; that went with the feature, along with the `HOME` badge that named
+which of the chosen lists the rest of the app would call it by.
 
 `.lp-sub` is a single ellipsised line, so a subtitle passed here has to be
-short — "An activity can be in as many lists as you like. The first is its
-home." was truncated to "The fi…" at 390px.
-
-The activity sheet's Lists row reads **"3 lists"** rather than "Japan +2".
-It is half of a `.fg-pair`, so at 320px it has room for about ten characters,
-and the `+2` — the only part saying something new — was exactly what got
-ellipsised away.
+short.
 
 #### Gestures
 
@@ -2828,7 +2835,7 @@ Loaded in this order; **order matters**.
 | `collections.css` | The Lists tab: `.coll-card` photo cards and the "New List" tile. |
 | `detail.css` | A collection's screen: `.det-banner`, `.det-ctl-row`/`.det-sort` (the filter and sort controls sharing a line — the row owns the gutters so `.seg` can give up its own margins), `.act-row` list rows, `.composer` quick-add, `.act-card` grid cards, and the `.ad-*` activity detail sheet including `.ad-lists`/`.ad-list-chip`. |
 | `me.css` | The Me tab: the stats card, the progress card, the identity row. |
-| `modals.css` | The three presentation styles — `.modal`/`.sheet-*` bottom sheets, `.action-sheet`, `.lightbox` — plus the form controls that live inside a sheet: `.fg` and its `.fg-hero` (the field a sheet is *about* — only the activity name) and `.fg-pair` (two short choices on one line), `.picker-btn` (a value that opens a picker, sized to match a `<select>` beside it), `.act-notice` (why a sheet opened the way it did — quiet, never red, gone with the sheet), `.chip-field`, `.photo-*`, the completion sheet's own `.comp-*` (`.comp-card`/`.comp-row` — inset grouped rows whose overflow must stay visible for the location dropdown — `.comp-sec`, `.comp-note`), the list picker's `.lp-*` (including `.lp-home`, the badge naming which of several chosen lists is the home one), and `.toast`. There are no disclosure styles here any more — `.more-toggle`/`.more-fields` went with the completion sheet's last collapsed section. |
+| `modals.css` | The three presentation styles — `.modal`/`.sheet-*` bottom sheets, `.action-sheet`, `.lightbox` — plus the form controls that live inside a sheet: `.fg` and its `.fg-hero` (the field a sheet is *about* — only the activity name) and `.fg-pair` (two short choices on one line), `.picker-btn` (a value that opens a picker, sized to match a `<select>` beside it), `.act-notice` (why a sheet opened the way it did — quiet, never red, gone with the sheet), `.chip-field`, `.photo-*`, the completion sheet's own `.comp-*` (`.comp-card`/`.comp-row` — inset grouped rows whose overflow must stay visible for the location dropdown — `.comp-sec`, `.comp-note`), the list picker's `.lp-*`, and `.toast`. There are no disclosure styles here any more — `.more-toggle`/`.more-fields` went with the completion sheet's last collapsed section. |
 | `map.css` | Map containers (the full-bleed `.page-map` and the inset detail map), the CSS sky gradient behind the globe, the floating `.map-filter`/`.map-count`/`.map-fab` chrome, `.map-pin`/`.map-cluster` markers, MapLibre's own controls restyled, the `.loc-*` autocomplete dropdown, `.loc-suggest-*` — the "from your photo" chip, deliberately a tinted *offer* rather than a filled control, since it must not read as though the field is already answered — `.loc-guess-*`, which is the opposite case and therefore shaped differently: a quiet caption marking a field the app has already filled in from the activity's name, with an ✕ that takes it back out — and `.pl-*`, the place sheet (everything at one point on the map), whose rows are `.act-row` from `detail.css` unchanged so only its container and header are new. |
 | `bulk.css` | `.bulk-*` — the "add many at once" sheet, one card per row. |
 | `import.css` | `.imp-*` — the sheet a shared link or screenshot opens into (its result checklist, the screenshot preview, the duplicate mark, the waiting and caption-fallback states) — plus `.shr-*` (`.shr-lead`/`.shr-url`/`.shr-note`), written for the iOS Shortcut setup sheet that is gone and kept because `sharing.css` leans on all three for the invite and accept-an-invite cards. |
@@ -2848,12 +2855,12 @@ Loaded in this order; **order matters**.
 | --- | --- |
 | `config.js` | `SUPABASE_URL`/`SUPABASE_KEY`, **`HERE_API_KEY`** (place search; public by design, restrict it by origin in the HERE portal — empty falls back to Nominatim), the `sb` client (auth options spelled out rather than defaulted — note `detectSessionInUrl:false`, the one that is *not* a default: `auth.js` handles the email-confirmation landing itself), the `COVERS` array of default Unsplash covers, and `randCover(existingCovers)` (picks a cover the user isn't already using). |
 | `state.js` | Every shared mutable global: `currentUser`, the navigation triple (`curTab`, `curPage`, `backTab`), `curListId`, **`curConvId`** (which conversation the conversation screen is showing — it *is* a collection id), `editingListId`, `editingActId`, `completingId`, `curFilter`, **`curSort`** (see **Sorting a collection**), `curView`, `upMedia`, `coverPhoto`, `userProfile`, `pendingShare` (a link shared in, held from boot until there is a signed-in user to file it for), and the map handles. Other files declare their own feature-local globals next to their code (`aLinks`, `bulkEntries`, `actMap`, `lbPhotos`, `locTimer`). |
-| `utils.js` | `$` (getElementById), `esc` (HTML-escape — **use it on every interpolated value**, all rendering is template strings), **`uuidv4`/`isUuid`** (client-minted row ids — read the warning under **Working offline** before touching them), `cap`, `todayISO`, `fmtDate(s, withYear)` (omits the year when it's the current one, unless `withYear` — a completed date is a record you look back on, so it always carries its year), `dateInfo(a)` (turns a target date like "This Year" into a `{label, cls}` urgency badge), `shakeEl`, `compress`, `confetti`, the priority pair `priClass`/`priTagHTML` (see **Showing priority**), **`ACT_SORTS`/`DEFAULT_ACT_SORT`/`sortActivities`** (see **Sorting a collection**), **`activityListLabel(a, lists)`** — what the `.list-chip` on a row says, now that an activity can be in several lists — and **`bootKeep`/`bootRead`/`bootDrop`**, the sessionStorage shelf that keeps `?join=`/`?share=` alive across a reload (see **Shared lists**; reading deliberately does not remove), plus **`bootKeepLong`/`bootReadLong`/`bootDropLong`** — the same shelf on localStorage with a 7-day TTL, so an invite survives the tab being closed while the recipient goes to find their password — plus **`setHTML(el, html)`** and **`coverFor(list)`**, the two things that stopped navigation looking like a reload (see **Rendering without reloading**). |
+| `utils.js` | `$` (getElementById), `esc` (HTML-escape — **use it on every interpolated value**, all rendering is template strings), **`uuidv4`/`isUuid`** (client-minted row ids — read the warning under **Working offline** before touching them), `cap`, `todayISO`, `fmtDate(s, withYear)` (omits the year when it's the current one, unless `withYear` — a completed date is a record you look back on, so it always carries its year), `dateInfo(a)` (turns a target date like "This Year" into a `{label, cls}` urgency badge), `shakeEl`, `compress`, `confetti`, the priority pair `priClass`/`priTagHTML` (see **Showing priority**), **`ACT_SORTS`/`DEFAULT_ACT_SORT`/`sortActivities`** (see **Sorting a collection**), **`resolveTargetDate`/`bandForStored`/`isoLocal`/`RESOLVING_BANDS`** (a target band is resolved to a real date on the way *in*, so it cannot silently roll forward every January — see **A band is resolved on the way in**), **`activityListLabel(a, lists)`** — what the `.list-chip` on a row says, and '' when that list is one the user cannot see — and **`bootKeep`/`bootRead`/`bootDrop`**, the sessionStorage shelf that keeps `?join=`/`?share=` alive across a reload (see **Shared lists**; reading deliberately does not remove), plus **`bootKeepLong`/`bootReadLong`/`bootDropLong`** — the same shelf on localStorage with a 7-day TTL, so an invite survives the tab being closed while the recipient goes to find their password — plus **`setHTML(el, html)`** and **`coverFor(list)`**, the two things that stopped navigation looking like a reload (see **Rendering without reloading**). |
 | `exif.js` | `exifReadLocation(file)` — the GPS fix out of a photo's EXIF, or null. Handles **JPEG and HEIC/HEIF/AVIF**, dispatching on magic bytes rather than `file.type`. Underneath: the JPEG walk (`exifFindTiff`), the HEIC box walk (`isoBoxes`, `isoType`, `heicReadLocation`, `heicExifExtent`, `heicExifItemId`, `heicItemExtent`, `heicTiffStart`, `isTiffAt`), and the shared TIFF reader both land on (`exifGpsFrom`, `exifTagValue`, `exifDMS`). Pure, no dependencies, every failure path returns null rather than throwing. **Must be called against the original `File`**: a canvas re-encode strips every tag. See **Where the photo was taken**. |
 | `fuzzy.js` | Approximate string matching, shared by duplicate detection and search. `similarity(a,b)` (symmetric — are these the same thing?) and `matchScore(q,text)` (asymmetric — does this row answer what is being typed?), plus `scoreFields()` and the primitives underneath: `fuzzyNorm`, `fuzzyTokens`, `fuzzyStem`, `fuzzyTokenSim`, `fuzzySoftDice`, `fuzzyTrigrams`, `fuzzyDice`, `fuzzyEditRatio`. Pure and synchronous. **See How the fuzzy matching works** — the constants are tuned, not derived. |
 | `icons.js` | `ICON_PATHS`, the app's own inline-SVG glyph set (`sort` is the newest), plus `ICON_FILLED` (glyphs already solid, which must not be stroked) and `icon(name, cls)`. Icons inherit `currentColor`. **Add new glyphs here**, not inline in a template string. |
 | `offline.js` | **Reading from disk, queueing writes, syncing on reconnect.** The IndexedDB wrapper (`idbOpen`/`idbGet`/`idbAll`/`idbPut`/`idbDelete`/`idbClear`), the row snapshot (`snapshotSave`/`snapshotLoad`/`snapshotAge`/`snapshotClear`), the write queue (`queueWrite`/`queueLoadCount`/`pendingWrites`/`flushQueue`), **`dbInsert`/`dbUpdate`/`dbDelete` — which every mutation site calls instead of `sb.from(...)`** — the per-user `uid` stamp on every queued op — plus `applyOp`, `stampRow`, `isNetworkError`, `updateSyncUI` (the offline banner's text), `offlineSignOut` and `offlineInit`. Loads before `api.js`. See **Working offline**. |
-| `api.js` | **Every Supabase read, and the cache in front of them.** `mapCollection`/`mapActivity` translate snake_case columns into the camelCase shapes the UI uses; `normMedia`/`denormMedia` do the same for the two shapes the `photos` column holds; **`activityListIds`/`splitListIds`/`rowInAnyList`** assemble and take apart the home-list-plus-array pair (see **One activity, several lists**), and **`probeMultiList`/`multiListReady`** decide whether that column exists at all; **`probeHomeFlag`/`homeFlagReady`** do the same for `location_is_home` (see **Moving house**). Then `readRows` (network or disk — the one place that chooses), `fetchCollections`, `fetchActivitiesFor`, `fetchAllActivities`, `fetchActivity`, `fetchCollection`, and the cache: **`cacheOwnerCheck`** (the cache refuses to answer a user it was not filled for — see **One account at a time**), `invalidateCollections`/`invalidateActivities`/`invalidateAll`, **`primeActivities`/`primeCollections`** (patch it from a computed row set instead of dropping it — called by `applyOp`), **`primeFromSnapshot`** (paint before the network; called once, by `showApp`), `collectionsScope`, `cacheWarm`, `cachedActivities`/`cachedCollections` (synchronous reads, for the duplicate check), `revalidate`. Plus `updateCollectionStats`/`recountCollection`/`cancelPendingStats` — deliberately **off** the critical path, see the cache section. New queries belong here, not inline in a screen file. **Writes go through `offline.js`.** |
+| `api.js` | **Every Supabase read, and the cache in front of them.** `mapCollection`/`mapActivity` translate snake_case columns into the camelCase shapes the UI uses; `normMedia`/`denormMedia` do the same for the two shapes the `photos` column holds; **`listFieldsFor`/`rowInAnyList`** are the write and read sides of `collection_id`, the one column that says which list an activity is in (see **One activity, one list**); **`probeHomeFlag`/`homeFlagReady`** do the same for `location_is_home` (see **Moving house**). Then `readRows` (network or disk — the one place that chooses), `fetchCollections`, `fetchActivitiesFor`, `fetchAllActivities`, `fetchActivity`, `fetchCollection`, and the cache: **`cacheOwnerCheck`** (the cache refuses to answer a user it was not filled for — see **One account at a time**), `invalidateCollections`/`invalidateActivities`/`invalidateAll`, **`primeActivities`/`primeCollections`** (patch it from a computed row set instead of dropping it — called by `applyOp`), **`primeFromSnapshot`** (paint before the network; called once, by `showApp`), `collectionsScope`, `cacheWarm`, `cachedActivities`/`cachedCollections` (synchronous reads, for the duplicate check), `revalidate`. Plus `updateCollectionStats`/`recountCollection`/`cancelPendingStats` — deliberately **off** the critical path, see the cache section. New queries belong here, not inline in a screen file. **Writes go through `offline.js`.** |
 
 **Shell and shared UI**
 
@@ -2862,7 +2869,7 @@ Loaded in this order; **order matters**.
 | `auth.js` | **`resetAccountState()`** — everything belonging to one account, cleared on every auth transition (see **One account at a time**) — **`ensureSessionLive`/`verifyLiveUser`/`authAnswerIsDefinitive`/`signOutStaleSession`/`resetSessionLiveCheck`/`recheckSessionSoon`/`startSessionWatch`/`stopSessionWatch`**, which is how a session belonging to a deleted account stops being trusted, on every device (see **Being signed into an account that no longer exists**) — **`inviteSweepDue()`/`authJustAuthenticated`**, which decide when to ask the server whether an invite is waiting for this address (see **An invite that survives creating an account**) — plus `showAuth`/`showApp` (swap `#authPage` against `#appWrap`; `showApp` boots into Home, loads the profile, triggers the iOS install hint, picks up any link shared in via `handleSharedInput()`, and starts the token auto-refresh). Also the `visibilitychange` handler that stops/starts auto-refresh — browsers suspend timers in a backgrounded PWA, and without restarting on resume the access token goes stale and the next request 401s, which reads to the user as being logged out — and the `onAuthStateChange` listener that keeps `currentUser` in step and only shows the login screen on a real `SIGNED_OUT`, `toggleAuthMode`/`applyAuthMode` (tracked by the `authIsSignUp` flag, not by reading the heading text), `setAuthError`, `handleAuth`, `handleSignOut`. Sign-up also inserts the `Users` profile row. Plus **the confirmation-email landing** — `readEmailConfirmation` (boot; reads `token_hash`/`code`/implicit tokens/`error`, and strips only its own keys), `consumeEmailConfirmation`, `confirmFailureHTML`, `confirmRedirectUrl`, `setAuthNotice`, `setAuthView`/`showCheckEmail`/`authBackToForm`, and the resend pair `sendConfirmationEmail`/`resendConfirmation`/`resendFromNotice`. See **Coming back through the confirmation email**. |
 | `nav.js` | `nav(page, listId)` — the single entry point for changing screens (see **Screens and navigation**). Plus `PAGE_TAB`, `TAB_ROOT`, `TAB_ORDER` and **`visibleTabs()`** (the tabs a swipe can actually reach — the Messages tab is hidden until its migration is run), `selectTab`, `goBack`, `dismissOverlays`, **`refreshAfterChange(src)`** (the single answer to "something was written, what redraws?" — see **Refreshing after a change**), `updateNavbar` (**where each screen's bar buttons are defined**, and where the collection FAB is bound to `startNewActivity`; there is no search bar button — see **Finding things again**), `applyNavCondense`, a debounced `resize` handler, **`setBodyScrollLock(lock)`** — the single place that touches body overflow — `RENDERERS`/`scrollKey`/`_scrollMem` (each screen's renderer in one table, and the offset it was left at — see **Rendering without reloading**), `queueNavCondense` — and **`syncTabbarToKeyboard()`**, which keeps the tab bar behind the software keyboard instead of riding up on top of it (see **Mobile layout rules**). |
 | `gestures.js` | The two touch gestures, both delegated from `document`: **swipe a sheet down to dismiss it** (`.modal` and the action sheet) and **swipe sideways to change screen**. `overlayOpen`, `ownsHorizontal`/`ownsVertical` (surfaces with their own gesture), `SHEET_DISMISS_PX`/`SHEET_FLICK_PX`, `SWIPE_MIN`/`SWIPE_EDGE`, `TAB_ORDER` (in `nav.js`). See **Gestures** below. |
-| `modals.js` | `openModal` (**resets `.sheet-body` scrollTop** — see the note under *Sheets* below) / `closeModal` (they call `setBodyScrollLock`, so use them rather than toggling `.open` yourself), the scrim-click and Escape handlers, **`showActionSheet(opts)`** and `showConfirm` (iOS confirms destructive actions with an action sheet, not a dialog — `confirmDeleteCollection`/`confirmDeleteActivity` wrap it), the photo lightbox (swipe sideways to page, down to close), the list picker (`openListPicker`/`renderListPickerRows`/`listPickerPick`/`listPickerDone` — single- *and* multi-select, see **The list picker**), `ensurePickerRoom`/`releasePickerRoom` (see **Gestures**), and `showToast`. |
+| `modals.js` | `openModal` (**resets `.sheet-body` scrollTop** — see the note under *Sheets* below) / `closeModal` (they call `setBodyScrollLock`, so use them rather than toggling `.open` yourself), the scrim-click and Escape handlers, **`showActionSheet(opts)`** and `showConfirm` (iOS confirms destructive actions with an action sheet, not a dialog — `confirmDeleteCollection`/`confirmDeleteActivity` wrap it), the photo lightbox (swipe sideways to page, down to close), the list picker (`openListPicker`/`renderListPickerRows`/`listPickerPick` — single-select, see **The list picker**), `ensurePickerRoom`/`releasePickerRoom` (see **Gestures**), and `showToast`. |
 
 **Reusable form widgets**
 
@@ -2881,9 +2888,9 @@ Loaded in this order; **order matters**.
 | `upnext.js` | The Up Next screen pushed from Home: every unfinished activity, bucketed by `targetBand()`. Borrows its rows and sort from `home.js`. |
 | `done.js` | The Accomplished screen pushed from Home: everything completed, grouped by the month it was finished. Reuses Home's photo tiles. |
 | `home.js` | The Home tab. `renderHome()` plus one function per section, the shared `upNextRowHTML()`/`sortUpNext()` the Up Next screen also uses, the context-free composer (`homeQuickAdd`, which asks plan-or-record via `startNewActivity()` — or routes to `importFromComposer()` when what was typed is a URL, see **Sharing a link in**), the composer's search half (`updateHomeSuggest`/`homeSuggestRowHTML`/`openHomeSuggest`/`closeHomeSuggest`, plus `searchActivities`/`searchMark`/`SEARCH_MIN`/`SEARCH_ACT_WEIGHTS` — all that survives of the deleted Search screen; see **One field, both questions** and **Finding things again**), and `toggleCompleteFrom()` — Home's copy of the completion toggle, which cannot rely on `curListId`. |
-| `collections.js` | `renderCollections()` (the Lists tab) plus the collection CRUD: `openNewList`, `openEditList`, `renderCoverPreview`, `clearCover`, `handleCoverUpload`, `saveList`, `delList`. `delList` deletes the collection's activities first — there is no DB cascade — and, once an activity can be in several lists, deletes only the ones with nowhere else to go and unlinks the rest. |
+| `collections.js` | `renderCollections()` (the Lists tab) plus the collection CRUD: `openNewList`, `openEditList`, `renderCoverPreview`, `clearCover`, `handleCoverUpload`, `saveList`, `delList`. `delList` deletes the collection's activities first — there is no DB cascade — in one statement, since an activity belongs to exactly one list. |
 | `detail.js` | One collection. Rendering is **deliberately split in two**: `renderDetail()` builds the banner and the controls, `renderActivitiesList()` rebuilds only the list. Search and filter call the second, so the search field never loses focus mid-typing. Also `activityRowHTML`/`activityCardHTML`, `sortButtonHTML()` (the sort control beside the filter), and the quick-add composer helpers (`composerHTML`, `onComposerKey`, `focusComposer`). |
-| `activities.js` | The whole activity flow. **Creating always goes through a sheet** — `quickAddActivity()` only takes the composer's text and hands it to **`startNewActivity()`**, the plan-or-record chooser, which opens either `openNewActivity(name)` or **`openCompDraft(name)`** (see **Adding something you already did**, plus `setCompNameShape`/`renderCompListRow`/`commitCompDraft`). Nothing here inserts an activity directly except `commitSaveActivity()` and `commitCompDraft()`, which are those two sheets' own Saves. `toggleComplete(id, isDone)` is the one-tap completion (see the note below). Then `openNewActivity`, `openEditAct`, `saveActivity`, `delActivity`, plus `renderActListPicker()`/`renderActListValue()`/`setTargetLists()` and the `targetListIds` global (with `targetListId` as a read-only alias for the home list) — the Lists row that lets an activity be filed from outside any collection, and which is hidden when there is no choice to make. Also `listFieldsFor()` and `removeActivityFromList()` — see **One activity, several lists**. Also **`setActivityNotice`** — the one line the activity sheet can carry saying why it opened empty, written only by a screenshot import that could not be read (see **Sharing a link in**) — and `setPriorityChoice` (**the only way to set priority** — it keeps the swatched buttons and the hidden `#aPri` value in step), `openComp`/`openCompletedDate`/`confirmComplete` — the one completion sheet, every field on it — and `updateMediaRequirement()`, which is why that sheet will not save a *new* completion with no photo or video (see **The two-speed activity flow**) — and `openActDetail`/`setActDetailTab` which build the activity sheet and swap its Details/Notes tabs. Plus `openCollectionMenu` (the ⋯ action sheet, which holds the view switcher and everything the old five-button hero row spelled out), `setFilter`, `setView`, and `openSortMenu`/`setSort`. |
+| `activities.js` | The whole activity flow. **Creating always goes through a sheet** — `quickAddActivity()` only takes the composer's text and hands it to **`startNewActivity()`**, the plan-or-record chooser, which opens either `openNewActivity(name)` or **`openCompDraft(name)`** (see **Adding something you already did**, plus `setCompNameShape`/`renderCompListRow`/`commitCompDraft`). Nothing here inserts an activity directly except `commitSaveActivity()` and `commitCompDraft()`, which are those two sheets' own Saves. `toggleComplete(id, isDone)` is the one-tap completion (see the note below). Then `openNewActivity`, `openEditAct`, `saveActivity`, `delActivity`, plus `renderActListPicker()`/`renderActListValue()`/`setTargetLists()` and the `targetListIds` global (an array capped at one id, with `targetListId` as its alias) — the List row that lets an activity be filed from outside any collection, and which is hidden when there is no choice to make. Also **`revealNewActivity()`** — where an add lands: the list it was filed in, with the activity's own sheet open on top (see **The two-speed activity flow**). Also **`setActivityNotice`** — the one line the activity sheet can carry saying why it opened empty, written only by a screenshot import that could not be read (see **Sharing a link in**) — and `setPriorityChoice` (**the only way to set priority** — it keeps the swatched buttons and the hidden `#aPri` value in step), `openComp`/`openCompletedDate`/`confirmComplete` — the one completion sheet, every field on it — and `updateMediaRequirement()`, which is why that sheet will not save a *new* completion with no photo or video (see **The two-speed activity flow**) — and `openActDetail`/`setActDetailTab` which build the activity sheet and swap its Details/Notes tabs. Plus `openCollectionMenu` (the ⋯ action sheet, which holds the view switcher and everything the old five-button hero row spelled out), `setFilter`, `setView`, and `openSortMenu`/`setSort`. |
 | `me.js` | `renderMe()` (stats), `renderMeIdentity()`, **Home** — `homePlace`/`loadHomePlace`/`saveHomePlace`/`resetHomePlace`/`renderMeHome`/`openHomeSheet`/`saveHomeSheet`/`clearHomePlace` and the `bl_home:<uid>` localStorage mirror (see **Home**), plus **`updateHomeActivities`/`clearHomeActivityFlags`** — the cascade that moves everything set to Home when the home address changes (see **Moving house**) — **the profile photo** — `avatarsReady`/`myAvatarUrl`/`openAvatarMenu`/`pickAvatar`/`handleAvatarFile`/`removeAvatar`/`saveAvatarUrl` (see **A face on the account**) — `openDeleteAccount`/`onDeleteAccountInput`/`deleteAccount` (see **Deleting an account**), `loadUserProfile()` (reads the `Users` row once per session into `userProfile` — **and creates it when missing**, via `createUserProfile`/`profileSeed`/`USERNAME_RE`; see **Signing up**), `confirmSignOut()`. The tab's one App row, Add to Home Screen, is wired to `pwaShowInstallHelp()` in `pwa.js`. *Share links into the app* and *Join a shared list* both used to sit beside it; the first went with the Shortcut tier (see **Sharing a link in**) and the second lives on the Lists tab, which is the screen the missing list was supposed to be on. |
 | `bulk.js` | The "add many at once" sheet, one card per row. Row values live in `bulkEntries[]` and the DOM is re-rendered from it wholesale, so **`saveBulkFieldValues()` must flush the inputs back into the array before any redraw** — every mutation helper does this. `_skipSaveBulk` suppresses that flush in `bulkApplyDown` (the "copy row 1" pills), which has already updated the array itself. `openBulkAdd(listId)` takes an explicit destination in `bulkListId`, defaulting to `curListId`: the sheet normally opens from a collection, but an import from Home has no collection context and passes the chosen list. |
 | `share.js` | **Turning a shared link or a screenshot into an activity.** `readSharedInput()` (boot; parses and strips the query param), `handleSharedInput()` (called from `showApp()`), `openImportSheet`/`runUnfurl`/**`importFailed`** (the link-keeps-the-card / screenshot-goes-to-the-sheet split)/`renderImportState`/`IMPORT_FAIL_STATE`/`SHOT_FAIL_NOTICE`, `pickScreenshot`/`handleScreenshot` (downscale and send to the vision path), `handOffSingle`/`handOffMany`/`shareSourceLinks`, and `looksLikeUrl`/`importFromComposer`. Loads after `activities.js` and `bulk.js` because it hands drafts to both. See **Sharing a link in** below. |
@@ -2928,6 +2935,25 @@ functions look redundant:
   The composer's old "Details" button is gone — once Return opened the sheet,
   the two did the same thing. A go arrow (`.composer-go`) replaces it, matching
   Home's.
+
+  **And an add ends on the activity, not on the screen you typed it into.**
+  `revealNewActivity(listId, id)` in `activities.js` navigates to the list the
+  activity was filed in and opens its own sheet on top, and both insert paths
+  end there — `commitSaveActivity()` for a plan and `commitCompDraft()` for
+  something already done. Saving used to close the sheet and leave you standing
+  on Home, which does not show the row you just wrote: the one thing you wanted
+  to look at was the one thing you had to go and find. Three things about it:
+
+  - **Only an insert.** An edit stays where it was, because the user is already
+    looking at the row they changed — `commitSaveActivity()` gates on
+    `editingActId`.
+  - **It replaces the `refreshAfterChange()` on that path**, rather than
+    running after it. `nav()` renders the screen it lands on, so redrawing the
+    one being left is wasted work.
+  - **It returns false when it has nothing to open** — no list, or an insert
+    whose id did not come back — and the caller falls through to the ordinary
+    redraw. The delay before `openActDetail()` is the sheet's dismissal
+    animation, the same 240ms `dupeOpenExisting()` waits.
 
   **The activity sheet's shape.** Everything is on one screen: name, then
   target date and list side by side, then priority, location, reminder
@@ -3000,9 +3026,8 @@ functions look redundant:
     is the only part of a date input a click opens the picker from. The
     **List** row is a move — `confirmComplete()` writes the list columns only
     when the set actually changed (`compListsBefore`), because with the
-    multi-list migration absent `listFieldsFor()` returns `collection_id`
-    alone and writing it back unchanged would strip the activity out of every
-    list but its home. It matters most on a *completed* activity: the
+    an untouched edit must not rewrite `collection_id` at all. It matters
+    most on a *completed* activity: the
     activity sheet hides "Edit details" once something is done, so this is
     the only way to refile one.
   - **`.comp-sec`** — a mono head with its action on the same line, then the
@@ -3173,7 +3198,7 @@ they can be queued when there is no network.
 | Table | Columns |
 | --- | --- |
 | `Collections` | `id`, `created_at`, `name`, `description`, `cover_image`, `user_id`, `number_activities`, `activites_completed`, `category_tag` |
-| `Activities` | `id`, `created_at`, `collection_id`, `extra_collection_ids` *(optional — added by `multilist.sql`; see **One activity, several lists**)*, `name`, `description` *(dead — see below)*, `target_date`, `priority`, `date_completed`, `experience_notes`, `photos`, `links`, `location`, `location_lat`, `location_lng`, `location_is_home` *(optional — added by `home.sql`; see **Moving house**)*, `category_tag`, `remind_at` (see below) |
+| `Activities` | `id`, `created_at`, `collection_id` *(the only list an activity is in — see **One activity, one list**)*, `name`, `description` *(dead — see below)*, `target_date`, `priority`, `date_completed`, `experience_notes`, `photos`, `links`, `location`, `location_lat`, `location_lng`, `location_is_home` *(optional — added by `home.sql`; see **Moving house**)*, `category_tag`, `remind_at` (see below) |
 | `Users` | `id` (= `auth.users.id`), `created_at`, `display_name`, `username`, `icon`, `home_location`, `home_lat`, `home_lng` *(the last three optional — added by `home.sql`; see **Home**)*, `avatar_url` *(optional — added by `avatars.sql`; see **A face on the account**)* |
 | `collection_members` *(optional)* | `collection_id`, `user_id`, `role`, `display_name`, `created_at` — added by `sharing.sql` |
 | `collection_invites` *(optional)* | `code` (PK), `collection_id`, `created_by`, `role`, `revoked`, `expires_at`, `created_at` |
@@ -3198,8 +3223,8 @@ backing queries — plus two more `SECURITY DEFINER` helpers,
 `can_use_activity` and `owns_activity_collection`, which are
 `can_use_collection`/`owns_collection` reached through an activity.
 `can_use_activity` is installed in a wider form when
-`extra_collection_ids` exists, so notes on an activity filed in from
-another list are reachable too.
+`extra_collection_ids` existed; `single-list.sql` puts the narrow form
+back.
 
 The `SECURITY DEFINER` helpers `owns_collection`,
 `is_collection_member` and `can_use_collection` exist to break RLS
@@ -3238,10 +3263,9 @@ Schema notes and traps:
   `collection_id` alone, so they undercount an activity that is in several
   lists. Anything that starts *reading* them has to fix that first.
 - **`collection_id` is the home list, not the only list.** Once
-  `multilist.sql` has been run, `extra_collection_ids` holds the rest and
-  membership means "either end". `fetchActivitiesFor()` and the RLS policies
-  both match on the set; a query written against `collection_id` alone
-  silently misses anything filed in from another list.
+  there was an `extra_collection_ids` array holding the rest. It is gone —
+  `collection_id` is now the whole answer, in the client and in the policies.
+  Run `supabase/single-list.sql` if the column is still on your table.
 - **`Users` needs `supabase/profiles.sql` run against it.** Nothing else
   manages its RLS, and without an INSERT policy the profile row cannot be
   created. See **Signing up**.
@@ -3249,10 +3273,13 @@ Schema notes and traps:
 - **The CSVs in `Supabase Setup/` are stale.** `Activities.csv` predates
   `location_lat`/`location_lng`, which the live table has and the code depends
   on. Treat the table above as the reference, not the CSVs.
-- `target_date` is **not a date** — it's one of a fixed set of strings
-  (`"Before I Die"`, `"This Month"`, `"This Year"`, `"Next Year"`,
-  `"In 2-3 Years"`, `"In 5+ Years"`, or empty). `dateInfo()` in `utils.js` maps
-  those to a real deadline and an urgency badge. `date_completed` *is* a real
+- `target_date` is **usually an ISO date now**, but the column is text and
+  still holds bands. New writes resolve This Month / This Year / Next Year /
+  In 2-3 Years to a real date (see **A band is resolved on the way in**);
+  `"In 5+ Years"` is still stored as itself, and the retired `"Before I Die"`
+  and `""` survive on old rows. `dateInfo()` in `utils.js` maps every one of
+  them to a deadline and an urgency badge. Run `supabase/target-rollover.sql`
+  to convert the rows written before this. `date_completed` *is* a real
   date; completion is inferred from it being non-null.
 - `photos` and `links` are JSON array columns. `mapActivity` tolerates them
   arriving as either arrays or JSON strings. **`photos` holds two shapes** — a
@@ -3717,13 +3744,16 @@ Two things that will bite:
   function has to be redeployed first. Expect to tune `PLACE_SYSTEM`
   against real activity names; it errs strict by design, so the failure to
   watch for is it refusing things it should catch, not inventing places.
-- **Multi-list has no per-membership data.** No "who added it to this list",
-  no ordering within a list, no added-at. That is the point at which the
-  array column stops being enough and `activity_collections` becomes the
-  migration — see the header of `supabase/multilist.sql`.
-- **Deleting a collection is a round trip per activity** once multi-list is
-  on, because each one has to be either unlinked or deleted individually.
-  A single RPC doing both in one statement would fix it.
+- **`supabase/target-rollover.sql` has to be run by hand.** Until it is, rows
+  still holding `This Year` / `Next Year` / `In 2-3 Years` keep rolling their
+  deadline forward every January, which is the bug the client fix closes for
+  everything written since. The failure is invisible — the row simply always
+  looks like it has about the same amount of time left.
+- **`supabase/single-list.sql` has to be run by hand.** Until it is, the
+  `extra_collection_ids` column is still on `Activities` holding whatever
+  memberships were there when the feature was removed — invisible, because
+  nothing reads it, and quietly widening the `Activities` select policy for
+  anyone who also ran the old `multilist.sql`.
 - **Account deletion is not transactional.** `delete-account` runs a
   sequence of deletes; a failure part-way leaves the auth user in place
   (deliberately, so it can be re-run) but some rows already gone. A

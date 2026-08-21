@@ -856,10 +856,8 @@
     <div class="sheet-bar">
       <button class="navbtn" onclick="closeModal('listPickerSheet')">Cancel</button>
       <div class="sheet-title" id="listPickerTitle">Add to List</div>
-      <!-- Done exists only in multi mode; the spacer keeps the title
-           centred in single mode, where there is nothing to confirm. -->
-      <button class="navbtn strong" id="listPickerDone"
-              style="display:none" onclick="listPickerDone()">Done</button>
+      <!-- No Done: the picker is single-select, so a tap is the whole
+           choice. The spacer keeps the title centred against Cancel. -->
       <span class="navbtn" id="listPickerDoneSpacer"
             style="pointer-events:none;opacity:0">Cancel</span>
     </div>

@@ -45,7 +45,7 @@ function mapActivity(row){
     let links=[];
     if(row.links){links=Array.isArray(row.links)?row.links:typeof row.links==='string'?JSON.parse(row.links):[];}
     const media=normMedia(raw);
-    return{id:row.id,listId:row.collection_id,listIds:activityListIds(row),
+    return{id:row.id,listId:row.collection_id,listIds:[row.collection_id].filter(Boolean),
       name:row.name,
       targetDate:row.target_date||null,priority:row.priority||'medium',links,
       completed:!!row.date_completed,completedDate:row.date_completed||null,
@@ -64,99 +64,23 @@ function mapActivity(row){
 }
 
 /* ==============================================================
-   WHICH LISTS AN ACTIVITY IS IN
+   WHICH LIST AN ACTIVITY IS IN
 
-   An activity lives in one *home* list — `collection_id`, unchanged
-   and still the column every query, index and RLS policy keys on —
-   plus any number of others in the `extra_collection_ids` array added
-   by supabase/multilist.sql. See that file's header for why it is a
-   column rather than a junction table.
+   Exactly one: `collection_id`. There was briefly an
+   `extra_collection_ids` array beside it letting one activity sit in
+   several lists at once; it is gone, in the app and in the table (see
+   supabase/single-list.sql). Everything downstream still reads
+   `a.listIds`, which is now a one-element array — keeping the shape
+   means the callers that ask "is this activity in that list?" did not
+   all have to be rewritten, and `listIds[0]` and `listId` can never
+   disagree.
 
-   This is the one place the two are assembled, and everything
-   downstream reads `a.listIds`. Two things it guarantees:
-
-   1. **The home list is always first.** Anywhere the app needs to
-      name a single list for an activity — the chip on an Up Next row,
-      a search result, the collection whose stats get recounted — it
-      takes listIds[0], so "which one" has one answer everywhere.
-   2. **No duplicates and no nulls.** The array is written by the
-      client, and an activity moved between lists could otherwise end
-      up with its new home still sitting in the extras, which would
-      show the same list twice in the picker.
-
-   Before the migration is run the column is simply absent from the
-   row and every activity has exactly one list, which is what it had
-   before. Nothing needs backfilling. */
-function activityListIds(row){
-  const home=row.collection_id;
-  const extra=Array.isArray(row.extra_collection_ids)?row.extra_collection_ids:[];
-  const out=home?[home]:[];
-  extra.forEach(id=>{ if(id&&!out.includes(id)) out.push(id); });
-  return out;
+   Back to the storage shape, so every save path splits it the same
+   way. */
+function listFieldsFor(ids){
+  const id=(ids||[]).filter(Boolean)[0];
+  return id?{collection_id:id}:null;
 }
-
-/* Back to the storage shape: the home list and the rest, as the two
-   columns are actually written. Used by every save path, so the split
-   is decided once. */
-function splitListIds(ids){
-  const clean=(ids||[]).filter(Boolean).filter((id,i,a)=>a.indexOf(id)===i);
-  return{collection_id:clean[0]||null,extra_collection_ids:clean.slice(1)};
-}
-
-/* ==============================================================
-   MULTI-LIST CAPABILITY
-
-   extra_collection_ids is added by supabase/multilist.sql, which
-   lives in someone else's Supabase project and cannot be guaranteed
-   to have been run — the same situation remind_at is in, and the
-   same answer: probe once, and let the rest of the app ask.
-
-   Two things depend on the answer, and they fail differently:
-
-   - **Writing.** Sending a column the table does not have fails the
-     whole insert, so splitListIds()'s second half is dropped from the
-     payload when this is false. That is why it matters more than a
-     hidden button.
-   - **Reading.** fetchAllActivities() can only ask for "activities
-     whose extras overlap my lists" if the column exists; without it
-     the query is the plain collection_id filter it always was.
-
-   Like probeSharing(), it **races the first render** on a cold launch
-   with no snapshot: the activities query has usually already answered
-   with this still false, having asked only for the home list. So the
-   probe drops that cache when it flips true, or an activity shared
-   into one of your lists from outside it stays invisible until a
-   reload. `_activitiesNarrow` records which of the two queries the
-   cached rows came from, so the refetch only happens when it would
-   actually change the answer.
-   ============================================================== */
-let _multiListReady=null,_multiListProbe=null;
-let _activitiesNarrow=false;
-
-function probeMultiList(){
-  if(_multiListReady!==null) return Promise.resolve(_multiListReady);
-  /* showApp() reaches this twice in the same tick — once to arm the
-     write path, once inside the revalidate chain — so the in-flight
-     promise is shared rather than probing twice. */
-  if(_multiListProbe) return _multiListProbe;
-
-  _multiListProbe=(async()=>{
-    try{
-      const{error}=await sb.from('Activities').select('extra_collection_ids').limit(1);
-      _multiListReady=!error;
-      if(error) console.info('[lists] no extra_collection_ids column — an activity belongs to one '+
-        'list. Run supabase/multilist.sql to let it belong to several.');
-    }catch(e){ _multiListReady=false; }
-    _multiListProbe=null;
-    if(_multiListReady&&_activitiesNarrow){
-      invalidateActivities();
-      if(typeof refreshAfterChange==='function') refreshAfterChange();
-    }
-    return _multiListReady;
-  })();
-  return _multiListProbe;
-}
-function multiListReady(){ return _multiListReady===true; }
 
 /* ==============================================================
    REMINDERS CAPABILITY
@@ -301,7 +225,6 @@ function cacheOwnerCheck(){
      of the invalidators happens to cover which field. */
   _cCollections=_cActivities=_pCollections=_pActivities=null;
   _collectionsScope=null;
-  _activitiesNarrow=false;
   if(_cacheUserId!==null)
     console.warn('[api] account changed — dropping the cache held for',_cacheUserId);
   _cacheUserId=uid;
@@ -477,14 +400,12 @@ async function fetchCollections(){
 
 /* Is this raw row in any list the user can currently see?
 
-   The client-side counterpart of the RLS policy in multilist.sql, and
-   it has to exist even where RLS is doing the scoping: it is also what
+   The client-side counterpart of the RLS policy, and it has to exist
+   even where RLS is doing the scoping: it is also what
    filters the *snapshot*, which has no policies on it at all and can
    outlive a collection being deleted or left. */
 function rowInAnyList(row,idSet){
-  if(idSet.has(row.collection_id)) return true;
-  const extra=row.extra_collection_ids;
-  return Array.isArray(extra)&&extra.some(id=>idSet.has(id));
+  return idSet.has(row.collection_id);
 }
 
 async function fetchAllActivities(collections){
@@ -496,15 +417,7 @@ async function fetchAllActivities(collections){
     if(!cols.length){_pActivities=null;_cActivities=[];return _cActivities;}
     const ids=cols.map(c=>c.id);
     const idSet=new Set(ids);
-    /* An activity in a list shared with you can be *homed* in a list
-       that is not — the owner's own private one — so a plain
-       collection_id filter would fetch the row and then throw it away.
-       Ask for either end, once the column exists to ask about. */
-    const multi=multiListReady();
-    _activitiesNarrow=!multi;
-    const rows=await readRows('activities','Activities',q=>multi
-      ? q.or(`collection_id.in.(${ids.join(',')}),extra_collection_ids.ov.{${ids.join(',')}}`)
-      : q.in('collection_id',ids));
+    const rows=await readRows('activities','Activities',q=>q.in('collection_id',ids));
     _pActivities=null;
     if(!rows) return [];
     _cActivities=rows.filter(r=>rowInAnyList(r,idSet)).map(mapActivity);
@@ -516,9 +429,8 @@ async function fetchAllActivities(collections){
 /* One collection's activities, oldest first — the order the detail
    screen's query used to return. Filtered from the shared cache.
 
-   Matches on the whole list set, not the home list: an activity added
-   to this collection from somewhere else has to appear in it, which is
-   the entire feature. */
+   Matches through listIds rather than comparing collection_id, so the
+   one place that decides what "in this list" means is mapActivity(). */
 async function fetchActivitiesFor(collectionId){
   const all=await fetchAllActivities();
   return all.filter(a=>a.listIds.includes(collectionId))

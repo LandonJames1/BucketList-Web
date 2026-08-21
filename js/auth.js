@@ -282,15 +282,15 @@ async function showApp(){
   const warm=await primeFromSnapshot();
 
   /* A first-ever launch has no snapshot, so nav('home') below goes
-     straight to the network — and the two scope probes would still be
-     in flight when it did. Both of them invalidate and refetch when
-     they flip true, so that first render cost a *full* fetch of both
-     tables twice: once filtered to owned lists and the home-list
-     column, once correctly. The probes are one column with limit 1 and
-     run in parallel, so paying a single round trip here buys the
-     doubled one back. Only on a cold launch: a snapshot-primed boot is
-     already correct by construction and must not wait for anything. */
-  if(!warm) await Promise.all([probeSharing(),probeMultiList()]);
+     straight to the network — and the sharing probe would still be in
+     flight when it did. It invalidates and refetches when it flips
+     true, so that first render cost a *full* fetch of both tables
+     twice: once filtered to owned lists, once correctly. The probe is
+     one column with limit 1, so paying a single round trip here buys
+     the doubled one back. Only on a cold launch: a snapshot-primed
+     boot is already correct by construction and must not wait for
+     anything. */
+  if(!warm) await probeSharing();
 
   /* Boot into the dashboard. */
   nav('home');
@@ -339,12 +339,6 @@ async function showApp(){
      fetched as "mine" or as "everything RLS lets me see" — probed
      early for the same reason as the media bucket. See js/sharing.js. */
   probeSharing();
-  /* And whether an activity can belong to more than one list. Armed
-     here rather than only in the revalidate chain below, because the
-     *write* path needs the answer even on a cold launch that never
-     revalidates — sending a column the table does not have fails the
-     whole insert. See probeMultiList() in js/api.js. */
-  probeMultiList();
   /* And whether this project has the messages tables. The Messages tab
      stays hidden until this answers true, and answering fills the hub
      so the tab arrives with its unread count already on it. See
@@ -383,16 +377,13 @@ async function showApp(){
      then. Only when it was actually painted from the snapshot: without
      one, nav('home') above already went to the network.
 
-     The two scope probes are awaited first, and only here. Nothing is
-     waiting on this — the screen is already up — so letting them
-     answer before the refetch costs nothing visible and guarantees
-     both queries run with the right scope the first time. Run in
-     parallel, the collections fetch would sometimes come back
-     owned-only, discover sharing was on, and have to do the whole
-     thing again; the activities fetch would ask for the home list
-     alone and miss anything shared into one of your lists from
-     outside it. See probeMultiList() in js/api.js. */
-  if(warm) Promise.all([probeSharing(),probeMultiList()])
+     The sharing probe is awaited first, and only here. Nothing is
+     waiting on this — the screen is already up — so letting it answer
+     before the refetch costs nothing visible and guarantees the
+     collections query runs with the right scope the first time. Run in
+     parallel, that fetch would sometimes come back owned-only,
+     discover sharing was on, and have to do the whole thing again. */
+  if(warm) probeSharing()
     .then(revalidate).then(()=>refreshAfterChange());
 }
 

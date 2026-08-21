@@ -77,9 +77,10 @@ create table if not exists public.messages (
   sender_name   text,
   body          text not null default '',
   -- Which activities this message is about. An array rather than a
-  -- junction table, for the same reasons as Activities.extra_collection_ids
-  -- — see supabase/multilist.sql's header. Renders as chips; the
-  -- array is authoritative, not the text.
+  -- junction table: this app is backed by two cached queries and a
+  -- junction table would be a third, plus its own RLS helper, for a
+  -- handful of ids the client already writes with the row. Renders as
+  -- chips; the array is authoritative, not the text.
   activity_ids  uuid[] not null default '{}',
   created_at    timestamptz not null default now(),
   edited_at     timestamptz,
@@ -138,41 +139,6 @@ as $$
     where a.id = aid and public.can_use_collection(a.collection_id)
   );
 $$;
-
--- An activity can also be reached through the lists it was filed
--- into, but only once supabase/multilist.sql has been run — before
--- that the column does not exist and referencing it would fail to
--- compile. So the wider version is installed only when it can be.
-do $$
-begin
-  if exists (
-    select 1 from information_schema.columns
-    where table_schema='public' and table_name='Activities'
-      and column_name='extra_collection_ids'
-  ) then
-    execute $fn$
-      create or replace function public.can_use_activity(aid uuid)
-      returns boolean
-      language sql security definer stable
-      set search_path = public
-      as $body$
-        select exists (
-          select 1 from public."Activities" a
-          where a.id = aid
-            and (
-              public.can_use_collection(a.collection_id)
-              or exists (
-                select 1
-                from unnest(coalesce(a.extra_collection_ids, '{}'::uuid[])) as x(cid)
-                where public.can_use_collection(x.cid)
-              )
-            )
-        );
-      $body$;
-    $fn$;
-  end if;
-end $$;
-
 
 -- Does the caller own the collection this activity is homed in?
 -- Only used to let a list's owner remove somebody else's note; the

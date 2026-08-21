@@ -703,17 +703,6 @@
     .lp-row.current .lp-check { display: block; }
     .lp-check .ic { width: 20px; height: 20px; stroke-width: 2.6; }
 
-    /* Multi-select only, and only past one list: which of the chosen
-       lists is the activity's home — the one named wherever the app has
-       room for exactly one list. Sized as a .tag rather than shouting,
-       because it is an answer to a question most people will not ask. */
-    .lp-home {
-      flex-shrink: 0; padding: 3px 7px; border-radius: 6px;
-      background: var(--fill-3); color: var(--label-2);
-      font-family: var(--mono); font-size: 9px; font-weight: 600;
-      letter-spacing: .1em; text-transform: uppercase;
-    }
-
     .lp-empty {
       padding: 26px 16px; text-align: center;
       font-size: 15px; color: var(--label-2);

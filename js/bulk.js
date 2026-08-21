@@ -197,7 +197,9 @@ async function saveBulkActivities(){
     location:(e._loc||'').trim()||null,
     location_lat:parseFloat(e._locLat)||null,
     location_lng:parseFloat(e._locLng)||null,
-    target_date:e._date||null,
+    /* Resolved to a real date, same as the activity sheet — see
+       MAKING A BAND HOLD STILL in utils.js. */
+    target_date:resolveTargetDate(e._date)||null,
     priority:e._pri||'medium',
     links:e.links||[],
     ...(homeFlagReady()?{location_is_home:!!e._locHome}:{}),

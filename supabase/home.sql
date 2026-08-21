@@ -31,8 +31,7 @@
 --
 -- ---- Why three columns and not a table ----
 --
--- The same argument as supabase/multilist.sql, only more so: this is
--- exactly one optional place per user, with no ordering, no history
+-- This is exactly one optional place per user, with no ordering, no history
 -- and no per-row metadata. `Users` is already read once per session by
 -- loadUserProfile(). A table would be a second query, a second RLS
 -- policy set and a join, to hold at most one row per person.

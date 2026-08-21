@@ -35,8 +35,7 @@
 -- performs on all three tables:
 --
 --   Collections   select / insert / update / delete   (sharing.sql)
---   Activities    select / insert / update / delete   (sharing.sql,
---                                                      multilist.sql)
+--   Activities    select / insert / update / delete   (sharing.sql)
 --   Users         select / insert / update            (profiles.sql)
 --
 -- Users has no delete policy and does not need one: the only thing

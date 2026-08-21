@@ -19,7 +19,7 @@ than assuming it is there:
 | `functions/send-message-push` | — | Messages arrive silently; the in-app tab badge is the only signal, and it only refreshes on foreground |
 | **`rls-lockdown.sql`** | — | **Every signed-in user can read, edit and delete every other user's data. Run it.** |
 | `functions/unfurl` | — | A shared link still opens the activity sheet with the URL attached; screenshot import says it needs the key; the location guess stays quiet |
-| `multilist.sql` | `probeMultiList()` in `js/api.js` | An activity belongs to exactly one list; the Lists row stays single-select |
+| `single-list.sql` | — | Nothing visible: the app never reads `extra_collection_ids`. Run it to take the dead column off the table |
 | `functions/delete-account` | — | **Delete Account reports an error rather than half-deleting.** Deploy this if you offer the button at all |
 
 Note that **offline needs nothing here.** The write queue and the row

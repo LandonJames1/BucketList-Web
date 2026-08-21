@@ -127,11 +127,10 @@ async function toggleComplete(id,isDone){
    They are separate because a draft is both new AND needs its name
    editable, and compNew alone used to decide the name's shape too. */
 let compId=null,compSrc=null,compList=null,compNew=false,compDraft=false;
-/* The lists the open activity was in when the sheet opened. Only used to
-   tell "the user moved it" from "the user never touched that row" — with
-   the multi-list migration absent, listFieldsFor() returns collection_id
-   alone, and writing that back unchanged would strip an activity out of
-   every list but its home. Same guard commitSaveActivity() uses. */
+/* The list the open activity was in when the sheet opened. Only used to
+   tell "the user moved it" from "the user never touched that row", so an
+   untouched edit does not rewrite collection_id at all. Same guard
+   commitSaveActivity() uses. */
 let compListsBefore=[];
 
 async function openComp(id,source){
@@ -146,7 +145,7 @@ async function openComp(id,source){
   /* Seeded from the row so the Lists row can move it. compListsBefore
      is what confirmComplete() compares against to decide whether the
      list columns are written at all. */
-  setTargetLists(a.listIds&&a.listIds.length?a.listIds:[a.listId]);
+  setTargetLists([a.listId]);
   compListsBefore=[...targetListIds];
 
   $('compName').value=a.name;
@@ -238,20 +237,16 @@ async function renderCompListRow(){
      reads "Choose" and saveActivity() refuses until it is answered. */
   if(!targetListIds.length&&editingActId) setTargetLists([lists[0].id]);
 
-  const multi=multiListReady();
-  $('compListLabel').textContent=multi?'Lists':'List';
+  $('compListLabel').textContent='List';
   renderActListValue(lists,'compListName');
 
   /* On the button, not the group: the group also holds the label, and
      tapping a label should do nothing. Same as renderActListPicker(). */
   $('compListBtn').onclick=()=>openListPicker({
-    multi,
-    title:multi?'Lists':'Add to List',
-    subtitle:multi?'Pick as many lists as you like.':'',
+    title:'Add to List',
     currentId:targetListId,
-    currentIds:targetListIds,
     onPick:picked=>{
-      setTargetLists(Array.isArray(picked)?picked:[picked]);
+      setTargetLists([picked]);
       if(!targetListIds.length) setTargetLists([lists[0].id]);
       renderActListValue(lists,'compListName');
     },
@@ -452,7 +447,7 @@ async function commitCompDraft(fields){
      column defaults rather than left out so the row matches every other
      one in the table. */
   const row=Object.assign({target_date:null,priority:'medium',links:[]},fields,cols);
-  const{error,offline}=await dbInsert('Activities',row);
+  const{error,offline,rows}=await dbInsert('Activities',row);
   btn.disabled=false;
   if(error){
     console.error('commitCompDraft:',error);
@@ -465,7 +460,24 @@ async function commitCompDraft(fields){
   lists.forEach(id=>updateCollectionStats(id));
   confetti();
   showToast(offline?'Accomplished — will sync later':'Accomplished');
-  refreshAfterChange(src);
+  const newId=rows&&rows[0]&&rows[0].id;
+  if(!revealNewActivity(lists[0],newId)) refreshAfterChange(src);
+}
+
+/* Where an add lands. Saving used to close the sheet and leave you on
+   whatever screen you typed the name into — usually Home, which does
+   not show the row you just wrote, so the one thing you wanted to see
+   was the one thing you had to go and find. So an add ends on the list
+   it was filed in, with the activity's own sheet open on top of it.
+   Returns false when it has nothing to open, so the caller can fall
+   back to the ordinary redraw. */
+function revealNewActivity(listId,id){
+  if(!listId||!id) return false;
+  nav('detail',listId);
+  /* Not onSheetClose(): closeModal() has already fired this sheet's
+     return. The delay is the sheet's dismissal animation. */
+  setTimeout(()=>openActDetail(id),240);
+  return true;
 }
 
 /* ==============================================================
@@ -486,23 +498,20 @@ async function commitCompDraft(fields){
    column is still on the table and nothing writes it any more; see the
    note in CLAUDE.md before putting anything back.
    ============================================================== */
-/* Where the activity being edited will be filed, in order — the first
-   entry is its home list. Inside a collection that starts as just that
-   collection; opened from Home it is whatever the user picks in the
-   sheet's List row.
+/* Which list the activity being edited will be filed in. Inside a
+   collection that is that collection; opened from Home it is whatever
+   the user picks in the sheet's List row.
 
-   An array rather than a single id because an activity can belong to
-   any number of lists (supabase/multilist.sql). `targetListId` is kept
-   as a read-only alias for the home list, since that is the one thing
-   most of the code around here wants.
-
-   Without the migration the picker stays single-select and this never
-   holds more than one id, so every path through it is the path it was
-   before. */
+   Still an array holding at most one id, and deliberately so: an
+   activity used to be able to sit in several lists at once, and the
+   shape is what lets every caller that walked the set carry on
+   unchanged now that the set is always one long. setTargetLists()
+   is the only writer, and it is where the cap lives — so there is
+   exactly one line to change if that decision is ever revisited. */
 let targetListIds=[],targetListId=null;
 
 function setTargetLists(ids){
-  targetListIds=(ids||[]).filter(Boolean).filter((id,i,a)=>a.indexOf(id)===i);
+  targetListIds=(ids||[]).filter(Boolean).slice(0,1);
   targetListId=targetListIds[0]||null;
 }
 
@@ -554,7 +563,7 @@ async function openEditAct(id){
   const a=await fetchActivity(id);if(!a)return;
   editingActId=id;
   setActivityNotice('');       /* never carries over from a failed import */
-  setTargetLists(a.listIds&&a.listIds.length?a.listIds:[a.listId]);
+  setTargetLists([a.listId]);
   await renderActListPicker();
   $('aName').value=a.name;
   $('aLoc').value=a.location||'';$('aLocLat').value=a.locationLat||'';$('aLocLng').value=a.locationLng||'';
@@ -568,7 +577,15 @@ async function openEditAct(id){
      opening the sheet and hitting Save cannot silently change the
      user's data — but keep it off the menu for everything else. */
   resetDateOptions();
-  if(isCustomDate(a.targetDate)){
+  /* A stored date that is exactly what a band resolves to today reopens
+     as that band, so picking "Next year" and coming back does not land
+     the user in the specific-date field. bandForStored() matches
+     exactly, so re-saving writes back the identical value. */
+  const band=bandForStored(a.targetDate);
+  if(band){
+    $('aDate').value=band;
+    $('aDateCustom').value='';
+  } else if(isCustomDate(a.targetDate)){
     $('aDate').value=CUSTOM_DATE;
     $('aDateCustom').value=a.targetDate;
   } else {
@@ -593,12 +610,7 @@ async function openEditAct(id){
 /* The List row only appears when there is a choice to make: editing an
    existing activity, or creating one from outside a collection.
 
-   It goes multi-select once the schema can hold more than one list —
-   the label then reads "Lists" and the value "Kyoto +2". The single
-   select is not a fallback that was left lying around: without
-   extra_collection_ids there is genuinely one choice to make, and a
-   sheet offering a multi-select that silently keeps only the first
-   answer would be worse than not offering it. */
+   Always single-select. An activity belongs to exactly one list. */
 async function renderActListPicker(){
   const row=$('actListRow');
   if(!row)return;
@@ -619,47 +631,29 @@ async function renderActListPicker(){
      reads "Choose" and saveActivity() refuses until it is answered. */
   if(!targetListIds.length&&editingActId) setTargetLists([lists[0].id]);
 
-  const multi=multiListReady();
-  $('actListLabel').textContent=multi?'Lists':'List';
+  $('actListLabel').textContent='List';
   renderActListValue(lists);
 
   /* The handler goes on the button, not on the .fg around it: the group
      also holds the label, and tapping a label should do nothing. */
   $('actListBtn').onclick=()=>openListPicker({
-    multi,
-    title:multi?'Lists':'Add to List',
-    /* .lp-sub is a single ellipsised line by design, so this has to be
-       short. The Done button and the checkmarks already say it is
-       multi-select, and the HOME badge explains itself — all the
-       subtitle has to add is that more than one is allowed. */
-    subtitle:multi?'Pick as many lists as you like.':'',
+    title:'Add to List',
     currentId:targetListId,
-    currentIds:targetListIds,
     onPick:picked=>{
-      setTargetLists(Array.isArray(picked)?picked:[picked]);
+      setTargetLists([picked]);
       renderActListValue(lists);
     },
   });
 }
 
-/* One list is named; several are counted.
-
-   "Kyoto Trip +2" was here first and it was wrong in the one place it
-   mattered: this row is half of a .fg-pair, so on a 320px screen it
-   has room for about ten characters, and what got ellipsised away was
-   the "+2" — the only part saying anything the user did not already
-   know. "3 lists" always fits, never truncates, and matches what the
-   activity sheet's own section says ("In 3 lists"). Which three is one
-   tap away, in the picker this row opens.
+/* The chosen list's name, or "Choose" when there isn't one yet.
 
    Shared with the completion sheet's draft mode, which passes its own
-   element id — the wording and its reasoning are the same on both, and
-   two copies would be two things to keep in step. */
+   element id — the wording is the same on both, and two copies would be
+   two things to keep in step. */
 function renderActListValue(lists,elId){
   const el=$(elId||'actListName');
   if(!el)return;
-  const n=targetListIds.length;
-  if(n>1){ el.textContent=`${n} lists`; return; }
   const home=lists.find(l=>l.id===targetListId);
   el.textContent=home?home.name:'Choose';
 }
@@ -683,10 +677,13 @@ function onTargetDateChange(){
 }
 
 /* The select holds either a preset band or the CUSTOM_DATE sentinel;
-   this turns that plus the date field into the value actually stored. */
+   this turns that plus the date field into the value actually stored.
+   A band is resolved to the date it means *now* on the way out — see
+   MAKING A BAND HOLD STILL in utils.js — so nothing downstream has to
+   know it was ever a band. */
 function readTargetDate(){
   const v=$('aDate').value;
-  if(v!==CUSTOM_DATE) return v||null;
+  if(v!==CUSTOM_DATE) return resolveTargetDate(v)||null;
   return $('aDateCustom').value||null;
 }
 
@@ -739,7 +736,8 @@ function setRemindField(value,note){
 
 /* The Home flag, ready to merge into a write — or nothing at all
    without the column, since sending one the table does not have
-   fails the whole insert. Same shape as listFieldsFor(). */
+   fails the whole insert. Same shape as listFieldsFor(), which lives
+   in js/api.js beside the mapper that reads the column back. */
 function homeFieldsFor(inputId){
   return homeFlagReady()?{location_is_home:locIsHome(inputId)}:{};
 }
@@ -800,19 +798,6 @@ async function saveActivity(){
     ()=>commitSaveActivity(fields,before));
 }
 
-/* The two list columns, ready to merge into a write — or nothing at
-   all when the sheet's choice matches what is already stored, so an
-   edit that did not touch the lists does not rewrite them.
-
-   extra_collection_ids is left off entirely without the migration.
-   Sending a column the table does not have fails the whole insert,
-   which is why the probe exists. See probeMultiList() in js/api.js. */
-function listFieldsFor(ids){
-  const{collection_id,extra_collection_ids}=splitListIds(ids);
-  if(!collection_id) return null;
-  return multiListReady()?{collection_id,extra_collection_ids}:{collection_id};
-}
-
 async function commitSaveActivity(fields,before){
   const btn=$('actSaveBtn');btn.disabled=true;
   try{
@@ -825,10 +810,8 @@ async function commitSaveActivity(fields,before){
       const wasIn=(before&&before.listIds)||[];
       const nowIn=targetListIds.length?targetListIds:wasIn;
       const cols=listFieldsFor(nowIn);
-      /* Only written when the set actually changed. An untouched edit
-         must not rewrite these — with the migration absent, `cols`
-         holds collection_id alone and writing it back would silently
-         strip an activity out of every list but its home. */
+      /* Only written when it actually changed, so an untouched edit
+         does not rewrite collection_id at all. */
       const moved=cols&&(wasIn.length!==nowIn.length||wasIn.some((id,i)=>id!==nowIn[i]));
       if(moved) Object.assign(fields,cols);
 
@@ -859,6 +842,10 @@ async function commitSaveActivity(fields,before){
     if(noteFor) flushActivityNoteField(noteFor);
     closeModal('actSheet');
     if(offline) showToast('Saved — will sync when you’re back online');
+    /* A new activity lands on its list with its sheet open — see
+       revealNewActivity(). An edit stays where it was: the user is
+       already looking at the row they changed. */
+    if(!editingActId&&revealNewActivity(targetListIds[0],noteFor)) return;
     /* Whatever screen is actually showing owns the row that changed.
        This used to fall back to Home for everything that was not the
        detail screen, so editing from Up Next redrew a page the user was
@@ -868,35 +855,6 @@ async function commitSaveActivity(fields,before){
     console.error('saveActivity:',err);
     showToast(err.message||'Couldn’t save.');
   }finally{ btn.disabled=false; }
-}
-
-/* Take an activity out of one list without destroying it. Not
-   confirmed, and deliberately so: nothing is lost, the activity is
-   still in its other lists, and it is put back by opening it from any
-   of them and ticking this list again. A confirmation on a reversible
-   action teaches people to dismiss confirmations.
-
-   It refuses to empty the set. An activity in no list is reachable
-   from nowhere in the app — it would still be in the database, still
-   on the map, and impossible to find. */
-async function removeActivityFromList(id,listId){
-  const a=await fetchActivity(id);
-  if(!a)return;
-  const rest=(a.listIds||[]).filter(x=>x!==listId);
-  if(!rest.length){ showToast('An activity has to be in at least one list.'); return; }
-
-  const cols=listFieldsFor(rest);
-  const{error,offline}=await dbUpdate('Activities',cols,{id});
-  if(error){
-    console.error('removeActivityFromList:',error);
-    showToast(error.message||'Couldn’t remove it.');
-    return;
-  }
-  closeModal('actDetailSheet');
-  updateCollectionStats(listId);
-  if(cols.collection_id!==a.listId) updateCollectionStats(cols.collection_id);
-  refreshAfterChange();
-  showToast(offline?'Removed — will sync later':'Removed from this list');
 }
 
 async function delActivity(id){
@@ -1135,13 +1093,6 @@ async function openActDetail(id){
      every activity in the app would be noise on the overwhelming
      majority of them. At two or more it is the only place the app says
      so, and it is what makes the feature visible at all. */
-  if(lists.length>1){
-    h+=`<div class="ad-section"><div class="ad-section-label">In ${lists.length} lists</div>
-      <div class="ad-lists">${lists.map(l=>
-        `<button class="ad-list-chip" onclick="closeModal('actDetailSheet');nav('detail','${l.id}')">
-           ${icon('stack','ic-xs')}<span>${esc(l.name)}</span>
-         </button>`).join('')}</div></div>`;
-  }
   /* Location and links are the two tinted cards up on the plate for a
      pending activity, so only a completed one repeats them here. */
   if(a.completed&&a.links&&a.links.length){
@@ -1152,44 +1103,10 @@ async function openActDetail(id){
          </a>`).join('')}</div></div>`;
   }
 
-  /* Actions: the primary one flips completion, then the rest.
-
-     A completed activity gets ONE edit button, not two. "Edit details"
-     is the target date, the priority and the reminder — every one of
-     them about what to do next, which a finished thing does not have.
-     So it is dropped, and the remaining button carries the name and the
-     location alongside the photos and notes it already held. */
-  const many=lists.length>1;
-  const delBtn=`<button class="btn btn-destructive btn-block"
-      onclick="confirmDeleteActivity('${a.id}','${esc(a.name).replace(/'/g,'&#39;')}',${lists.length})">
-      ${icon('trash')}${many?'Delete Everywhere':'Delete'}
-    </button>`;
-
-  /* An activity in several lists has two different things "get rid of
-     it" could mean, and only one of them is destructive. Taking it out
-     of the list you are standing in is the one people will actually
-     want most of the time, so it gets its own button rather than being
-     buried in the Lists row of the edit sheet — and it is grey, not
-     red, because nothing is destroyed: the activity, its photos and
-     its completion all carry on living in its other lists.
-
-     Shown only when there is a list to remove it from and another list
-     for it to survive in. */
-  const here=curPage==='detail'&&curListId&&(a.listIds||[]).includes(curListId)?curListId:null;
-  const removeBtn=many&&here
-    ? `<button class="btn btn-gray btn-block" onclick="removeActivityFromList('${a.id}','${here}')">
-         ${icon('x')}Remove From This List
-       </button>`
-    : '';
-
-  h+= a.completed
-    /* The actions live in the bar at the top of the sheet now; only
-       the multi-list remove button has no home up there. */
-    ? (removeBtn?`<div class="sheet-actions">${removeBtn}</div>`:'')
-    /* Still pending: the actions are docked at the foot of the sheet,
-       outside the scroller — see the dock below. Only the multi-list
-       remove button stays in the flow. */
-    : (removeBtn?`<div class="sheet-actions">${removeBtn}</div>`:'');
+  /* Every action lives in the dock at the foot of the sheet, or in the
+     bar at the top of a completed one — nothing is left in the flow.
+     There used to be a "remove from this list" button here, for an
+     activity that was also in other lists; it went with multi-list. */
 
   /* The notes page and the links page. Same scroller, swapped in by
      openActNotes()/openActLinks(); each has its own back bar, and each
@@ -1222,8 +1139,8 @@ async function openActDetail(id){
   dock.hidden=false;
   dock.innerHTML=a.completed?`
     <div class="ad-dock-view">
-      <button class="ad-dock-disc red" aria-label="${many?'Delete everywhere':'Delete'}"
-        onclick="confirmDeleteActivity('${a.id}','${esc(a.name).replace(/'/g,'&#39;')}',${lists.length})">
+      <button class="ad-dock-disc red" aria-label="Delete"
+        onclick="confirmDeleteActivity('${a.id}','${esc(a.name).replace(/'/g,'&#39;')}')">
         ${icon('trash')}</button>
       <button class="ad-dock-disc" aria-label="Mark as not done"
         onclick="closeModal('actDetailSheet');toggleComplete('${a.id}',true)">${icon('undo')}</button>
@@ -1232,8 +1149,8 @@ async function openActDetail(id){
       </button>
     </div>`:`
     <div class="ad-dock-view" id="adDockActions">
-      <button class="ad-dock-disc red" aria-label="${many?'Delete everywhere':'Delete'}"
-        onclick="confirmDeleteActivity('${a.id}','${esc(a.name).replace(/'/g,'&#39;')}',${lists.length})">
+      <button class="ad-dock-disc red" aria-label="Delete"
+        onclick="confirmDeleteActivity('${a.id}','${esc(a.name).replace(/'/g,'&#39;')}')">
         ${icon('trash')}</button>
       <button class="ad-dock-disc" aria-label="Edit details"
         onclick="openEditActFrom('${a.id}')">${icon('pencil')}</button>

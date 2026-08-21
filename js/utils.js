@@ -246,8 +246,12 @@ function targetBand(a){
    Their resolved date exists only so they can be sorted and grouped; it
    is not a date the user chose, so it must never be counted down to.
    The labels match the group headers targetBand() hands the Up Next
-   screen, so a row reads the same as the section it sits under. */
-const OPEN_BANDS={'In 2-3 Years':'2–3 years','In 5+ Years':'5+ years'};
+   screen, so a row reads the same as the section it sits under.
+
+   'In 2-3 Years' is kept here for rows written before bands were
+   resolved at save time; nothing stores it any more. 'In 5+ Years'
+   still does and always will — see MAKING A BAND HOLD STILL below. */
+const OPEN_BANDS={'In 2-3 Years':'2-3yrs','In 5+ Years':'5yrs'};
 
 /* The end of the window each preset band describes. */
 function presetTargetDate(v){
@@ -260,6 +264,73 @@ function presetTargetDate(v){
     case 'In 5+ Years':  return new Date(now.getFullYear()+5,11,31);
     default: return null;
   }
+}
+
+/* ==============================================================
+   MAKING A BAND HOLD STILL
+
+   A band is a *relative* label and target_date is an *absolute* field,
+   so storing the string was storing a promise that decays: "Next Year"
+   picked in 2026 means 2027, and in 2027 it still rendered as "next
+   year" — 2028 — quietly moving a deadline the user set once.
+
+   The fix is not a nightly job that rewrites every row. It is to
+   resolve the band the moment it is written and store the date it
+   resolved to. targetBand() already buckets a real date into a label,
+   so a row stored as 2027-12-31 *becomes* "This year" the instant 2027
+   starts — on every device, with nothing scheduled and nothing to miss.
+
+   "In 5+ Years" is deliberately NOT resolved. It names no deadline at
+   all — it resolves to +5 only so it can be sorted and grouped, which
+   is exactly why OPEN_BANDS refuses to count it down — so pinning it to
+   a date would invent the fact the whole band exists to avoid stating.
+   It stays a literal string forever.
+
+   The visible cost, worth knowing before it is reported as a bug: the
+   band you picked stops being the band you see. Choose "Next year" in
+   December 2026, reopen it in January 2027, and it reads "This year".
+   That is the feature. */
+const RESOLVING_BANDS=['This Month','This Year','Next Year','In 2-3 Years'];
+
+/* Local-calendar ISO. Never toISOString(): that converts to UTC first,
+   so local midnight on 31 December comes back as the 30th anywhere east
+   of Greenwich — every band would resolve a day early. */
+function isoLocal(d){
+  const p=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+}
+
+/* What actually goes in the column. Called by every write path — the
+   activity sheet and the bulk sheet — never by a read. A value that is
+   already a date, is "In 5+ Years", or is a retired band passes through
+   untouched. */
+function resolveTargetDate(v){
+  if(!v) return v;
+  if(!RESOLVING_BANDS.includes(v)) return v;
+  const d=presetTargetDate(v);
+  return d?isoLocal(d):v;
+}
+
+/* The other direction, for the edit sheet only: which band would
+   resolve to exactly this date *today*? Lets a row stored as
+   2027-12-31 reopen with "This year" selected rather than dumping the
+   user into the specific-date field.
+
+   The match has to be exact, or a date the user genuinely picked would
+   be snapped to the end of its band on the next save. Because it is
+   exact, re-saving an untouched row rewrites the same value it read —
+   the round trip is idempotent by construction.
+
+   It returns null more often as a date ages out of alignment: a
+   "2-3 years" row resolved to 2029-12-31 matches no band in 2027, so it
+   shows as the specific date it now is. That is honest — from 2027 it
+   is a date, not a range. */
+function bandForStored(iso){
+  if(!isCustomDate(iso)) return null;
+  return RESOLVING_BANDS.find(b=>{
+    const d=presetTargetDate(b);
+    return d&&isoLocal(d)===iso;
+  })||null;
 }
 
 /* Turn an activity's target date into a short label plus an urgency
@@ -329,22 +400,14 @@ function priorityRank(a){
    screen, a search result, a duplicate match. Every one of those is a
    row that could have come from any list, so it has to name one.
 
-   An activity can be in several (supabase/multilist.sql), and there is
-   room for exactly one name on those rows, so: the home list, plus a
-   count of the others. Two details:
-
-   - **Only lists this user can actually see are counted.** An activity
-     shared into one of your lists is homed in a list of someone
-     else's, which you cannot name and should not be told the number of.
-   - **The first *visible* list is named**, which is the home list
-     whenever it is one of yours and the next one along when it is not.
-     Returning '' there would leave the chip empty, which is what the
-     old `lists.find(c=>c.id===a.listId)` did. */
+   An activity is in exactly one, so this is a lookup — but it returns
+   '' rather than a blank chip when that list is one the user cannot
+   see. An activity shared into your library is homed in somebody
+   else's list, and naming a list they have no access to would be both
+   meaningless and a small disclosure. */
 function activityListLabel(a,lists){
-  const ids=(a.listIds&&a.listIds.length?a.listIds:[a.listId]).filter(Boolean);
-  const named=ids.map(id=>lists.find(c=>c.id===id)).filter(Boolean);
-  if(!named.length) return '';
-  return named[0].name+(named.length>1?` +${named.length-1}`:'');
+  const home=lists.find(c=>c.id===a.listId);
+  return home?home.name:'';
 }
 
 /* ==============================================================
