@@ -2243,9 +2243,15 @@ Things to keep:
 - **The band you picked stops being the band you see, and that is the
   feature.** Choose "Next year" in December 2026, reopen in January 2027, and
   it reads "This year". It will be reported as a bug; it is not.
-- A band-resolved date that no longer aligns with any band shows as the date
-  it is — a "2-3 years" row resolved to `2029-12-31` reads as *Dec 31, 2029*
-  from 2027, which is honest: from there it is a date, not a range.
+- **The resolved date is backend truth and is not read back at the user.**
+  Past the end of next year `dateInfo()` shows the band — *2-3yrs*, *5yrs*,
+  the `OPEN_BANDS` labels — not *Dec 31, 2029*, which states a precision
+  nobody chose. So a resolved row and a legacy unresolved one read
+  identically, and the row still rolls: from 2028 that same date is inside
+  next year and starts showing as a date again.
+- The consequence, since the stored value is identical by design: a date the
+  user genuinely picked more than two years out also reads as a band. There is
+  nothing left in the column to tell the two apart.
 - **`supabase/target-rollover.sql` migrates existing rows**, resolving from
   *today* rather than each row's `created_at` — so it writes exactly the date
   the app is already showing and nothing on screen changes. Its header explains

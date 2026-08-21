@@ -349,6 +349,16 @@ function dateInfo(a){
     if(d===0) return{label:'Today',cls:'overdue'};
     if(d===1) return{label:'Tomorrow',cls:'urgent'};
     if(d<=30) return{label:`${d} days left`,cls:'urgent'};
+    /* Past the end of next year, show the band rather than the date.
+       Bands are resolved to a real date on the way in so they roll
+       forward correctly (see MAKING A BAND HOLD STILL) — but that date
+       is backend truth, not something to read back at the user. "Dec
+       31, 2029" states a precision nobody chose; "2-3yrs" is what they
+       actually said. The two labels are OPEN_BANDS', so a resolved row
+       and a legacy unresolved one read identically. */
+    const far=targetBand(a).id;
+    if(far==='y23') return{label:OPEN_BANDS['In 2-3 Years'],cls:'relaxed'};
+    if(far==='y5')  return{label:OPEN_BANDS['In 5+ Years'], cls:'relaxed'};
     const months=Math.round(d/30.44);
     return{label:fmtDate(a.targetDate),
            cls:d/365.25>2?'relaxed':months>6?'moderate':'soon'};
