@@ -2518,7 +2518,11 @@ list there is nothing to remove it to, so `removeActivityFromList()` and the
 #### Three lists nobody edits
 
 **Easy, Medium and Hard** — one per difficulty tier, on every account,
-sitting on the Lists tab after the user's own lists. They answer a
+as a narrow row of three buttons at the top of the Lists tab, directly
+under the header and above the user's own lists. They were photo cards
+sitting *after* the user's lists, where nobody found them; they are
+derived rather than made, so a control strip is also the honest shape
+for them. They answer a
 question nothing else did: *what could I actually do this weekend*, as
 opposed to *what is in my Japan list*.
 
@@ -2572,12 +2576,13 @@ Difficulty sort follows: the model has said nothing about it, and a row
 nobody judged does not belong in a list of easy wins. That is also why
 `tools/difficulty-backfill.py` exists — see the backlog.
 
-**The covers are pinned per tier**, not derived by `coverFor()`. The
-three sit together as a set and a random-looking trio reads as three
-unrelated lists that happen to be adjacent. The `.coll-card-auto` badge
-is the tinted twin of `.coll-card-shared` and sits in the same corner,
-because it answers the same kind of question about the card: where did
-this come from.
+**The buttons carry the tier's name and its done/total count, and no
+cover.** Each name takes a hue off the priority scale (`--green`,
+`--violet`, `--pri-high`) so the three read as steps of one ranking.
+The covers pinned in `SMART_LISTS` are still used by the detail screen's
+banner, which is a real photo header. The `.coll-card-auto` badge that
+marked the old cards is gone from the Lists tab; the style remains in
+`collections.css`.
 
 #### The list picker
 
@@ -2871,7 +2876,7 @@ Loaded in this order; **order matters**.
 | `components.css` | The reusable iOS primitives every screen builds from: `.group`/`.row` inset grouped lists, `.seg` segmented controls, `.btn` styles, `.searchfield`, `.badge`/`.tag`, **`.list-chip`** (a collection's name on any row that could have come from any list — Home's Up Next, the Up Next screen, search results, the duplicate sheet; sized to match `.tag` so the capsules on one row line up), the `.pri-*` priority marks, `.seg-pri`/`.pri-swatch` (the priority chooser), `.media-tile`/`.media-play` (one tile for a photo or a video, used by three screens), `.empty`, `.progress`, `.spinner`. Look here before inventing a new component. |
 | `auth.css` | The signed-out screen — no nav bar, no tab bar, its own centring. Plus `.auth-invite`, the tinted note shown when an invite link was opened while signed out; `.auth-notice`, the same shape for a confirmation link that could not be honoured, but carrying its own way out (a resend button) because "that link expired" with no way to get another is the same dead end the link was; and `.auth-check`, the quieter waiting-for-confirmation panel — nothing has gone wrong there, and the title above is already carrying the message. |
 | `home.css` | The dashboard: the greeting, the SVG progress ring, the context-free quick-add composer (`.home-composer-wrap` owns the gutters so `.home-suggest`, its results dropdown, can position against the field), the Up Next list, and the two `.shelf` grids (recently accomplished, your lists). |
-| `collections.css` | The Lists tab: `.coll-card` photo cards, the "New List" tile, and `.coll-card-auto` — the badge on one of the three derived difficulty lists (see **Three lists nobody edits**). |
+| `collections.css` | The Lists tab: `.smart-row`/`.smart-btn` — the three derived difficulty lists as a button strip above everything else (see **Three lists nobody edits**) — `.coll-card` photo cards, the "New List" tile, and the now-unused `.coll-card-auto`. |
 | `detail.css` | A collection's screen: `.det-banner`, `.det-ctl-row`/`.det-sort` (the filter and sort controls sharing a line — the row owns the gutters so `.seg` can give up its own margins), `.act-row` list rows, `.composer` quick-add, `.act-card` grid cards, and the `.ad-*` activity detail sheet including `.ad-lists`/`.ad-list-chip`. |
 | `me.css` | The Me tab: the stats card, the progress card, the identity row. |
 | `modals.css` | The three presentation styles — `.modal`/`.sheet-*` bottom sheets, `.action-sheet`, `.lightbox` — plus the form controls that live inside a sheet: `.fg` and its `.fg-hero` (the field a sheet is *about* — only the activity name) and `.fg-pair` (two short choices on one line), `.picker-btn` (a value that opens a picker, sized to match a `<select>` beside it), `.chip-field`, `.photo-*`, the completion sheet's own `.comp-*` (`.comp-card`/`.comp-row` — inset grouped rows whose overflow must stay visible for the location dropdown — `.comp-sec`, `.comp-note`), the list picker's `.lp-*`, and `.toast`. There are no disclosure styles here any more — `.more-toggle`/`.more-fields` went with the completion sheet's last collapsed section. |
@@ -2925,7 +2930,7 @@ Loaded in this order; **order matters**.
 | `upnext.js` | The Up Next screen pushed from Home: every unfinished activity, bucketed by `targetBand()`. Borrows its rows and sort from `home.js`. |
 | `done.js` | The Accomplished screen pushed from Home: everything completed, grouped by the month it was finished. Reuses Home's photo tiles. |
 | `home.js` | The Home tab. `renderHome()` plus one function per section, the shared `upNextRowHTML()`/`sortUpNext()` the Up Next screen also uses, the context-free composer (`homeQuickAdd`, which asks plan-or-record via `startNewActivity()`), the composer's search half (`updateHomeSuggest`/`homeSuggestRowHTML`/`openHomeSuggest`/`closeHomeSuggest`, plus `searchActivities`/`searchMark`/`SEARCH_MIN`/`SEARCH_ACT_WEIGHTS` — all that survives of the deleted Search screen; see **One field, both questions** and **Finding things again**), and `toggleCompleteFrom()` — Home's copy of the completion toggle, which cannot rely on `curListId`. |
-| `smartlists.js` | **The three derived lists — Easy, Medium, Hard.** `SMART_PREFIX`/`SMART_LISTS`, `isSmartList`/`smartTier`, `smartCollection`/`smartCollections` (the synthetic collection `fetchCollection()` hands back for a sentinel id), `smartActivitiesFor` (the query that *is* the list), `smartCardsHTML` (the three cards on the Lists tab) and `openSmartListMenu`. Loads before `collections.js` and `detail.js`, which both draw them. **They are deliberately absent from `fetchCollections()`** — that is what makes them impossible to add to. See **Three lists nobody edits**. |
+| `smartlists.js` | **The three derived lists — Easy, Medium, Hard.** `SMART_PREFIX`/`SMART_LISTS`, `isSmartList`/`smartTier`, `smartCollection`/`smartCollections` (the synthetic collection `fetchCollection()` hands back for a sentinel id), `smartActivitiesFor` (the query that *is* the list), `smartRowHTML` (the three buttons at the top of the Lists tab) and `openSmartListMenu`. Loads before `collections.js` and `detail.js`, which both draw them. **They are deliberately absent from `fetchCollections()`** — that is what makes them impossible to add to. See **Three lists nobody edits**. |
 | `collections.js` | `renderCollections()` (the Lists tab) plus the collection CRUD: `openNewList`, `openEditList`, `renderCoverPreview`, `clearCover`, `handleCoverUpload`, `saveList`, `delList`. `delList` deletes the collection's activities first — there is no DB cascade — in one statement, since an activity belongs to exactly one list. |
 | `detail.js` | One collection. Rendering is **deliberately split in two**: `renderDetail()` builds the banner and the controls, `renderActivitiesList()` rebuilds only the list. Search and filter call the second, so the search field never loses focus mid-typing. Also `activityRowHTML`/`activityCardHTML`, `sortButtonHTML()` (the sort control beside the filter), and the quick-add composer helpers (`composerHTML`, `onComposerKey`, `focusComposer`). |
 | `activities.js` | The whole activity flow. **Creating always goes through a sheet** — `quickAddActivity()` only takes the composer's text and hands it to **`startNewActivity()`**, the plan-or-record chooser, which opens either `openNewActivity(name)` or **`openCompDraft(name)`** (see **Adding something you already did**, plus `setCompNameShape`/`renderCompListRow`/`commitCompDraft`). Nothing here inserts an activity directly except `commitSaveActivity()` and `commitCompDraft()`, which are those two sheets' own Saves. `toggleComplete(id, isDone)` is the one-tap completion (see the note below). Then `openNewActivity`, `openEditAct`, `saveActivity`, `delActivity`, plus `renderActListPicker()`/`renderActListValue()`/`setTargetLists()` and the `targetListIds` global (an array capped at one id, with `targetListId` as its alias) — the List row that lets an activity be filed from outside any collection, and which is hidden when there is no choice to make. Also **`revealNewActivity()`** — where an add lands: the list it was filed in, with the activity's own sheet open on top (see **The two-speed activity flow**). Also `setPriorityChoice` (**the only way to set priority** — it keeps the swatched buttons and the hidden `#aPri` value in step), `openComp`/`openCompletedDate`/`confirmComplete` — the one completion sheet, every field on it — and `updateMediaRequirement()`, which is why that sheet will not save a *new* completion with no photo or video (see **The two-speed activity flow**) — and `openActDetail`/`setActDetailTab` which build the activity sheet and swap its Details/Notes tabs. Plus `openCollectionMenu` (the ⋯ action sheet, which holds the view switcher and everything the old five-button hero row spelled out; a derived difficulty list gets `openSmartListMenu()` in `smartlists.js` instead), `setFilter`, `setView`, and `openSortMenu`/`setSort`. |

@@ -6,6 +6,42 @@
    collection recognisable at a glance.
    ============================================================ */
 
+    /* ==========================================================
+       THE THREE DERIVED DIFFICULTY LISTS
+
+       A narrow strip of three buttons directly under the page header
+       and above the user's own lists. They are derived, not made, so
+       they read as a control rather than as three more photo cards —
+       and sitting at the top is what makes them findable, which cards
+       buried after the real lists were not. See js/smartlists.js.
+       ========================================================== */
+    .smart-row {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      padding: 4px var(--gx-r) 4px var(--gx-l);
+    }
+    .smart-btn {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 2px; min-height: 44px; padding: 8px 6px;
+      border-radius: var(--r-ctl);
+      background: var(--fill-4);
+      border: 1px solid var(--separator);
+      color: var(--label-1);
+    }
+    .smart-btn-name {
+      font-family: var(--mono); font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .08em;
+    }
+    .smart-btn-count {
+      font-family: var(--mono); font-size: 10px; letter-spacing: .04em;
+      color: var(--label-3);
+    }
+    /* One hue per tier, borrowed from the priority scale — the same
+       three steps of one ranking, so they should look like it. */
+    .smart-easy  .smart-btn-name { color: var(--green); }
+    .smart-medium .smart-btn-name { color: var(--violet); }
+    .smart-hard  .smart-btn-name { color: var(--pri-high); }
+
     .coll-grid {
       display: grid; grid-template-columns: 1fr 1fr;
       gap: 16px;

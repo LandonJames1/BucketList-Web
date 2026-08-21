@@ -81,27 +81,18 @@ async function smartActivitiesFor(id){
             .sort((a,b)=>new Date(a.createdAt)-new Date(b.createdAt));
 }
 
-/* The three cards on the Lists tab. Drawn after the user's own lists
-   and before New List: they are a fixture, not something the user
-   made, so they do not lead. */
-function smartCardsHTML(allActs){
+/* The three tiers as one narrow row of buttons at the top of the Lists
+   tab, above the user's own lists. They are a fixture rather than
+   something anybody made, so they read as a control strip and not as
+   three more photo cards competing with the real lists. */
+function smartRowHTML(allActs){
   return smartCollections().map(l=>{
     const tier=smartTier(l.id);
     const acts=allActs.filter(a=>a.difficulty===tier);
     const total=acts.length,done=acts.filter(a=>a.completed).length;
-    const pct=total?Math.round(done/total*100):0;
-    return `<button class="coll-card" onclick="nav('detail','${l.id}')">
-      <img class="coll-card-img" src="${esc(l.cover)}" alt="" loading="lazy"/>
-      <div class="coll-card-scrim"></div>
-      <div class="coll-card-auto" title="Kept up to date automatically"
-           aria-label="Kept up to date automatically">${icon('sparkle','ic-xs')}</div>
-      <div class="coll-card-body">
-        <div class="coll-card-title">${esc(l.name)}</div>
-        <div class="coll-card-meta">
-          <div class="progress"><div class="progress-fill" style="width:${pct}%"></div></div>
-          <span>${done}/${total}</span>
-        </div>
-      </div>
+    return `<button class="smart-btn smart-${tier}" onclick="nav('detail','${l.id}')">
+      <span class="smart-btn-name">${esc(l.name)}</span>
+      <span class="smart-btn-count">${done}/${total}</span>
     </button>`;
   }).join('');
 }

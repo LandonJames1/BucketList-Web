@@ -12,6 +12,10 @@ async function renderCollections(){
   if(!cacheWarm()) setHTML(wrap,'<div class="spinner"></div>');
   try{
     const lists=await fetchCollections();
+    /* The difficulty row is drawn whether or not the user has any lists
+       of their own — it is derived from activities, not from lists. */
+    const smartActs=await fetchAllActivities(lists);
+    setHTML($('smartRow'),smartRowHTML(smartActs));
     if(!lists.length){
       setHTML(wrap,'');
       $('collEmpty').style.display='';
@@ -23,7 +27,7 @@ async function renderCollections(){
       return;
     }
     $('collEmpty').style.display='none';
-    const allActs=await fetchAllActivities(lists);
+    const allActs=smartActs;
     /* Which lists have more than one person in them. Empty set when
        sharing is not enabled, so the badge simply never appears. */
     const sharedOut=await sharedCollectionIds();
@@ -66,10 +70,6 @@ async function renderCollections(){
         </div>
       </button>`;
     }).join('')+
-    /* Easy / Medium / Hard, derived from the difficulty rating rather
-       than stored. After the user's own lists because they are a
-       fixture, not something anybody made. See js/smartlists.js. */
-    smartCardsHTML(allActs)+
     `<button class="coll-card-new" onclick="openNewList()">${icon('plus')}<span>New List</span></button>`+
     /* Joining by code sits beside creating, not buried in the You tab.
        Every link-based path can be eaten by something between the two
