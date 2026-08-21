@@ -468,8 +468,42 @@ const ACT_SORTS={
       return new Date(b.createdAt)-new Date(a.createdAt);
     },
   },
+  difficulty:{
+    label:'Difficulty',short:'Easiest',
+    /* Easiest first — the question this sort answers is "what can I
+       actually do this weekend", so the cheap end goes on top.
+       Un-rated rows sort last rather than being treated as easy: the
+       model has said nothing about them, and putting an unknown at the
+       head of a list of quick wins is the one wrong answer. */
+    cmp:(a,b)=>(a.completed?1:0)-(b.completed?1:0)
+            || diffRank(a)-diffRank(b)
+            || new Date(b.createdAt)-new Date(a.createdAt),
+  },
 };
 const DEFAULT_ACT_SORT='added';
+
+/* ==============================================================
+   HOW HARD IT IS
+
+   'easy' | 'medium' | 'hard', inferred from the activity's name at
+   capture time and never asked of the user — see GUESSING HOW HARD IT
+   IS in CLAUDE.md. Null is a real and common value (a row written
+   before the migration, or one the model declined to judge), so every
+   reader here has to handle it rather than defaulting it to a tier.
+   ============================================================== */
+const DIFF_LABELS={easy:'Easy',medium:'Medium',hard:'Hard'};
+const DIFF_ORDER={easy:0,medium:1,hard:2};
+
+function diffRank(a){
+  const d=a&&a.difficulty;
+  return d in DIFF_ORDER?DIFF_ORDER[d]:99;
+}
+/* Nothing is drawn for an un-rated activity — an empty slot says "not
+   judged", where a fourth label would state something nobody decided. */
+function diffLabel(a){
+  const d=a&&a.difficulty;
+  return DIFF_LABELS[d]||'';
+}
 
 /* Sorts a copy — callers pass arrays that came out of the shared
    activity cache, and sorting one in place would reorder the cache

@@ -66,6 +66,10 @@ async function renderCollections(){
         </div>
       </button>`;
     }).join('')+
+    /* Easy / Medium / Hard, derived from the difficulty rating rather
+       than stored. After the user's own lists because they are a
+       fixture, not something anybody made. See js/smartlists.js. */
+    smartCardsHTML(allActs)+
     `<button class="coll-card-new" onclick="openNewList()">${icon('plus')}<span>New List</span></button>`+
     /* Joining by code sits beside creating, not buried in the You tab.
        Every link-based path can be eaten by something between the two

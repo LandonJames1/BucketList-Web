@@ -187,27 +187,6 @@
     .picker-btn-chevron { flex-shrink: 0; display: flex; color: var(--label-3); }
     .picker-btn-chevron .ic { width: 16px; height: 16px; stroke-width: 2.4; }
 
-    /* Why a sheet opened the way it did — currently only "the screenshot
-       could not be read, fill it in yourself".
-
-       Deliberately not red and not an alert: nothing has gone wrong that
-       the user did, and the sheet under it is a working form, not an
-       error state. It reads as a caption on the sheet, in the same quiet
-       register as .loc-suggest, and it is gone the moment the sheet
-       closes — so there is nothing to dismiss. */
-    .act-notice {
-      display: flex; align-items: flex-start; gap: 9px;
-      margin: 0 var(--gx-r) 20px var(--gx-l);
-      padding: 11px 13px; border-radius: var(--r-row);
-      background: var(--fill-3);
-      font-size: 13px; line-height: 1.38; color: var(--label-2);
-    }
-    .act-notice[hidden] { display: none; }
-    .act-notice .ic {
-      width: 16px; height: 16px; flex-shrink: 0;
-      margin-top: 1px; color: var(--label-3);
-    }
-
     /* One line of orientation at the top of a sheet. */
     .sheet-hint {
       margin: 0 var(--gx-r) 20px var(--gx-l);

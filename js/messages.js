@@ -1210,7 +1210,7 @@ function listHasConversation(cid){
      `?conv=<id>` and this reads it at boot.
 
    The boot reader follows readEmailConfirmation()'s pattern, NOT
-   readSharedInput()'s: it removes only its own key and puts the rest of
+   readEmailConfirmation()'s: it removes only its own key and puts the rest of
    the query string back, so it can run before the two readers that
    blank the search string wholesale. Order matters here for the same
    reason it does there — an invite link followed to a message

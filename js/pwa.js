@@ -69,7 +69,7 @@ if('serviceWorker' in navigator){
        That reload is worse than useless. The page is already running
        the newest code (it is the load that installed the worker), and
        the reload lands on a URL that boot has already stripped its
-       query string from. readPendingJoin() and readSharedInput() hold
+       query string from. readPendingJoin() holds
        what they captured in memory, so a shared list invite or a
        shared-in link opened by someone whose browser had never seen
        the app — which is every recipient, the first time — was silently

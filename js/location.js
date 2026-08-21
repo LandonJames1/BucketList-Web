@@ -716,6 +716,60 @@ let _guessTimer=null;
    build a gazetteer. */
 const _guessCache=new Map();
 
+/* ==============================================================
+   TEACHING THE RATING WHAT THIS PERSON MEANS
+
+   The difficulty half of the guess used to be judged against nothing
+   but a home address, so it read as an average person's life. Two
+   things now ride along with the name, and they do different jobs:
+
+     the PROFILE (me.js) says WHY — no car, tight budget, hikes every
+       weekend. Context a list of examples cannot state.
+     these EXAMPLES say WHAT — activities the user already has, with
+       the tier they already carry, so the model can see where this
+       person's lines actually fall.
+
+   **The sample is balanced across the three tiers on purpose.** Taking
+   the most recent N outright is the obvious build and it is the one
+   that breaks the feature: somebody who has been adding weekend ideas
+   all month would send twelve easy examples and nothing else, and a
+   set of examples that only demonstrates one tier does not teach a
+   scale — it teaches a lean. So it is up to DIFF_EX_PER_TIER from each
+   tier that has anything, newest first, and a tier with nothing simply
+   contributes nothing.
+
+   It costs no round trip: the ratings are already in the in-memory
+   activity cache, the same synchronous read the duplicate check and
+   Home's composer make. A cold cache means no examples and the call is
+   exactly what it was before.
+   ============================================================== */
+const DIFF_EX_PER_TIER=6;
+
+function difficultyExamples(){
+  if(typeof cachedActivities!=='function') return [];
+  const all=cachedActivities();
+  if(!all||!all.length) return [];
+  const by={easy:[],medium:[],hard:[]};
+  for(const a of all){
+    if(!a||!by[a.difficulty]) continue;
+    const n=(a.name||'').trim();
+    if(n.length<3) continue;
+    by[a.difficulty].push({n,at:a.createdAt||''});
+  }
+  const out=[];
+  for(const tier of ['easy','medium','hard']){
+    if(!by[tier]) continue;
+    by[tier].sort((x,y)=>y.at.localeCompare(x.at));
+    for(const e of by[tier].slice(0,DIFF_EX_PER_TIER)) out.push({name:e.n.slice(0,120),difficulty:tier});
+  }
+  return out;
+}
+
+/* A changed profile invalidates every answer cached under the old one.
+   Called from saveDiffProfileSheet(). */
+function resetGuessCache(){ _guessCache.clear();_guessFor=''; }
+
+
 function queueLocationGuess(){
   clearTimeout(_guessTimer);
   /* Cheap reasons not to bother are checked here as well as in
@@ -739,9 +793,11 @@ async function maybeGuessLocation(){
      activity is excluded by openEditAct() never arming this. */
   if(_guessDismissed||!navigator.onLine||name.length<3) return;
   if(fuzzyNorm(name)===_guessFor) return;      /* already answered for this name */
-  /* A location that is there stays there — except one we filled in
-     ourselves, which a renamed activity should be allowed to replace. */
-  if(locEl.value.trim()&&!_guessFilled) return;
+  /* Note what is NOT a reason to skip: a location field that is already
+     filled. The same round trip also carries the difficulty rating,
+     which every activity gets whether or not it names a place — so the
+     "leave an existing location alone" rule is applied where the value
+     is written, not here. See GUESSING HOW HARD IT IS in CLAUDE.md. */
 
   const key=fuzzyNorm(name);
   _guessFor=key;
@@ -754,8 +810,19 @@ async function maybeGuessLocation(){
     data=_guessCache.get(key);
   } else {
     try{
+      /* The home address is the yardstick the difficulty half is judged
+         against — "a few hours away" means nothing without it. Absent
+         (no Home set, or me.js not loaded yet) the model falls back to
+         an average reading, which is the pre-Home behaviour. */
+      const home=(typeof homePlace==='function'&&homePlace()&&homePlace().location)||'';
+      /* The two things that make the rating this user's rather than an
+         average one. Both are optional at every level — no migration,
+         no profile written, a cold cache — and the call degrades to
+         exactly what it was. See TEACHING THE RATING above. */
+      const profile=(typeof difficultyProfile==='function'&&difficultyProfile())||'';
+      const examples=difficultyExamples();
       const r=await sb.functions.invoke('unfurl',{
-        body:{activity:{name}},
+        body:{activity:{name,home,profile,examples}},
       });
       if(r.error) throw r.error;
       data=r.data;
@@ -766,15 +833,29 @@ async function maybeGuessLocation(){
       console.info('[location] no guess:',e&&e.message||e);
       return;
     }
-    _guessCache.set(key,data&&data.location?data:null);
+    /* The whole answer is cached, not just the useful half: a name that
+       identifies no place still carries a difficulty, and storing null
+       for it would throw that away and re-ask on the next keystroke. */
+    _guessCache.set(key,data||null);
   }
 
   /* Stale, or the sheet is gone, or the user has since typed
      something. All three are "too late to be useful". */
   if(seq!==_guessSeq||!$('actSheet').classList.contains('open')) return;
   if(_guessDismissed) return;
+  if(!data) return;
+
+  /* The difficulty rating is applied first and unconditionally: it is
+     not shown as an offer, has no undo, and none of the location gates
+     below have anything to say about it. An answer the model declined
+     to give leaves whatever is already there. */
+  const diffEl=$('aDiff');
+  if(diffEl&&data.difficulty) diffEl.value=data.difficulty;
+
+  /* A location that is there stays there — except one we filled in
+     ourselves, which a renamed activity should be allowed to replace. */
   if(locEl.value.trim()&&!_guessFilled) return;
-  if(!data||!data.location) return;
+  if(!data.location) return;
   if(!guessMatchesName(data.location,name)){
     console.info('[location] rejected a guess that shares no word with the name:',data.location);
     return;

@@ -1,11 +1,51 @@
 /* ==============================================================
    SHARING — the invite sheet and the join sheet.
 
-   Both borrow .shr-lead / .shr-url / .shr-note from import.css,
-   which the iOS Shortcut setup screen already defines: the two
-   screens are the same kind of thing (here is a link, here is what
-   to do with it) and should not look like two different apps.
+   Both use the .shr-lead / .shr-url / .shr-note trio defined below:
+   the invite sheet and the join sheet are the same kind of thing
+   (here is a link, here is what to do with it) and should not look
+   like two different apps.
    ============================================================== */
+
+/* ==============================================================
+   "HERE IS A LINK, HERE IS WHAT TO DO WITH IT"
+
+   Written for the iOS Shortcut setup sheet and then for the link
+   import, both of which are gone. They live here now because the
+   invite sheet and the accept-an-invite card below are the same shape
+   and are the only things left using them.
+   ============================================================== */
+.shr-lead {
+    font-size: 15px;
+    line-height: 1.5;
+    color: var(--label-2);
+    margin-bottom: 18px;
+}
+
+.shr-url {
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    border-radius: var(--r-ctl);
+    background: var(--fill-4);
+    border: 1px solid var(--separator);
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--label-2);
+    /* Selectable, because copying it is the point and the clipboard
+       API is refused in plenty of contexts. */
+    user-select: all;
+    -webkit-user-select: all;
+    word-break: break-all;
+}
+
+.shr-note {
+    margin-top: 16px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--label-3);
+}
+
 
 /* ---- Who is in the list ---- */
 .shr-people-head{

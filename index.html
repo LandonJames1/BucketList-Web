@@ -59,7 +59,7 @@
        layout      nav bar, tab bar, page system (the app shell)
        components  grouped lists, segmented controls, buttons, badges
        auth / home / collections / detail / me   one file per screen
-       modals / map / bulk / import / search / dupes / sharing / pwa
+       modals / map / dupes / sharing / pwa
                    per-feature components
        responsive  breakpoint overrides, must load last -->
   <link rel="stylesheet" href="css/base.css" />
@@ -72,8 +72,6 @@
   <link rel="stylesheet" href="css/me.css" />
   <link rel="stylesheet" href="css/modals.css" />
   <link rel="stylesheet" href="css/map.css" />
-  <link rel="stylesheet" href="css/bulk.css" />
-  <link rel="stylesheet" href="css/import.css" />
   <link rel="stylesheet" href="css/dupes.css" />
   <link rel="stylesheet" href="css/sharing.css" />
   <link rel="stylesheet" href="css/messages.css" />
@@ -181,16 +179,13 @@
   <div class="home-progress" id="homeProgress"></div>
 
   <!-- Quick add with no collection context: the list is chosen on submit.
-       Three ways in on one row: type it, paste a link (the go glyph
-       changes to say so), or screenshot it. The camera replaces the old
-       decorative plus rather than being added beside it — the
-       placeholder and the go arrow already say "add". -->
+       One way in: type it. There is deliberately no second add
+       affordance on this screen — the placeholder and the go arrow
+       already say "add". -->
   <!-- The wrapper owns the gutters so #homeSuggest, which is absolutely
        positioned, lines up with the field rather than with the page. -->
   <div class="home-composer-wrap">
     <div class="home-composer" id="homeComposer">
-      <button class="home-composer-shot" id="homeComposerShot" onclick="pickScreenshot()"
-              aria-label="Add from a screenshot"></button>
       <input id="homeComposerInput" type="text" placeholder="Add or find something"
              maxlength="100" autocomplete="off" autocapitalize="sentences" enterkeyhint="done"
              oninput="onHomeComposerInput()" onkeydown="onHomeComposerKey(event)"
@@ -201,11 +196,6 @@
          updateHomeSuggest() in home.js — it never blocks the add. -->
     <div class="home-suggest" id="homeSuggest"></div>
   </div>
-  <!-- Shared by the composer's camera and by "read a screenshot
-       instead" on a failed link import. Lives outside any .fg, so it
-       needs no [hidden] override. -->
-  <input type="file" id="shotInput" accept="image/*" hidden onchange="handleScreenshot(event)" />
-
   <div class="home-sec-head">
     <h2>Up next</h2>
     <button onclick="nav('upnext')" id="homeUpNextAll" style="display:none">See all</button>
@@ -347,6 +337,13 @@
       <span class="row-leading li-green" id="meHomeIcon"></span>
       <span class="row-body"><span class="row-title">Home</span></span>
     </button>
+    <!-- The paragraph the easy/medium/hard rating is judged against,
+         beside Home because it is the same kind of fact about the
+         person. See RATING FOR ONE PERSON in me.js. -->
+    <button class="row tappable has-leading" id="meDiffRow" onclick="openDiffProfileSheet()">
+      <span class="row-leading li-purple" id="meDiffIcon"></span>
+      <span class="row-body"><span class="row-title">About you</span></span>
+    </button>
     <button class="row tappable has-leading" onclick="pwaShowInstallHelp()">
       <span class="row-leading li-blue"></span>
       <span class="row-body"><span class="row-title">Add to Home Screen</span></span>
@@ -432,13 +429,6 @@
       <button class="navbtn strong" id="actSaveBtn" onclick="saveActivity()">Add</button>
     </div>
     <div class="sheet-body">
-      <!-- Why this sheet opened empty. Written by openNewActivity()'s
-           second argument, and the only thing that passes one is a
-           screenshot import that could not be read — see
-           handOffUnread() in share.js. It says what happened and then
-           gets out of the way; there is nothing to dismiss because it
-           goes with the sheet. -->
-      <div class="act-notice" id="actNotice" hidden></div>
       <!-- The name is what the whole sheet is about, so it is set apart
            rather than being the first of six identical boxes: the serif
            face is how an activity name is set everywhere else in the
@@ -564,6 +554,9 @@
         </button>
         <!-- Staged by the reminder sheet; written by saveActivity(). -->
         <input type="hidden" id="aRemind" /><input type="hidden" id="aRemindNote" />
+        <!-- Inferred, never asked for: filled in by maybeGuessLocation()
+             from the activity's name. There is no control for it. -->
+        <input type="hidden" id="aDiff" />
       </div>
 
     </div>
@@ -601,6 +594,25 @@
       <div class="sheet-actions">
         <button class="btn btn-destructive btn-block" id="homeClearBtn"
                 onclick="clearHomePlace()">Remove Home</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- About you — the difficulty rating's calibration. See me.js. -->
+<div class="modal-overlay" id="diffProfileSheet">
+  <div class="modal">
+    <div class="sheet-grabber"></div>
+    <div class="sheet-bar">
+      <button class="navbtn" onclick="closeModal('diffProfileSheet')">Cancel</button>
+      <div class="sheet-title">About You</div>
+      <button class="navbtn strong" id="diffProfileSaveBtn" onclick="saveDiffProfileSheet()">Save</button>
+    </div>
+    <div class="sheet-body">
+      <div class="fg">
+        <label>What makes something easy or hard for you</label>
+        <textarea id="diffProfileText" rows="6" maxlength="600"
+                  placeholder="No car, tight budget, hike most weekends, won’t fly"></textarea>
       </div>
     </div>
   </div>
@@ -790,29 +802,6 @@
   </div>
 </div>
 
-<!-- Bulk add -->
-<div class="modal-overlay" id="bulkSheet">
-  <div class="modal">
-    <div class="sheet-grabber"></div>
-    <div class="sheet-bar">
-      <button class="navbtn" onclick="closeModal('bulkSheet')">Cancel</button>
-      <div class="sheet-title">Add Many</div>
-      <button class="navbtn strong" id="bulkSaveBtn" onclick="saveBulkActivities()">Add All</button>
-    </div>
-    <div class="sheet-body">
-      <p class="bulk-hint">Only the name is required. Rows left blank are skipped.</p>
-      <div class="bulk-fill" id="bulkFill" style="display:none">
-        <span class="bulk-fill-label">Copy row 1</span>
-        <button class="pill" onclick="bulkApplyDown('loc')">Location</button>
-        <button class="pill" onclick="bulkApplyDown('date')">Target</button>
-        <button class="pill" onclick="bulkApplyDown('pri')">Priority</button>
-      </div>
-      <div class="bulk-rows" id="bulkRows"></div>
-      <button class="bulk-add-more" onclick="addBulkEntry()"><span id="bulkAddIcon"></span>Add another</button>
-    </div>
-  </div>
-</div>
-
 <!-- Delete account. A sheet rather than the action sheet every other
      destructive action uses: this one is unrecoverable and takes
      everything with it, so it has to be typed rather than tapped, and
@@ -878,22 +867,6 @@
   </div>
 </div>
 
-<!-- Import from a shared link. Nothing here writes: it reads the link,
-     then hands off to the activity sheet or the bulk sheet, both of
-     which still need a Save. See share.js. -->
-<div class="modal-overlay" id="importSheet">
-  <div class="modal">
-    <div class="sheet-grabber"></div>
-    <div class="sheet-bar">
-      <button class="navbtn" onclick="closeModal('importSheet')">Cancel</button>
-      <div class="sheet-title" id="importTitle">Add from link</div>
-      <button class="navbtn strong" id="importAddBtn" onclick="confirmImport()">Add</button>
-    </div>
-    <div class="imp-source" id="importSource"></div>
-    <div class="sheet-body" id="importBody"></div>
-  </div>
-</div>
-
 <!-- Possible duplicate. Nothing is ever merged or deleted here: the
      sheet shows what already exists and the user decides, with "Add"
      as the primary. It opens on top of the activity sheet, so like
@@ -904,7 +877,7 @@
   <div class="modal">
     <div class="sheet-grabber"></div>
     <div class="sheet-bar">
-      <button class="navbtn" onclick="dupeCancelBatch()">Cancel</button>
+      <button class="navbtn" onclick="dupeCancel()">Cancel</button>
       <div class="sheet-title" id="dupeTitle">Looks familiar</div>
       <span class="navbtn" style="pointer-events:none;opacity:0">Cancel</span>
     </div>
@@ -914,12 +887,6 @@
       <div class="sheet-actions">
         <button class="btn btn-tinted btn-block" onclick="dupeAddAnyway()"
                 id="dupeAddBtn"><span id="dupeAddLabel">Add it anyway</span></button>
-        <!-- Only ever shown for a batch: with a single item, "skip the
-             duplicates" and "cancel" are the same thing. -->
-        <div id="dupeSkipWrap" style="display:none">
-          <button class="btn btn-gray btn-block" id="dupeSkipBtn"
-                  onclick="dupeSkipDuplicates()"><span id="dupeSkipLabel"></span></button>
-        </div>
       </div>
     </div>
   </div>
@@ -1120,18 +1087,17 @@
 <script src="js/upnext.js"></script>
 <script src="js/done.js"></script>
 <script src="js/reminders.js"></script>
+<!-- Easy / Medium / Hard: three lists derived from the difficulty
+     rating rather than stored. Before collections.js and detail.js,
+     which both draw them, and before api.js's callers. -->
+<script src="js/smartlists.js"></script>
 <script src="js/collections.js"></script>
 <script src="js/detail.js"></script>
 <script src="js/activities.js"></script>
 <script src="js/messages.js"></script>
 <script src="js/notes.js"></script>
 <script src="js/me.js"></script>
-<script src="js/bulk.js"></script>
 <script src="js/map.js"></script>
-<!-- Sharing a link in. After bulk.js and activities.js: it hands drafts
-     to both of them. -->
-<script src="js/share.js"></script>
-
 <!-- PWA: service worker, install prompts, offline state -->
 <script src="js/pwa.js"></script>
 

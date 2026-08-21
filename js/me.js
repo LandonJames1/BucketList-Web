@@ -423,6 +423,69 @@ function renderMeHome(){
   if(!row)return;
 }
 
+/* ==============================================================
+   RATING FOR ONE PERSON, NOT AN AVERAGE ONE
+
+   Half of what makes the difficulty rating personal. The other half
+   costs nothing and lives in js/location.js — a balanced sample of
+   the user's own already-rated activities, sent as worked examples.
+
+   This is the part the examples cannot say: *why*. A paragraph the
+   user writes about themselves — no car, a tight budget, hikes every
+   weekend, will not fly — is the context that turns "a few hours
+   away" from a guess into a reading. It rides in the same round trip
+   as the Home address and gates nothing.
+
+   Optional like everything else: without supabase/difficulty-profile.sql
+   the column read fails once, is noted in the console, and the rating
+   carries on with Home and the examples alone.
+   ============================================================== */
+let _diffProfile=null;
+let _diffProfileCol=null;   /* null = not asked yet, false = no column */
+
+/* Cleared on every auth transition, by resetAccountState(). It is a
+   sentence about one person and must not follow them out. */
+function resetDifficultyProfile(){ _diffProfile=null;_diffProfileCol=null; }
+function difficultyProfile(){ return _diffProfile||''; }
+
+async function loadDifficultyProfile(){
+  if(!currentUser) return;
+  const{data,error}=await sb.from('Users')
+    .select('difficulty_profile').eq('id',currentUser.id).maybeSingle();
+  if(error){
+    _diffProfileCol=false;
+    console.info('[difficulty] Users has no difficulty_profile column — ratings are judged '+
+      'without it. Run supabase/difficulty-profile.sql.');
+    return;
+  }
+  _diffProfileCol=true;
+  _diffProfile=(data&&data.difficulty_profile)||'';
+}
+
+function openDiffProfileSheet(){
+  $('diffProfileText').value=difficultyProfile();
+  openModal('diffProfileSheet');
+}
+
+async function saveDiffProfileSheet(){
+  /* Capped because it is prepended to every rating call, and a page of
+     it would cost latency on the one model call somebody is watching. */
+  const v=$('diffProfileText').value.trim().slice(0,600);
+  const changed=v!==difficultyProfile();
+  _diffProfile=v;
+  /* Every answer in the session cache was judged under the old
+     paragraph. See TEACHING THE RATING in js/location.js. */
+  if(changed&&typeof resetGuessCache==='function') resetGuessCache();
+  closeModal('diffProfileSheet');
+  if(!currentUser||_diffProfileCol===false) return;
+  const{error}=await sb.from('Users')
+    .update({difficulty_profile:v||null}).eq('id',currentUser.id);
+  if(error){
+    _diffProfileCol=false;
+    console.info('[difficulty] could not save the profile:',error.message);
+  }
+}
+
 function openHomeSheet(){
   const input=$('homeLoc');
   input.value=_homePlace&&_homePlace.location?_homePlace.location:'';

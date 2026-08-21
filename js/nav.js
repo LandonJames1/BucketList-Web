@@ -257,9 +257,13 @@ function updateNavbar(){
        hardcoded "Lists" would point at the wrong screen. */
     const backLabel=backTab==='messages'?'Messages':'Lists';
     left.innerHTML=`<button class="navbtn back" onclick="goBack()">${icon('chevron-left')}<span>${backLabel}</span></button>`;
-    right.innerHTML=`<button class="navbtn disc ghost" onclick="openCollectionMenu()" aria-label="List options">${icon('ellipsis')}</button>`;
+    /* A smart list has no row to edit, share or delete, and nothing can
+       be filed into it — so it gets the view switcher and no floating
+       button. See js/smartlists.js. */
+    const smart=isSmartList(curListId);
+    right.innerHTML=`<button class="navbtn disc ghost" onclick="${smart?'openSmartListMenu':'openCollectionMenu'}()" aria-label="List options">${icon('ellipsis')}</button>`;
     /* Asks plan-or-record first — see startNewActivity(). */
-    fabFn=startNewActivity;fabLabel='New activity';
+    if(!smart){ fabFn=startNewActivity;fabLabel='New activity'; }
   } else if(curPage==='messages'){
     title.textContent='Messages';
   } else if(curPage==='conversation'){

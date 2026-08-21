@@ -560,3 +560,88 @@ function renderThumbs(){
      passes through. */
   updateMediaRequirement();
 }
+
+/* ==============================================================
+   ONE-OFF: BASE64 PHOTOS OUT OF THE ROW
+
+   Rows written before the `media` bucket existed — and anything
+   attached while offline — carry the image inline in `Activities.photos`
+   as a base64 data URL. That is a third larger than the bytes it holds,
+   it sits on `select(...)`'s critical path, and it is pulled down again
+   on every launch and every revalidate. With a 45MB database and 1MB of
+   Storage, it was essentially all of this project's egress.
+
+   Run it from the console while signed in, once:  await backfillMedia()
+
+   It is deliberately NOT automatic and NOT on any render path:
+   uploading somebody's whole library is not something an app should do
+   behind their back on a metered connection.
+
+   Safe to re-run — it only touches entries that are still data URLs,
+   and it writes a row only when that row actually changed. A row whose
+   upload fails is left exactly as it was and reported at the end.
+   ============================================================== */
+async function backfillMedia(){
+  if(!currentUser){ console.warn('[backfill] sign in first'); return; }
+  if(!storageReady()){
+    console.warn('[backfill] no "'+MEDIA_BUCKET+'" bucket — run supabase/storage.sql');
+    return;
+  }
+  const isData=v=>typeof v==='string'&&v.startsWith('data:');
+
+  /* Read straight from the table rather than the cache: this is the one
+     place that wants the raw column shape, and the cache holds the
+     mapped one. */
+  const{data,error}=await sb.from('Activities').select('id,photos');
+  if(error){ console.error('[backfill]',error); return; }
+
+  let rows=0,files=0,bytes=0;const failed=[];
+  for(const row of (data||[])){
+    let raw=[];
+    try{
+      raw=Array.isArray(row.photos)?row.photos
+         :typeof row.photos==='string'?JSON.parse(row.photos):[];
+    }catch(e){ continue; }
+    if(!raw.length) continue;
+
+    let changed=false;
+    const out=[];
+    for(const m of raw){
+      try{
+        if(isData(m)){
+          const blob=dataURLToBlob(m);
+          bytes+=m.length; files++;
+          out.push(await uploadBlob(blob,'jpg',blob.type||'image/jpeg'));
+          changed=true;
+        }else if(m&&typeof m==='object'&&isData(m.poster)){
+          const blob=dataURLToBlob(m.poster);
+          bytes+=m.poster.length; files++;
+          out.push({...m,poster:await uploadBlob(blob,'jpg',blob.type||'image/jpeg')});
+          changed=true;
+        }else{
+          out.push(m);
+        }
+      }catch(e){
+        /* Keep the original. A file wrongly kept costs kilobytes; a row
+           rewritten with a broken URL costs somebody a photo. */
+        console.warn('[backfill] upload failed on',row.id,e);
+        out.push(m); failed.push(row.id);
+      }
+    }
+    if(!changed) continue;
+
+    /* Through dbUpdate so the in-memory cache and the offline snapshot
+       are patched the same way every other write patches them. */
+    const{error:upErr}=await dbUpdate('Activities',row.id,{photos:out});
+    if(upErr){ console.warn('[backfill] row failed',row.id,upErr); failed.push(row.id); continue; }
+    rows++;
+    console.info('[backfill] '+rows+' rows, '+files+' files, ~'+
+      Math.round(bytes/1024/1024)+'MB moved');
+  }
+  console.info('[backfill] done — '+rows+' rows, '+files+' files, ~'+
+    Math.round(bytes/1024/1024)+'MB out of the database'+
+    (failed.length?'; '+failed.length+' left alone: '+[...new Set(failed)].join(', '):''));
+  await revalidate(true);
+  refreshAfterChange();
+  return{rows,files,failed:[...new Set(failed)]};
+}

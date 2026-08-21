@@ -111,6 +111,20 @@
       background: var(--violet); color: #fff;
       box-shadow: 0 2px 10px rgba(0,0,0,.35), 0 0 0 2px rgba(255,255,255,.24);
     }
+
+    /* The mark on a smart list — Easy / Medium / Hard, filled in from
+       each activity's difficulty rating rather than by anybody. Same
+       disc as the shared badge and in the same corner, because it
+       answers the same kind of question about the card: where did this
+       come from. Tinted rather than violet so the two never read as
+       the same claim. See js/smartlists.js. */
+    .coll-card-auto {
+      position: absolute; top: 11px; right: 11px;
+      width: 24px; height: 24px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--tint); color: #fff;
+      box-shadow: 0 2px 10px rgba(0,0,0,.35), 0 0 0 2px rgba(255,255,255,.24);
+    }
     .coll-card-shared .ic { width: 12px; height: 12px; }
     /* The completion tick already owns the top-right on a finished
        list, so the shared disc steps down under it rather than

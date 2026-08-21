@@ -12,6 +12,10 @@
 async function renderDetail(){
   const list=await fetchCollection(curListId);
   if(!list){nav('lists');return;}
+  /* Easy / Medium / Hard — derived from the difficulty rating rather
+     than stored, and read-only because there is nowhere to add. See
+     js/smartlists.js. */
+  const smart=isSmartList(curListId);
 
   const acts=await fetchActivitiesFor(curListId);
   const total=acts.length,done=acts.filter(a=>a.completed).length;
@@ -22,7 +26,7 @@ async function renderDetail(){
     <img class="det-banner-img" src="${esc(cover)}" alt=""/>
     <div class="det-banner-scrim"></div>
     <div class="det-banner-body">
-      <div class="det-banner-eyebrow">${total} ${total===1?'activity':'activities'} &middot; ${pct}% done</div>
+      <div class="det-banner-eyebrow">${smart?icon('sparkle','ic-xs')+' ':''}${total} ${total===1?'activity':'activities'} &middot; ${pct}% done</div>
       <div class="det-banner-title">${esc(list.name)}</div>
       ${list.description?`<div class="det-banner-desc">${esc(list.description)}</div>`:''}
       <div class="det-progress">
@@ -154,6 +158,13 @@ async function renderActivitiesList(){
           : 'Every activity in this list is complete.'}</div></div>`;
       return;
     }
+    /* A smart list fills itself: it is empty because nothing has been
+       rated at that tier yet, and there is no composer to offer. */
+    if(isSmartList(curListId)){
+      listEl.innerHTML=`<div class="empty">${icon('sparkle')}
+        <div class="empty-title">Nothing rated ${esc((await fetchCollection(curListId)).name.toLowerCase())}</div></div>`;
+      return;
+    }
     /* Empty list: lead with the composer so the first idea goes
        straight in. */
     listEl.innerHTML=`<div class="empty" style="padding-bottom:24px">${icon('sparkle')}
@@ -174,9 +185,9 @@ async function renderActivitiesList(){
   /* ---- List view ---- */
   listEl.innerHTML=`<div class="act-group">
       ${acts.map(a=>activityRowHTML(a)).join('')}
-      ${curFilter==='all'&&!search?composerHTML():''}
+      ${curFilter==='all'&&!search&&!isSmartList(curListId)?composerHTML():''}
     </div>`;
-  if(totalAll===0) focusComposer();
+  if(totalAll===0&&!isSmartList(curListId)) focusComposer();
 }
 
 /* ==============================================================

@@ -91,25 +91,6 @@
     }
     .home-composer .composer-icon { color: var(--tint); }
 
-    /* The left slot is a real control rather than a decorative plus:
-       a screenshot is the other way an idea gets in, and Home is where
-       capture lives. It replaces the plus rather than joining it —
-       the placeholder and the go arrow already say "add", and a third
-       add affordance on one row is one too many.
-
-       Sized to 44px so it is a genuine tap target, but drawn quietly:
-       it is the secondary route in, and it must not compete with the
-       field it sits beside. */
-    .home-composer-shot {
-      flex-shrink: 0;
-      display: flex; align-items: center; justify-content: center;
-      width: 44px; height: 44px; margin-left: -8px;
-      border-radius: 50%;
-      background: none; color: var(--tint);
-      transition: transform .2s var(--ease), background .2s;
-    }
-    .home-composer-shot:active { transform: scale(.9); background: var(--tint-soft); }
-    .home-composer-shot .ic { width: 22px; height: 22px; }
     .home-composer input {
       flex: 1; min-width: 0; align-self: stretch;
       border: none; outline: none; background: none;

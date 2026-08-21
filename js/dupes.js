@@ -100,7 +100,6 @@ function dupeGuard(opts,proceed){
   if(!hits.length){ proceed(); return; }
   _dupeProceed=proceed;
   _dupeHits=hits;
-  $('dupeSkipWrap').style.display='none';
   renderDupeSheet(opts.name,hits);
   /* The scrim, Escape and a swipe down all reach closeModal() without
      passing through any button here, so the pending add is dropped
@@ -172,105 +171,4 @@ function dupeCancel(){
   closeModal('dupeSheet');
 }
 
-/* ==============================================================
-   MANY AT ONCE
 
-   The bulk sheet and a multi-result import both add a batch, where
-   blocking on the first collision would be maddening — you would fix
-   one row and be stopped by the next. So a batch is checked as a
-   whole and the user is offered the two answers that make sense for
-   one: keep everything, or drop the ones that collide.
-
-   Returns a promise for the names to actually write, so the caller
-   reads as a single await rather than a callback chain.
-   ============================================================== */
-let _dupeBatchResolve=null,_dupeBatchEntries=[];
-
-/* entries: [{name, location}]. Resolves to the subset to keep. */
-function dupeGuardBatch(entries){
-  _dupeBatchEntries=entries;
-  const flagged=entries.map((e,i)=>({i,e,hits:findDupes(e.name,{location:e.location})}))
-                       .filter(x=>x.hits.length);
-  if(!flagged.length) return Promise.resolve(entries);
-
-  return new Promise(resolve=>{
-    _dupeBatchResolve=picked=>resolve(picked);
-    const lists=cachedCollections();
-
-    $('dupeTitle').textContent=`${flagged.length} may already be there`;
-    $('dupeLead').innerHTML=`Of the ${entries.length} you&rsquo;re adding,
-      ${flagged.length} look like ${flagged.length===1?'something':'things'}
-      already on your lists.`;
-
-    $('dupeList').innerHTML=flagged.map(({e,hits})=>{
-      const where=activityListLabel(hits[0].a,lists);
-      return `<div class="dupe-row static">
-        <span class="dupe-score${hits[0].score>=DUPE_LIKELY?' strong':''}">${Math.round(hits[0].score*100)}%</span>
-        <span class="dupe-main">
-          <span class="dupe-name">${esc(e.name)}</span>
-          <span class="dupe-meta">
-            <span class="dupe-vs">matches</span>
-            <span class="dupe-listname">${esc(hits[0].a.name)}${where?' · '+esc(where):''}</span>
-          </span>
-        </span>
-      </div>`;
-    }).join('');
-
-    $('dupeAddLabel').textContent=`Add all ${entries.length}`;
-    /* The extra button only exists for a batch — with one item,
-       "skip the duplicates" and "cancel" are the same thing. */
-    $('dupeSkipWrap').style.display='';
-    $('dupeSkipLabel').textContent=`Add only the ${entries.length-flagged.length} new`;
-    $('dupeSkipBtn').disabled=entries.length===flagged.length;
-
-    _dupeProceed=()=>{ finishDupeBatch(entries); };
-    /* A batch guard hands back a promise, so every way out of this
-       sheet has to settle it — including the scrim, Escape and a
-       swipe down, none of which touch a button here. Resolving with
-       nothing means the caller writes nothing. */
-    onSheetClose('dupeSheet',()=>{
-      if(_dupeBatchResolve){ const fn=_dupeBatchResolve;_dupeBatchResolve=null;fn([]); }
-      _dupeProceed=null;
-    });
-    openModal('dupeSheet');
-  });
-}
-
-function dupeSkipDuplicates(){
-  const flaggedIdx=new Set();
-  /* Recomputed rather than remembered: the sheet is the only thing
-     between the check and the write, and nothing can have changed
-     underneath it — but recomputing keeps this function honest if
-     that ever stops being true. */
-  _dupeBatchEntries.forEach((e,i)=>{
-    if(findDupes(e.name,{location:e.location}).length) flaggedIdx.add(i);
-  });
-  finishDupeBatch(_dupeBatchEntries.filter((_,i)=>!flaggedIdx.has(i)));
-}
-
-function finishDupeBatch(picked){
-  const fn=_dupeBatchResolve;
-  _dupeBatchResolve=null;_dupeProceed=null;_dupeBatchEntries=[];
-  $('dupeSkipWrap').style.display='none';
-  closeModal('dupeSheet');
-  if(fn) setTimeout(()=>fn(picked),180);
-}
-
-/* Cancelling a batch resolves with nothing, so the caller writes
-   nothing rather than hanging on a promise that never settles. */
-function dupeCancelBatch(){
-  if(_dupeBatchResolve) finishDupeBatch([]);
-  else dupeCancel();
-}
-
-/* ==============================================================
-   A MARK IN THE IMPORT SHEET
-
-   A shared listicle is where duplicates arrive in bulk, and marking
-   them there — before anything is picked — is cheaper than stopping
-   the user at the end. Returns the best match's name, or ''.
-   ============================================================== */
-function dupeHintFor(name,location){
-  const hits=findDupes(name,{location});
-  return hits.length?hits[0].a.name:'';
-}

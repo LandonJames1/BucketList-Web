@@ -9,7 +9,7 @@
    installs pick the new build up instead of serving a stale one.
    ============================================================== */
 
-const CACHE_VERSION = 'v114';
+const CACHE_VERSION = 'v119';
 const SHELL_CACHE = `bucketlist-shell-${CACHE_VERSION}`;
 const VENDOR_CACHE = `bucketlist-vendor-${CACHE_VERSION}`;
 const IMAGE_CACHE = `bucketlist-images-${CACHE_VERSION}`;
@@ -31,8 +31,6 @@ const SHELL_ASSETS = [
   './css/me.css',
   './css/modals.css',
   './css/map.css',
-  './css/bulk.css',
-  './css/import.css',
   './css/dupes.css',
   './css/sharing.css',
   './css/messages.css',
@@ -60,15 +58,14 @@ const SHELL_ASSETS = [
   './js/upnext.js',
   './js/done.js',
   './js/reminders.js',
+  './js/smartlists.js',
   './js/collections.js',
   './js/detail.js',
   './js/activities.js',
   './js/messages.js',
   './js/notes.js',
   './js/me.js',
-  './js/bulk.js',
   './js/map.js',
-  './js/share.js',
   './js/pwa.js',
   './js/main.js',
   './icons/icon-192.png',

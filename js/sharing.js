@@ -435,7 +435,7 @@ function readPendingJoin(){
      guaranteed to have to sign in first, and leaving the tab to go and
      find a password is the single most likely thing they do next. */
   bootKeepLong(JOIN_STASH,code);
-  /* readSharedInput() may have stripped this already; doing it twice
+  /* readPushLanding() may have stripped this already; doing it twice
      is harmless and neither can be made to depend on the other. */
   history.replaceState(null,'',location.pathname);
 }
@@ -521,7 +521,7 @@ async function claimInvitesForMe(){
   /* Membership decides which lists have a conversation at all. */
   refreshConversations();
   await snapshotClear();
-  await revalidate();
+  await revalidate(true);
   console.log('[join] redeemed',joined.length,'claimed invite(s)');
   nav('detail',joined[0].collection_id);
   showToast(joined.length===1
@@ -693,7 +693,7 @@ async function acceptJoin(){
   /* Membership decides which lists have a conversation at all. */
   refreshConversations();
   await snapshotClear();
-  await revalidate();
+  await revalidate(true);
   nav('detail',data.collection_id);
   showToast(data.already?'That’s already your list':`Joined “${data.name}”`);
 }

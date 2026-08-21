@@ -176,19 +176,6 @@ function onHomeComposerInput(){
   if(!c)return;
   const v=$('homeComposerInput').value.trim();
   c.classList.toggle('has-text',!!v);
-  /* Pasting a link is the other way an activity gets created, and the
-     composer is already the add control on this screen — so it changes
-     what it does rather than Home growing a second button for it.
-     See js/share.js. */
-  const isLink=looksLikeUrl(v);
-  c.classList.toggle('is-link',isLink);
-  const go=$('homeComposerGo');
-  if(go){
-    /* The glyph is the whole tell that this will do something else —
-       there is no room for a label beside a 100-character field. */
-    go.innerHTML=icon(isLink?'link':'chevron-right');
-    go.setAttribute('aria-label',isLink?'Import link':'Add');
-  }
   updateHomeSuggest();
 }
 
@@ -293,9 +280,7 @@ function updateHomeSuggest(){
   if(!box||!input)return;
   const q=input.value.trim();
 
-  /* A pasted link is on its way to the import sheet — matching its URL
-     against activity names would be noise in front of that. */
-  if(q.length<HOME_SUGGEST_MIN_CHARS||looksLikeUrl(q)) return closeHomeSuggest();
+  if(q.length<HOME_SUGGEST_MIN_CHARS) return closeHomeSuggest();
 
   /* Nothing to compare against, so nothing is claimed. Same failure
      shape as duplicate detection, which reads the same cache — both
@@ -375,8 +360,6 @@ async function homeQuickAdd(){
   const input=$('homeComposerInput');
   const name=input.value.trim();
   if(!name){shakeEl(input);return;}
-  if(looksLikeUrl(name)){ importFromComposer(); return; }
-
   const lists=await fetchCollections();
   if(!lists.length){
     /* Nowhere to put it yet — open the list sheet and keep the text. */
@@ -392,9 +375,7 @@ async function homeQuickAdd(){
      can be filed twice. */
   input.value='';onHomeComposerInput();
   /* Asks whether this is a plan or a record before either sheet opens —
-     see startNewActivity(). Deliberately after the looksLikeUrl() branch
-     above: a shared link is a plan by construction, and asking there is
-     a question with only one answer. */
+     see startNewActivity(). */
   startNewActivity(name);
 }
 

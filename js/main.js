@@ -22,7 +22,6 @@ function paintStaticIcons(){
 
   set('coverZoneIcon',icon('photo','ic-lg'));
   set('compListChevron',icon('chevron-right'));
-  set('bulkAddIcon',icon('plus','ic-sm'));
 
   set('lbCloseBtn',icon('x'));
   set('lbPrev',icon('chevron-left'));
@@ -34,13 +33,13 @@ function paintStaticIcons(){
 
   /* The composer's left slot is the screenshot button, not a
      decorative plus — see the note in index.html. */
-  set('homeComposerShot',icon('camera'));
   set('homeComposerGo',icon('chevron-right'));
   set('convComposerGo',icon('chevron-right'));
   set('actListChevron',icon('chevron-right'));
   set('aRemindChevron',icon('chevron-right'));
   set('meNotifyIcon',icon('clock'));
   set('meHomeIcon',icon('home'));
+  set('meDiffIcon',icon('target'));
   set('listPickerSearchIcon',icon('search'));
   set('listPickerNewIcon',icon('plus'));
   set('meInstallChevron',icon('chevron-right'));
@@ -120,12 +119,11 @@ function hasStoredSession(){ return !!readStoredSession(); }
      running it ahead of them costs them nothing. See CONFIRMING AN
      EMAIL ADDRESS in js/auth.js. */
   readEmailConfirmation();
-  /* Also before the two below, and for the same reason: they blank the
-     whole search string once they have taken what they came for, and
-     this one removes only its own key. A message notification opened
-     on a link that also carries ?join= must not destroy either. */
+  /* Also before the two below, and for the same reason: readPendingJoin()
+     blanks the whole search string once it has taken what it came for,
+     and these two remove only their own keys. A message notification
+     opened on a link that also carries ?join= must not destroy either. */
   readPushLanding();
-  readSharedInput();
   readPendingJoin();
   /* The offline banner reflects the queue, which may be non-empty from
      a previous session, so it is painted before anything can render. */

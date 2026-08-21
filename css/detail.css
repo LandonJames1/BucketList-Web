@@ -551,6 +551,14 @@
     .ad-chip.c-high   { background: var(--pri-soft);  color: var(--pri-high); }
     .ad-chip.c-medium { background: var(--violet-soft); color: var(--violet); }
     .ad-chip.c-low    { background: var(--slate-soft);  color: var(--slate); }
+    /* Difficulty is deliberately NOT hue-coded. Priority already owns a
+       three-colour scale and the deadline badge owns the warm end; a
+       third scale on the same row would be three rankings arguing over
+       one glance. It reads as a fact, in the ink of the sheet, and the
+       word itself is the whole signal. */
+    .ad-chip.c-d-easy,
+    .ad-chip.c-d-medium,
+    .ad-chip.c-d-hard { background: var(--fill-3); color: var(--label-2); }
 
     /* ── a reference field is a card, tinted by what it holds ── */
     .ad-place {

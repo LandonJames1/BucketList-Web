@@ -59,8 +59,13 @@ function mapActivity(row){
       /* Undefined without the column, which reads as false — exactly
          the behaviour we want before supabase/home.sql is run. */
       locationIsHome:row.location_is_home===true,
+      /* 'easy' | 'medium' | 'hard', or null — which is what a row
+         written before supabase/difficulty.sql looks like, and what an
+         activity the model declined to judge looks like too. Nothing
+         reads it as a default; the UI simply draws nothing. */
+      difficulty:row.difficulty||null,
       remindAt:row.remind_at||null,remindNote:row.reminder_note||'',createdAt:row.created_at};
-  }catch(e){console.error('mapActivity error:',e,row);return{id:row.id,listId:row.collection_id,listIds:[row.collection_id].filter(Boolean),name:row.name||'',targetDate:null,priority:'medium',links:[],completed:!!row.date_completed,completedDate:row.date_completed||null,completionNotes:'',media:[],photos:[],location:'',locationLat:null,locationLng:null,locationIsHome:false,remindAt:null,remindNote:'',createdAt:row.created_at};}
+  }catch(e){console.error('mapActivity error:',e,row);return{id:row.id,listId:row.collection_id,listIds:[row.collection_id].filter(Boolean),name:row.name||'',targetDate:null,priority:'medium',links:[],completed:!!row.date_completed,completedDate:row.date_completed||null,completionNotes:'',media:[],photos:[],location:'',locationLat:null,locationLng:null,locationIsHome:false,difficulty:null,remindAt:null,remindNote:'',createdAt:row.created_at};}
 }
 
 /* ==============================================================
@@ -146,6 +151,27 @@ async function probeHomeFlag(){
   return _homeFlagReady;
 }
 function homeFlagReady(){ return _homeFlagReady===true; }
+
+/* ==============================================================
+   HOW HARD IT IS
+
+   Same shape, same reason: `difficulty` is added by
+   supabase/difficulty.sql and the app has to work without it. Probed
+   once at sign-in; without the column the value is never sent, so an
+   insert cannot fail for anyone who has not run the migration.
+   ============================================================== */
+let _difficultyReady=null;
+
+async function probeDifficulty(){
+  try{
+    const{error}=await sb.from('Activities').select('difficulty').limit(1);
+    _difficultyReady=!error;
+    if(error) console.info('[difficulty] no difficulty column — activities will not be rated '+
+      'or sortable by how hard they are. Run supabase/difficulty.sql.');
+  }catch(e){ _difficultyReady=false; }
+  return _difficultyReady;
+}
+function difficultyReady(){ return _difficultyReady===true; }
 
 /* ==============================================================
    THE CACHE
@@ -356,10 +382,52 @@ async function primeFromSnapshot(){
    `null` means "genuinely nothing to show" and stays uncached, so
    the next call retries — rule 3 of the cache, unchanged.
    ============================================================== */
+/* Only the columns something actually reads, never select('*').
+
+   `Activities.description` is dead (see CLAUDE.md, Back end) and can
+   hold a paragraph on every row; `category_tag` and the two
+   denormalised count columns are unread. Pulling them on every launch,
+   every foreground and every reconnect was real egress for nothing.
+
+   ⚠️ The optional columns cannot be gated on their probes: those fire
+   un-awaited from showApp() and the first fetch races them, so a cold
+   launch would silently omit remind_at / location_is_home / difficulty
+   and reminders would vanish from the first paint. They are asked for
+   unconditionally instead, and a PostgREST 400 for a column that does
+   not exist falls back to the core list — remembered per kind, so the
+   failure costs one extra request per session and not one per fetch. */
+const SELECT_FULL={
+  collections:'id,created_at,name,description,cover_image,user_id',
+  activities:'id,created_at,collection_id,name,target_date,priority,date_completed,'+
+             'experience_notes,photos,links,location,location_lat,location_lng,'+
+             'remind_at,reminder_note,location_is_home,difficulty'
+};
+const SELECT_CORE={
+  collections:SELECT_FULL.collections,
+  activities:'id,created_at,collection_id,name,target_date,priority,date_completed,'+
+             'experience_notes,photos,links,location,location_lat,location_lng'
+};
+const _selectNarrow={};
+function selectCols(kind){
+  return (_selectNarrow[kind]?SELECT_CORE:SELECT_FULL)[kind]||'*';
+}
+/* A missing column is a 42703 / "column ... does not exist" 400. Anything
+   else (a network drop, RLS) must NOT narrow the select, or one bad
+   connection would cost the session its optional columns. */
+function isMissingColumn(e){
+  const m=((e&&(e.code||''))+' '+(e&&e.message||'')).toLowerCase();
+  return m.includes('42703')||m.includes('does not exist');
+}
+
 async function readRows(kind,table,build){
   if(navigator.onLine){
     try{
-      const{data,error}=await build(sb.from(table).select('*'));
+      let{data,error}=await build(sb.from(table).select(selectCols(kind)));
+      if(error&&isMissingColumn(error)&&!_selectNarrow[kind]){
+        _selectNarrow[kind]=true;
+        console.info('readRows('+table+'): optional column missing, narrowing select');
+        ({data,error}=await build(sb.from(table).select(selectCols(kind))));
+      }
       if(error)throw error;
       /* Persisting is not allowed to hold up the render. */
       snapshotSave(kind,data);
@@ -432,6 +500,9 @@ async function fetchAllActivities(collections){
    Matches through listIds rather than comparing collection_id, so the
    one place that decides what "in this list" means is mapActivity(). */
 async function fetchActivitiesFor(collectionId){
+  /* One of the three derived lists — its membership is a difficulty
+     rating, not a collection_id. See js/smartlists.js. */
+  if(isSmartList(collectionId)) return smartActivitiesFor(collectionId);
   const all=await fetchAllActivities();
   return all.filter(a=>a.listIds.includes(collectionId))
             .sort((a,b)=>new Date(a.createdAt)-new Date(b.createdAt));
@@ -451,6 +522,10 @@ async function fetchActivity(id){
   return mapActivity(data);
 }
 async function fetchCollection(id){
+  /* Synthesised rather than fetched: there is no row behind it, and
+     fetchCollections() deliberately never returns one — which is what
+     makes a smart list impossible to file an activity into. */
+  if(isSmartList(id)) return smartCollection(smartTier(id));
   const all=await fetchCollections();
   const hit=all.find(c=>c.id===id);
   if(hit)return hit;
@@ -529,9 +604,25 @@ async function recountCollection(collectionId){
    the queue would overwrite the local snapshot with server rows that
    do not have them yet — the user would watch their offline additions
    vanish, and then reappear a moment later when the flush landed. */
-async function revalidate(){
+/* How often a foreground or a reconnect is allowed to refetch both
+   tables. It used to be every time, and an app that is foregrounded a
+   dozen times an afternoon re-downloaded the whole library a dozen
+   times — which is most of where the egress went. Five minutes is well
+   under how often somebody else's edit needs to show up, and the write
+   that would matter most (this device's own) is applied to the cache
+   locally anyway.
+
+   The queue flush is deliberately OUTSIDE the throttle: a queued write
+   must sync the moment the network is back, whatever the refetch does. */
+const REVALIDATE_MS=5*60*1000;
+let _lastRevalidate=0;
+function resetRevalidateThrottle(){ _lastRevalidate=0; }
+
+async function revalidate(force){
   if(!currentUser)return;
   await flushQueue();
+  if(!force&&Date.now()-_lastRevalidate<REVALIDATE_MS)return;
+  _lastRevalidate=Date.now();
   invalidateAll();
   const lists=await fetchCollections();
   await fetchAllActivities(lists);

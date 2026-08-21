@@ -36,16 +36,9 @@ let detMapHomeBounds=null;
 /* Cached display name for the Me tab, read once from the Users table. */
 let userProfile=null;
 
-/* A link shared into the app, held until there is somewhere to put it.
-   Read from the URL at boot — before the session is restored — because
-   a share can arrive while signed out, and the query string is stripped
-   immediately so a reload does not import the same link twice.
-   See js/share.js. */
-let pendingShare=null;
-
 /* An invite code for a shared list, read from ?join= at boot and held
-   for the same reason pendingShare is: the link can be opened while
-   signed out, and the sign-in screen must not swallow it. Cleared by
+   because the link can be opened while signed out, and the sign-in
+   screen must not swallow it. Cleared by
    handlePendingJoin() once there is a user to join as.
    See js/sharing.js. */
 let pendingJoin=null;

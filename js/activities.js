@@ -515,22 +515,8 @@ function setTargetLists(ids){
   targetListId=targetListIds[0]||null;
 }
 
-/* Why the sheet opened the way it did. The only caller that passes a
-   message is a screenshot import that could not be read — rather than
-   parking the user on a card explaining the failure, the sheet they were
-   heading for anyway opens and says so in a line. Cleared on every open,
-   so nothing leaks into the next activity. */
-function setActivityNotice(msg){
-  const box=$('actNotice');
-  if(!box)return;
-  if(!msg){ box.hidden=true; box.innerHTML=''; return; }
-  box.innerHTML=`${icon('camera','ic-sm')}<span>${esc(msg)}</span>`;
-  box.hidden=false;
-}
-
-async function openNewActivity(prefillName,notice){
+async function openNewActivity(prefillName){
   editingActId=null;aLinks=[];
-  setActivityNotice(notice);
   setTargetLists(curListId?[curListId]:[]);
   await renderActListPicker();
   $('aName').value=prefillName||'';
@@ -541,6 +527,9 @@ async function openNewActivity(prefillName,notice){
   resetDateOptions();
   $('aDate').value=DEFAULT_TARGET_DATE;
   setPriorityChoice('medium');
+  /* Nothing has judged this name yet; maybeGuessLocation() fills it in
+     behind the sheet if the backend answers. */
+  $('aDiff').value='';
   $('aDateCustom').value='';onTargetDateChange();
   renderTagChips('aLinks');
   /* The notes log belongs to the activity, so the field here is only
@@ -562,7 +551,6 @@ async function openNewActivity(prefillName,notice){
 async function openEditAct(id){
   const a=await fetchActivity(id);if(!a)return;
   editingActId=id;
-  setActivityNotice('');       /* never carries over from a failed import */
   setTargetLists([a.listId]);
   await renderActListPicker();
   $('aName').value=a.name;
@@ -595,6 +583,10 @@ async function openEditAct(id){
   }
   onTargetDateChange();
   setPriorityChoice(a.priority||'medium');
+  /* Carried through an edit untouched. The rating was inferred at
+     capture from the name, and re-judging it here would silently
+     rewrite it every time somebody fixed a typo. */
+  $('aDiff').value=a.difficulty||'';
   aLinks=[...(a.links||[])];
   renderTagChips('aLinks');
   /* Empty on an edit too: the log is append-only and is read on the
@@ -774,6 +766,11 @@ async function saveActivity(){
        later moves it. See "THIS ACTIVITY IS AT HOME" in api.js. */
     ...homeFieldsFor('aLoc'),
   };
+  /* Same rule as remind_at below: only send the column if the database
+     has it. An empty value is sent as null rather than '', so a name
+     the model declined to judge is stored as "not rated" and not as a
+     fourth tier. */
+  if(difficultyReady()) fields.difficulty=$('aDiff').value||null;
   /* Only send the column if the database actually has it, or every
      insert fails for people who have not run the migration. */
   if(remindersReady()){
@@ -990,8 +987,10 @@ async function openActDetail(id){
       <div class="ad-cdown${cd.open?' open':''}">
         <b>${esc(cd.big)}</b><span>${esc(cd.unit)}</span>
       </div></div>`;
+    const diff=diffLabel(a);
     h+=`<div class="ad-chips">
       <span class="ad-chip c-${pri}"><small>Priority</small>${cap(pri)}</span>
+      ${diff?`<span class="ad-chip c-d-${esc(a.difficulty)}"><small>Difficulty</small>${esc(diff)}</span>`:''}
       ${target?`<span class="ad-chip c-target"><small>Target</small><b>${esc(target)}</b></span>`:''}
       <span class="ad-chip c-remind"><small>Remind</small>${a.remindAt?esc(fmtDate(a.remindAt)):'None'}</span>
     </div>`;
@@ -1304,7 +1303,6 @@ async function openCollectionMenu(){
     {label:'List',  icon:'rows',        checked:curView==='list', onSelect:()=>setView('list')},
     {label:'Grid',  icon:'square-grid', checked:curView==='grid', onSelect:()=>setView('grid')},
     {label:'Map',   icon:'map',         checked:curView==='map',  onSelect:()=>setView('map')},
-    {label:'Add Many at Once', icon:'plus',   onSelect:openBulkAdd},
     {label:'Edit List',        icon:'pencil', onSelect:openEditList},
   ];
 

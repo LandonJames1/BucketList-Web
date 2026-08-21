@@ -38,6 +38,9 @@
 function resetAccountState(){
   cancelPendingStats();
   invalidateAll();
+  /* Or the next account signs in inside the previous one's throttle
+     window and its first foreground refetch is silently skipped. */
+  resetRevalidateThrottle();
   invalidateSharedIds();
   resetSharingProbe();
   /* The conversation cache, the unread badge and the live realtime
@@ -58,6 +61,7 @@ function resetAccountState(){
      device inherits the previous one's home address as their search
      bias and their "Home" shortcut. */
   resetHomePlace();
+  resetDifficultyProfile();
   /* The globe is kept alive across navigation, so nothing else would
      dispose it — and its pins are the previous account's places. */
   destroyGlobalMap();
@@ -303,6 +307,9 @@ async function showApp(){
      the bias point for place search. Reads localStorage synchronously
      first, so the shortcut is there before the round trip lands. */
   loadHomePlace();
+  /* The paragraph the difficulty rating is judged against. Same
+     shape as Home and cheap enough to sit beside it. */
+  loadDifficultyProfile();
   pwaUpdateOnlineState();
   /* Only offer the iOS install walkthrough once someone is signed in;
      installing a login screen is pointless. */
@@ -325,6 +332,7 @@ async function showApp(){
      is what lets a change of home address move them. See "THIS
      ACTIVITY IS AT HOME" in api.js. */
   probeHomeFlag();
+  probeDifficulty();
   /* Spin the geo function's isolate up and open the connection, so the
      first place search of the session pays for neither. */
   warmGeo();
@@ -347,9 +355,6 @@ async function showApp(){
   /* A message notification tapped while the app was closed lands here.
      See ARRIVING FROM A NOTIFICATION in js/messages.js. */
   handlePushLanding();
-  /* A link shared into the app is held from boot until there is
-     somewhere to file it. See js/share.js. */
-  handleSharedInput();
   /* An invite to a shared list is held the same way, and for the same
      reason: it can arrive while signed out. See js/sharing.js. */
   const hadPendingJoin=!!pendingJoin;
@@ -637,7 +642,7 @@ function readEmailConfirmation(){
      to ask why it did not work.
 
      Only our own keys are removed, and the rest of the query string is
-     put back: readPendingJoin() and readSharedInput() run against the
+     put back: readPendingJoin() runs against the
      same URL, and blanking it wholesale here would eat an invite.
 
      Those two do blank it wholesale, which is why main.js runs this one
